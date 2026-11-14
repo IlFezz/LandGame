@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Game } = require('./game');
+const { Bot } = require('./bot');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -121,14 +122,20 @@ const rooms = new Map(); // code -> room
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TURN_TIMES = [0, 30, 45, 60, 90];
 const RESPONSE_TIME = 20; // secondi per contrastare o scegliere
-const ANIM_MS = 650;
-const TIME_SCALE = Number(process.env.TIME_SCALE || 1); // solo per i test      // tempo stimato di animazione per evento (il timer parte dopo)
+const ANIM_MS = 700;       // durata media di un'animazione a velocità "media" (il timer parte dopo)
+const TIME_SCALE = Number(process.env.TIME_SCALE || 1); // solo per i test
+const BOT_SEAT = 1;
+
+// Tempo stimato per animare `n` eventi sul client, secondo la velocità scelta dal giocatore.
+const animTime = (room, n) => Math.min(n * ANIM_MS * (room.animFactor || 1.5), 9000);
 
 function newCode() {
   let code;
   do { code = Array.from({ length: 4 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join(''); } while (rooms.has(code));
   return code;
 }
+// Fattore di velocità delle animazioni inviato dal client (lenta 1.5, media 1, veloce 0.6).
+const speedOf = (v) => { const n = Number(v); return n >= 0.3 && n <= 3 ? n : 1.5; };
 const newToken = () => crypto.randomBytes(16).toString('hex');
 const cleanName = (n) => (String(n || '').trim().slice(0, 20) || 'Giocatore');
 
@@ -141,8 +148,9 @@ function eventFor(ev, seat) {
 // Invia lo stato a entrambi. `events` (opzionale) sono i passaggi da animare.
 function broadcast(room, events) {
   room.touched = Date.now();
-  if (events && events.length) scheduleTimer(room, events.length);
-  else scheduleTimer(room, 0);
+  const n = events ? events.length : 0;
+  scheduleTimer(room, n);
+  scheduleBot(room, n);
   room.seats.forEach((s, i) => {
     if (!s || !s.conn) return;
     s.conn.send(stateMsg(room, i, events));
@@ -152,7 +160,8 @@ function broadcast(room, events) {
 function stateMsg(room, i, events) {
   const msg = {
     t: 'state', code: room.code, seat: i, now: Date.now(),
-    seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn } : null)),
+    seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn || !!x.bot, bot: !!x.bot } : null)),
+    vsBot: !!room.bot,
     rematch: room.rematch.slice(), turnTime: room.turnTime,
     timer: room.timer ? { deadline: room.timer.deadline, total: room.timer.total, actor: room.timer.actor } : null,
     game: room.game ? room.game.view(i) : null,
@@ -166,14 +175,15 @@ function scheduleTimer(room, nEvents) {
   const g = room.game;
   const actor = g ? g.actor() : null;
   const key = g && actor != null ? `${g.turn}|${g.step}|${actor}|${g.pending ? g.pending.counters : ''}` : null;
-  if (!room.turnTime || key == null) {
+  const botTurn = room.bot && actor === BOT_SEAT;
+  if (!room.turnTime || key == null || botTurn) {
     if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
     return;
   }
   if (room.timer && room.timer.key === key) return;
   if (room.timer) clearTimeout(room.timer.handle);
   const total = g.step === 'main' ? room.turnTime : Math.min(RESPONSE_TIME, room.turnTime);
-  const deadline = Date.now() + (Math.min(nEvents * ANIM_MS, 5000) + total * 1000) * TIME_SCALE;
+  const deadline = Date.now() + (animTime(room, nEvents) + total * 1000) * TIME_SCALE;
   const handle = setTimeout(() => {
     if (!room.game || room.game.actor() !== actor) return;
     room.timer = null;
@@ -184,10 +194,35 @@ function scheduleTimer(room, nEvents) {
   room.timer = { key, deadline, total, actor, handle };
 }
 
+// Mossa del computer, dopo le animazioni e un breve "tempo per pensare".
+function scheduleBot(room, nEvents) {
+  if (!room.bot) return;
+  const g = room.game;
+  const actor = g ? g.actor() : null;
+  if (actor !== BOT_SEAT) { if (room.botTimer) { clearTimeout(room.botTimer.handle); room.botTimer = null; } return; }
+  const key = `${g.turn}|${g.step}|${g.pending ? g.pending.counters : ''}`;
+  if (room.botTimer && room.botTimer.key === key) return;
+  if (room.botTimer) clearTimeout(room.botTimer.handle);
+  const think = g.step === 'main' ? 900 + Math.random() * 900 : 700 + Math.random() * 700;
+  const handle = setTimeout(() => {
+    room.botTimer = null;
+    if (!room.game || room.game !== g || g.actor() !== BOT_SEAT) return;
+    const a = new Bot(g, BOT_SEAT).decide();
+    if (!a || g.act(BOT_SEAT, a)) g.act(BOT_SEAT, g.step === 'main' ? { type: 'pass' } : { type: 'allow' });
+    broadcast(room, g.takeEvents());
+  }, (animTime(room, nEvents) + think) * TIME_SCALE);
+  room.botTimer = { key, handle };
+}
+
+function clearRoomTimers(room) {
+  if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
+  if (room.botTimer) { clearTimeout(room.botTimer.handle); room.botTimer = null; }
+}
+
 function startGame(room) {
   room.game = new Game([room.seats[0].name, room.seats[1].name]);
   room.rematch = [false, false];
-  if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
+  clearRoomTimers(room);
 }
 
 function attach(conn, room, seat) {
@@ -209,11 +244,25 @@ function handleConnection(conn) {
       const room = {
         code, seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, null], game: null,
         rematch: [false, false], touched: Date.now(), timer: null,
-        turnTime: TURN_TIMES.includes(tt) ? tt : 60,
+        turnTime: TURN_TIMES.includes(tt) ? tt : 60, animFactor: speedOf(m.speed),
       };
       rooms.set(code, room);
       attach(conn, room, 0);
       return broadcast(room);
+    }
+    if (m.t === 'bot') {
+      const code = newCode();
+      const tt = Number(m.turnTime);
+      const room = {
+        code, bot: true,
+        seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, { name: 'Computer 🤖', token: null, conn: null, bot: true }],
+        game: null, rematch: [false, false], touched: Date.now(), timer: null, botTimer: null,
+        turnTime: TURN_TIMES.includes(tt) ? tt : 60, animFactor: speedOf(m.speed),
+      };
+      rooms.set(code, room);
+      attach(conn, room, 0);
+      startGame(room);
+      return broadcast(room, room.game.takeEvents());
     }
     if (m.t === 'join') {
       const room = rooms.get(String(m.code || '').toUpperCase().trim());
@@ -240,14 +289,19 @@ function handleConnection(conn) {
     if (m.t === 'rematch') {
       if (!room.game || room.game.phase !== 'over') return;
       room.rematch[conn.seat] = true;
+      if (room.bot) room.rematch[BOT_SEAT] = true;
       if (room.rematch.every(Boolean)) { startGame(room); return broadcast(room, room.game.takeEvents()); }
       return broadcast(room);
+    }
+    if (m.t === 'prefs') {
+      room.animFactor = speedOf(m.speed);
+      return;
     }
     if (m.t === 'leave') {
       const seat = conn.seat;
       room.seats[seat].conn = null;
       conn.room = null;
-      if (!room.game) { rooms.delete(room.code); if (room.timer) clearTimeout(room.timer.handle); }
+      if (!room.game || room.bot) { rooms.delete(room.code); clearRoomTimers(room); }
       else broadcast(room);
       return;
     }
@@ -265,7 +319,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms) {
     const anyone = room.seats.some((s) => s && s.conn);
-    if (!anyone && now - room.touched > 2 * 3600 * 1000) { if (room.timer) clearTimeout(room.timer.handle); rooms.delete(code); }
+    if (!anyone && now - room.touched > 2 * 3600 * 1000) { clearRoomTimers(room); rooms.delete(code); }
     for (const s of room.seats) if (s && s.conn) s.conn.ping();
   }
 }, 25000).unref();

@@ -34,16 +34,21 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 ## Funzioni
 
+- **Partita contro il computer** (difficoltà media): valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Stanze con codice di 4 caratteri e link di invito; rientro automatico se cade la connessione.
+- **Comandi a trascinamento** (predefiniti): tieni premuta una carta, fluttua, e la lasci sul tuo campo o sul bersaglio. In alternativa, comandi a selezione dal menu.
 - Animazioni per ogni evento (distribuzione, pescata, giocata, contrasto, terra annullata, ingresso in gioco, distruzione, recupero, scarto, Pianura) con didascalia che spiega cosa succede.
 - Azioni nel pannello centrale e direttamente sul campo (i bersagli validi lampeggiano): la mano resta sempre visibile.
 - Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Per contrastare o scegliere ci sono 20 secondi. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
 - Indicatore di avanzamento (tipi diversi e terre uguali), con avviso quando qualcuno è a un passo dalla vittoria.
-- Menu in partita: effetti sonori, vibrazione, registro, regole, esci.
+- Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
+- Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
+- Menu in partita: comandi, velocità animazioni (lenta/media/veloce, predefinita lenta), effetti sonori, vibrazione, registro, regole, esci.
 
 ## Struttura
 
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).
+- `bot.js` – giocatore computer.
 - `server.js` – server HTTP + WebSocket, gestione stanze e riconnessione.
 - `public/` – client (HTML/CSS/JS), manifest e service worker.
 - `test/` – test delle regole e test end-to-end con due client.
