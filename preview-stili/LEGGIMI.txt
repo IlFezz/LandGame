@@ -1,0 +1,8 @@
+Anteprime di stile (il gioco non le usa). Apri index.html.
+
+atlante.html      lo stile "Atlante" (atlante.css, atlante.js, atlante-fx.js, fonts/)
+spire.html, hearth.html, bazaar.html   i tre stili precedenti (base.css, app.js, fx.js, tex/)
+
+Caratteri dello stile Atlante, ridotti alle sole lettere latine con tools/make_fonts.py:
+- TeX Gyre Adventor (GUST Font License)
+- Lora Italic (SIL Open Font License)

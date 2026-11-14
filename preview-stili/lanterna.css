@@ -1,0 +1,63 @@
+/* Stile 4 · Lanterna di carta
+   Carta ritagliata e retroilluminata. Colori: notte #141a3a, crepuscolo #5d457c, carta indaco #262b55,
+   luce di luna #fff3d6. Titoli in Lora corsivo, interfaccia nel carattere di sistema. */
+@font-face { font-family: "Lora Corsivo"; src: url(tex/lora-corsivo.woff) format("woff"); font-weight: 400 700; font-style: italic; font-display: swap; }
+:root { --text: #ece8ff; --muted: #a9a6d0; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --disp: "Lora Corsivo", Georgia, serif;
+  --moon: #fff3d6; --paper: #262b55; --paper2: #343a6b; --deep: #1a1e42; --under: #171a3c; }
+body { background: url(tex/carta.webp), var(--table) center bottom / cover no-repeat, #141a3a; }
+.bar { background: #141a3acc; } .bar b { font-family: var(--disp); font-style: italic; font-size: 16px; font-weight: 600; color: var(--moon); }
+
+/* ---------- carta: una scatola luminosa ---------- */
+.k-W { --l0: #fffbe6; --l1: #ffe9a6; --l2: #ffc862; --f: #3d1c10; } .k-U { --l0: #f2ffff; --l1: #b9eef6; --l2: #6cc4e2; --f: #0d1a44; }
+.k-B { --l0: #f4ffe0; --l1: #cfe6b4; --l2: #a99be0; --f: #1f1638; } .k-R { --l0: #fff7c0; --l1: #ffd45e; --l2: #ff9838; --f: #360c1c; }
+.k-G { --l0: #f8fff0; --l1: #c4f5c0; --l2: #7fdc9c; --f: #082c2c; }
+.card { background: var(--f); border-radius: calc(var(--w) * .075); box-shadow: 0 calc(var(--w) * .025) 0 #0a082066, 0 calc(var(--w) * .09) calc(var(--w) * .16) #0a0820aa; }
+.card .art { inset: 0; border-radius: inherit; }
+.card .gem { left: 8%; top: 79%; width: 13%; aspect-ratio: 1; } .card .gem .ico { width: 100%; height: 100%; }
+.card .nm { left: 24%; right: 5%; top: 78.6%; text-align: left; font-family: var(--disp); font-style: italic; font-weight: 600; font-size: 1.3em; color: var(--l0); }
+.card .tx { left: 8.5%; right: 7%; top: 89.5%; text-align: left; font-size: .56em; color: var(--l1); opacity: .85; white-space: nowrap; }
+.card.mini .gem { top: 81.5%; } .card.mini .nm { top: 81.2%; }
+.card.sel { box-shadow: 0 0 0 calc(var(--w) * .014) var(--l0), 0 0 calc(var(--w) * .26) var(--l2), 0 calc(var(--w) * .16) calc(var(--w) * .2) #0a0820cc; }
+.crow .card.sel { transform: translateY(-6%); }
+.card.off::after { background: #0c0e24; opacity: .64; }
+.card.back { background: #1c2048; } .card.back .bk { inset: 0; border-radius: inherit; background-size: cover; }
+
+/* ---------- plancia ---------- */
+#v-carte h2, #v-menu h2 { font-family: var(--disp); font-style: italic; font-weight: 500; font-size: 17px; text-transform: none; letter-spacing: 0; opacity: .9; color: var(--moon); }
+.info { color: var(--muted); } .info .pn { font-family: var(--disp); font-style: italic; font-size: 1.3em; font-weight: 600; color: var(--moon); }
+.minib { background: #1c2048; box-shadow: inset 0 0 0 1.5px #6a6eb0; border-radius: 3px; }
+.gy { background: var(--paper); color: var(--text); border-radius: 10px; box-shadow: 0 3px 0 var(--under), 0 6px 12px #0a082055; }
+.slot .em { border-radius: 7.5%; background: #0c0e2466; box-shadow: inset 0 3px 9px #05040faa, 0 1px 0 #ffffff1c; }
+.slot .n { background: var(--moon); color: #2a2140; border-radius: 50%; box-shadow: 0 2px 0 #c9a97a, 0 4px 8px #0a082088; }
+.center .ring { border-radius: 50%; height: min(78%, 70vw);
+  background: radial-gradient(circle, #fff7e2 0 30%, #fff3d68a 30.5% 41%, #fff3d640 41.5% 54%, #fff3d61c 54.5% 68%, transparent 68.5%); }
+.center .ring::after { content: ""; position: absolute; inset: 0; border-radius: 50%; opacity: 0; transition: opacity .6s;
+  background: radial-gradient(circle, var(--tint, #fff) 0 30%, transparent 68%); }
+.center .ring.t::after { opacity: .55; }
+@media (min-aspect-ratio: 11/10) { .center .ring { height: 135%; } }
+
+/* ---------- comandi: linguette e fogli di carta ---------- */
+.btn { background: var(--paper2); border: 0; border-radius: 12px; font-weight: 650; font-size: 15px; box-shadow: 0 3px 0 var(--under), 0 8px 14px #0a082044; }
+.btn:active { transform: translateY(2px); }
+.btn.primary, .btn.pass { background: var(--moon); color: #2a2140; box-shadow: 0 3px 0 #c9a97a, 0 8px 18px #0a082066; }
+.btn.danger { background: #c4473f; box-shadow: 0 3px 0 #7a2420; } .btn.ghost { background: none; box-shadow: none; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+.fxbar .btn { font-size: 12.5px; border-radius: 10px; }
+.panel { background: var(--paper); border-radius: 18px; box-shadow: inset 0 1px 0 #ffffff14, 7px 8px 0 -1px var(--under), 0 26px 44px #0a082066; }
+.panel h1 { font-family: var(--disp); font-style: italic; font-weight: 600; font-size: 34px; color: var(--moon); line-height: 1.05; }
+.panel h3 { font-family: var(--disp); font-style: italic; font-weight: 600; font-size: 24px; color: var(--moon); }
+.panel .sub, .or { color: var(--muted); opacity: 1; } .pips { gap: 12px; font-size: 24px; }
+.field2 label { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--muted); opacity: 1; }
+.inp { background: var(--deep); border: 0; border-radius: 10px; color: var(--text); box-shadow: inset 0 2px 6px #05040f88; }
+.seg { background: var(--deep); border-radius: 12px; box-shadow: inset 0 2px 6px #05040f88; } .seg span { border-radius: 9px; color: var(--muted); }
+.seg .on { background: var(--moon); color: #2a2140; box-shadow: 0 2px 0 #c9a97a; }
+.mrow { padding: 12px 2px; border-bottom: 1.5px dashed #ffffff26; font-weight: 600; } .mrow.col { border-bottom: 0; padding-bottom: 4px; }
+.tog { background: var(--deep); border-radius: 11px; box-shadow: inset 0 2px 5px #05040f88; }
+.tog::after { border-radius: 50%; background: #6b70a0; transition: left .15s; } .tog.on::after { background: var(--moon); box-shadow: 0 0 12px #ffe2a8; }
+.code { font-family: var(--disp); font-style: italic; font-weight: 600; font-size: 56px; letter-spacing: 6px; color: var(--moon); line-height: 1; padding: 6px 0; }
+.panel ul { gap: 9px; } .panel li b { font-family: var(--disp); font-style: italic; font-size: 1.12em; color: var(--moon); }
+
+/* ---------- effetti ---------- */
+.bit { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 21; will-change: transform, opacity; }
+.fnum { font-family: var(--disp); font-style: italic; font-weight: 600; font-size: 24px; text-shadow: 0 2px 0 #14183a, 0 0 14px #14183a; }
+.winb { padding: 0; font-family: var(--disp); font-style: italic; font-weight: 600; font-size: clamp(54px, 13vh, 120px); color: var(--moon); text-shadow: 0 4px 0 #2a2140, 0 0 40px #ffe2a8aa; }
+.hub a { background: var(--paper); border-radius: 14px; }

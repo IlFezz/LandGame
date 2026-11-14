@@ -3,13 +3,14 @@
 // e usato come immagine di sfondo (viene rasterizzato una sola volta, non ridisegnato dal vivo).
 (() => {
   const ST = document.documentElement.dataset.style;
-  const TITLE = { spire: 'Stile 1 · scuro e dipinto', hearth: 'Stile 2 · legno e metallo', bazaar: 'Stile 3 · cartoon' }[ST];
+  const X = window.STYLE_X || {}; // uno stile può portare la propria grafica
+  const TITLE = X.title || { spire: 'Stile 1 · scuro e dipinto', hearth: 'Stile 2 · legno e metallo', bazaar: 'Stile 3 · cartoon' }[ST];
   const L = ['W', 'U', 'B', 'R', 'G'];
   const NAME = { W: 'Pianura', U: 'Isola', B: 'Palude', R: 'Montagna', G: 'Foresta' };
   const TX = { W: 'Riattiva una tua terra', U: 'Pesca 1 · Contrasta', B: 'Fai scartare una terra', R: 'Distruggi una terra', G: 'Recupera dal cimitero' };
   const TIER = { W: 'oro', U: 'diamante', B: 'argento', R: 'bronzo', G: 'oro' };
   // tono per stile: saturazione, luminosità, contorno
-  const T = { spire: { s: 0.5, l: 0.84, ol: 1.5, olc: '#141216' }, hearth: { s: 0.95, l: 1, ol: 0, olc: 'none' }, bazaar: { s: 1.3, l: 1.1, ol: 2, olc: '#1b1030' } }[ST];
+  const T = X.tone || { spire: { s: 0.5, l: 0.84, ol: 1.5, olc: '#141216' }, hearth: { s: 0.95, l: 1, ol: 0, olc: 'none' }, bazaar: { s: 1.3, l: 1.1, ol: 2, olc: '#1b1030' } }[ST];
   const c = (h, s, l) => `hsl(${h} ${Math.min(100, s * T.s).toFixed(0)}% ${Math.min(96, l * T.l).toFixed(0)}%)`;
   const K = T.ol ? `stroke="${T.olc}" stroke-width="${T.ol}" stroke-linejoin="round"` : '';
   const lg = (id, stops) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops.map(([o, col]) => `<stop offset="${o}" stop-color="${col}"/>`).join('')}</linearGradient>`;
@@ -75,6 +76,8 @@
   for (const l of L) { root.setProperty('--art-' + l, uri(SCENES[l]() + BRUSH, '0 0 100 80', 'preserveAspectRatio="xMidYMid slice"')); root.setProperty('--ico-' + l, uri(ICONS[l], '0 0 24 24')); }
   root.setProperty('--ico-T', uri(ICONS.T, '0 0 24 24'));
   root.setProperty('--bk', uri(BK, '0 0 100 100', `color="${{ spire: '#b9ad90', hearth: '#e8c66a', bazaar: '#ffffff' }[ST]}"`));
+
+  if (X.vars) for (const k in X.vars) root.setProperty(k, X.vars[k]);
 
   const ico = (l) => `<i class="ico ico-${l}"></i>`;
   const card = (l, cls = '', style = '') => `<div class="card k-${l} t-${TIER[l]} ${cls}" data-l="${l}" style="${style}"><div class="art"></div><div class="gem">${ico(l)}</div><div class="nm">${NAME[l]}</div><div class="tx">${TX[l]}</div><div class="bk"></div></div>`;
