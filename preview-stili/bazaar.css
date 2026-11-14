@@ -1,0 +1,35 @@
+/* Stile 3: cartoon saturo, contorni spessi, gradienti morbidi, bordi colorati per livello */
+:root { --text: #fff; --font: "Arial Rounded MT Bold", "Trebuchet MS", "Segoe UI", system-ui, sans-serif; --ink: #1b1030; }
+body { background: radial-gradient(#ffffff14 1.5px, #0000 2px) 0 0 / 22px 22px, linear-gradient(160deg, #3b2a86, #6a2f8f 55%, #a8406e); }
+.bar { background: var(--ink); }
+.k-W { --c: #ffd84a; --cd: #f09a1a; } .k-U { --c: #4fc3ff; --cd: #2a6fe8; } .k-B { --c: #b98cff; --cd: #6a3fd0; } .k-R { --c: #ff8a4a; --cd: #e8392a; } .k-G { --c: #7be06a; --cd: #1fa35a; }
+.t-bronzo { --tier: #d98a48; } .t-argento { --tier: #dfe6f2; } .t-oro { --tier: #ffd23d; } .t-diamante { --tier: #7ff0ff; }
+.card { --b: calc(var(--w) * .035); background: linear-gradient(var(--c), var(--cd)); border: var(--b) solid var(--ink); border-radius: calc(var(--w) * .13);
+  box-shadow: inset 0 0 0 calc(var(--w) * .035) var(--tier), inset 0 calc(var(--w) * .1) 0 calc(var(--w) * -.02) #fff5, 0 calc(var(--w) * .05) 0 var(--ink); }
+.card .art { left: 9%; right: 9%; top: 8%; height: 50%; border: var(--b) solid var(--ink); border-radius: calc(var(--w) * .09); }
+.card .gem { left: -6%; top: -5%; width: 27%; aspect-ratio: 1; border-radius: 50%; background: var(--tier); border: var(--b) solid var(--ink); z-index: 1; }
+.card .nm { left: 7%; right: 7%; top: 62%; height: 14%; display: grid; place-items: center; background: #fff; color: var(--ink); border: var(--b) solid var(--ink); border-radius: 999px; font-weight: 900; font-size: 1em; }
+.card .tx { left: 9%; right: 9%; top: 80%; font-size: .6em; font-weight: 700; color: #fff; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
+.card.mini .art { height: 58%; } .card.mini .nm { top: 73%; height: 17%; } .card.mini .gem { width: 30%; }
+.card.sel { box-shadow: inset 0 0 0 calc(var(--w) * .035) var(--tier), 0 0 0 calc(var(--w) * .04) #fff, 0 0 0 calc(var(--w) * .075) #ffe14d, 0 calc(var(--w) * .12) 0 var(--ink); }
+.crow .card.sel { transform: translateY(-6%) rotate(-2deg); }
+.card.back { background: repeating-conic-gradient(from 0deg at 50% 50%, #6a3fd0 0 15deg, #7d52e6 15deg 30deg); --tier: #fff; }
+.card.off::after { opacity: .5; background: var(--ink); }
+
+.minib { background: #7d52e6; border: 2px solid var(--ink); border-radius: 4px; }
+.gy { background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 999px; box-shadow: 0 3px 0 var(--ink); }
+.slot .n { background: #ffe14d; color: var(--ink); border: 3px solid var(--ink); border-radius: 50%; }
+.slot .em { border: 3px dashed #ffffff55; border-radius: 13%; background: #1b103055; }
+.center .ring { border-radius: 50%; background: radial-gradient(circle, #ffffff22 0 40%, #ffffff10 41% 62%, #0000 63%); border: 4px dashed #ffffff44; }
+.btn { background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 999px; box-shadow: 0 4px 0 var(--ink); font-weight: 900; }
+.btn.primary, .btn.pass { background: linear-gradient(#ffe86a, #ffc21a); } .btn.danger { background: linear-gradient(#ff7a8a, #ff3d5a); color: #fff; }
+.btn.ghost { background: none; border-color: #0000; box-shadow: none; color: #fff; text-decoration: underline; }
+.panel, .hub a { background: linear-gradient(#4a35a8, #38277f); border: 4px solid var(--ink); border-radius: 22px; box-shadow: 0 7px 0 var(--ink); }
+.panel h1 { color: #ffe14d; text-shadow: 0 3px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); } .panel h3 { color: #ffe14d; }
+.inp { background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 14px; font-weight: 700; }
+.seg { background: var(--ink); border-radius: 999px; } .seg span { border-radius: 999px; } .seg .on { background: #ffe14d; color: var(--ink); }
+.mrow { background: #ffffff1c; border-radius: 14px; }
+.tog { background: var(--ink); border-radius: 11px; } .tog::after { border-radius: 50%; background: #9a8fd0; } .tog.on { background: #3fd67a; } .tog.on::after { background: #fff; }
+.code { color: #ffe14d; text-shadow: 0 4px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); }
+.fnum { font-size: 30px; text-shadow: 0 3px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); }
+.winb { background: linear-gradient(#ffe86a, #ffc21a); color: var(--ink); border: 5px solid var(--ink); border-radius: 999px; box-shadow: 0 8px 0 var(--ink); }

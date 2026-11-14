@@ -1,0 +1,36 @@
+/* Stile 2: cornici lucide in rilievo, legno e metallo, bagliori, profondità */
+:root { --text: #f6ead0; --font: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; --gold: #e8c66a; --gold2: #8a6420; }
+body { background: radial-gradient(ellipse at 50% 40%, #0000 35%, #000b 100%), url(tex/legno.webp) #2a1608; }
+.bar { background: linear-gradient(#4a2c12, #24120a); box-shadow: 0 2px 0 #caa24a, 0 6px 12px #000a; }
+.k-W { --c: #e8c860; --cd: #6a4f16; } .k-U { --c: #4f97e6; --cd: #123a72; } .k-B { --c: #9a6ad6; --cd: #2c1650; } .k-R { --c: #e8582c; --cd: #6a1a0c; } .k-G { --c: #4fb85e; --cd: #12471e; }
+.card { background: linear-gradient(165deg, color-mix(in srgb, var(--c) 70%, #fff) 0%, var(--c) 30%, var(--cd) 100%); border-radius: calc(var(--w) * .09);
+  box-shadow: inset 0 0 0 calc(var(--w) * .022) var(--gold), inset 0 0 0 calc(var(--w) * .04) var(--gold2), inset 0 calc(var(--w) * .09) calc(var(--w) * .06) #fff6, inset 0 calc(var(--w) * -.08) calc(var(--w) * .08) #0007, 0 calc(var(--w) * .05) calc(var(--w) * .09) #000b; }
+.card .art { left: 10%; right: 10%; top: 7%; height: 52%; border-radius: 50% 50% 10% 10% / 34% 34% 8% 8%; border: calc(var(--w) * .025) solid var(--gold); box-shadow: 0 0 0 calc(var(--w) * .012) var(--gold2), inset 0 0 calc(var(--w) * .1) #000a; }
+.card .gem { left: 38%; width: 24%; top: 51%; aspect-ratio: 1; border-radius: 50%; z-index: 1; background: radial-gradient(circle at 35% 28%, #fff 0 8%, color-mix(in srgb, var(--c) 60%, #fff) 20%, var(--cd) 90%); box-shadow: 0 0 0 calc(var(--w) * .02) var(--gold), 0 0 0 calc(var(--w) * .032) var(--gold2), 0 calc(var(--w) * .02) calc(var(--w) * .04) #000a; }
+.card .nm { left: 5%; right: 5%; top: 68%; height: 12%; display: grid; place-items: center; font-weight: 700; font-size: 1.02em; color: #ffe9a8; text-shadow: 0 1px 0 #000, 0 0 4px #000;
+  background: linear-gradient(#7a4a1e, #3e2210); border-radius: calc(var(--w) * .03); box-shadow: inset 0 1px 0 #d9a45a, inset 0 -2px 0 #1e0f06, 0 0 0 calc(var(--w) * .012) var(--gold2); }
+.card .tx { left: 9%; right: 9%; top: 82%; font-size: .58em; color: #fff3d6; text-shadow: 0 1px 2px #000; font-style: italic; }
+.card.mini .art { height: 58%; } .card.mini .gem { display: none; } .card.mini .nm { top: 74%; height: 15%; }
+.card.sel { box-shadow: inset 0 0 0 calc(var(--w) * .022) #fff3c0, inset 0 0 0 calc(var(--w) * .04) var(--gold2), inset 0 calc(var(--w) * .09) calc(var(--w) * .06) #fff6, 0 0 calc(var(--w) * .1) calc(var(--w) * .03) #ffe07a, 0 0 calc(var(--w) * .3) var(--c), 0 calc(var(--w) * .12) calc(var(--w) * .14) #000c; }
+.crow .card.sel { transform: translateY(-6%); }
+.card.back { background: radial-gradient(circle at 50% 50%, #5a3a8a, #1c1030 75%); }
+.card.off::after { opacity: .55; }
+
+.info { text-shadow: 0 1px 2px #000; } .info .pn { color: #ffe9a8; }
+.minib { background: linear-gradient(#5a3a8a, #1c1030); box-shadow: 0 0 0 1.5px var(--gold); }
+.gy { background: linear-gradient(#5a3a1a, #2a160a); border-radius: 999px; box-shadow: inset 0 1px 0 #c9944a, 0 0 0 2px var(--gold2), 0 3px 6px #000a; }
+.slot .n { background: radial-gradient(circle at 35% 30%, #fff3c0, #e8c66a 40%, #8a6420); color: #2a1608; border-radius: 50%; box-shadow: 0 2px 4px #000a; }
+.slot .em { border-radius: 9%; background: #0005; box-shadow: inset 0 3px 8px #000c, 0 1px 0 #ffffff22; }
+.center .ring { border-radius: 50%; background: radial-gradient(circle, #1f5a44 0 52%, #123a2c 62%, #0000 63%), conic-gradient(#e8c66a, #8a6420, #fff3c0, #8a6420, #e8c66a, #8a6420, #fff3c0, #8a6420, #e8c66a);
+  -webkit-mask: radial-gradient(circle, #000 0 66%, #0000 67%); mask: radial-gradient(circle, #000 0 66%, #0000 67%); box-shadow: 0 0 40px #000; opacity: .95; }
+.btn { border: 0; border-radius: 10px; color: #fff3d6; text-shadow: 0 1px 1px #000; background: linear-gradient(#8a5a26, #4a2a10); box-shadow: inset 0 1px 0 #e0aa60, inset 0 -3px 0 #2a1608, 0 0 0 2px var(--gold2), 0 4px 8px #000a; font-family: var(--font); }
+.btn.primary, .btn.pass { color: #3a2206; text-shadow: 0 1px 0 #fff8; background: linear-gradient(#fff0b0, #e8c66a 45%, #b98a2c); box-shadow: inset 0 1px 0 #fff, inset 0 -3px 0 #8a6420, 0 0 0 2px #5a3a10, 0 0 16px #e8c66a88, 0 4px 8px #000a; }
+.btn.danger { background: linear-gradient(#c0452e, #6a1a0c); } .btn.ghost { background: none; box-shadow: none; text-decoration: underline; }
+.panel, .hub a { border-radius: 16px; background: linear-gradient(#3a2412, #24140a); box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 0 6px var(--gold2), inset 0 10px 20px #ffffff14, 0 10px 24px #000c; }
+.panel h1, .panel h3, .code { color: #ffe9a8; text-shadow: 0 2px 0 #5a3a10, 0 0 14px #e8c66a88; }
+.inp { background: #170c05; border: 0; border-radius: 8px; color: var(--text); box-shadow: inset 0 3px 6px #000, 0 1px 0 #c9944a66; }
+.seg { background: #170c05; border-radius: 9px; box-shadow: inset 0 3px 6px #000; } .seg .on { border-radius: 7px; color: #3a2206; background: linear-gradient(#fff0b0, #e8c66a 45%, #b98a2c); }
+.mrow { background: #0004; border-radius: 9px; box-shadow: inset 0 2px 5px #000a, 0 1px 0 #c9944a44; }
+.tog { background: #170c05; border-radius: 11px; box-shadow: inset 0 2px 4px #000; } .tog::after { border-radius: 50%; background: #8a7a6a; } .tog.on::after { background: radial-gradient(circle at 35% 30%, #fff, #e8c66a 50%, #8a6420); }
+.fnum { font-family: var(--font); color: #fff; text-shadow: 0 2px 2px #000, 0 0 10px currentColor; }
+.winb { border-radius: 16px; color: #3a2206; background: linear-gradient(#fff0b0, #e8c66a 45%, #b98a2c); box-shadow: inset 0 2px 0 #fff, 0 0 0 4px #5a3a10, 0 0 50px #e8c66a, 0 10px 20px #000c; }

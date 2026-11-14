@@ -1,0 +1,33 @@
+/* Stile 1: scuro e desaturato, contorni spessi, cornici semplici, illustrazioni dipinte */
+:root { --text: #e9e1cf; --font: Georgia, "Times New Roman", serif; --ink: #0e0d10; --gold: #c9a55a; --p: #2a2d34; }
+body { background: #191b20 url(tex/tela.webp); }
+.bar { background: #121317; border-bottom: 3px solid var(--ink); }
+.k-W { --c: #c4b178; } .k-U { --c: #7391b1; } .k-B { --c: #8d7b9a; } .k-R { --c: #b8735f; } .k-G { --c: #7f9c6e; }
+.card { --b: calc(var(--w) * .028); background: #3b3e47; border: var(--b) solid var(--ink); border-radius: calc(var(--w) * .05); box-shadow: 0 calc(var(--w) * .035) 0 #0009; }
+.card .nm { left: -5%; right: -5%; top: 4%; height: 14%; background: var(--c); color: #17130e; border: var(--b) solid var(--ink); display: grid; place-items: center; font-weight: 700; font-size: 1.08em; }
+.card .art { left: 7%; right: 7%; top: 22%; height: 45%; border: var(--b) solid var(--ink); clip-path: polygon(9% 0, 91% 0, 100% 13%, 100% 100%, 0 100%, 0 13%); }
+.card .gem { left: 38%; width: 24%; top: 60%; aspect-ratio: 1; background: #24262c; border: var(--b) solid var(--ink); border-radius: 50%; z-index: 1; }
+.card .tx { left: 7%; right: 7%; top: 73%; height: 21%; background: #cfc2a6; color: #2b241b; border: var(--b) solid var(--ink); display: grid; place-items: center; font-size: .6em; padding: 6% 4% 0; }
+.card.mini .art { height: 60%; } .card.mini .gem { top: 76%; }
+.card.sel { box-shadow: 0 0 0 calc(var(--w) * .03) #e6d7a3, 0 calc(var(--w) * .09) 0 #0009; }
+.crow .card.sel { transform: translateY(-6%); }
+.card.back { background: #2b2e36 repeating-linear-gradient(45deg, #0000 0 7px, #0004 7px 9px); }
+.card.off::after { opacity: .58; }
+
+.info { color: #cfc6b2; } .minib { background: #2b2e36; border: 2px solid var(--ink); }
+.gy, .slot .n { background: var(--p); border: 2px solid var(--ink); border-radius: 4px; }
+.slot .n { background: #cfc2a6; color: #17130e; border-radius: 50%; }
+.slot .em { border: 2px dashed #3d4049; border-radius: 6px; background: #14151a88; }
+.center .ring { border-radius: 50%; border: 3px dashed #3d4049; background: radial-gradient(circle, #23252c 0 60%, #0000 61%); opacity: .8; }
+.btn { background: #46525c; border: 3px solid var(--ink); border-radius: 4px; color: #efe6d0; box-shadow: 0 3px 0 var(--ink); font-family: var(--font); }
+.btn.primary, .btn.pass { background: #a9853a; color: #17130e; }
+.btn.danger { background: #8a3b32; } .btn.ghost { background: none; border-color: #0000; box-shadow: none; text-decoration: underline; opacity: .8; }
+.panel, .hub a { background: var(--p); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 0 5px 0 #0008; }
+.panel h1 { color: #e6d7a3; letter-spacing: 1px; text-shadow: 0 3px 0 var(--ink); } .panel h3 { color: #e6d7a3; }
+.inp { background: #17181c; border: 3px solid var(--ink); color: var(--text); border-radius: 4px; }
+.seg { background: #17181c; border: 2px solid var(--ink); border-radius: 4px; } .seg .on { background: #a9853a; color: #17130e; border-radius: 2px; }
+.mrow { background: #33363e; border: 2px solid var(--ink); border-radius: 4px; }
+.tog { background: #17181c; border: 2px solid var(--ink); border-radius: 3px; } .tog::after { background: #6a6d76; top: 1px; left: 1px; } .tog.on::after { background: #c9a55a; left: 19px; }
+.code { color: #e6d7a3; text-shadow: 0 4px 0 var(--ink); }
+.fnum { font-family: var(--font); text-shadow: 0 2px 0 #000, 0 0 6px #000; }
+.winb { background: #17181c; border: 4px solid var(--ink); color: #e6d7a3; box-shadow: 0 0 0 3px #a9853a, 0 8px 0 #000a; }

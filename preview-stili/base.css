@@ -1,0 +1,122 @@
+/* Struttura comune alle tre anteprime: solo layout. L'aspetto sta nei file di stile. */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root { --w: 120px; }
+html, body { margin: 0; height: 100%; }
+body { color: var(--text); font-family: var(--font); overflow: hidden; -webkit-user-select: none; user-select: none; }
+button { font: inherit; color: inherit; cursor: pointer; }
+input { font: inherit; min-width: 0; }
+
+.bar { height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 8px; position: relative; z-index: 5; }
+.bar b { margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.bar a { color: inherit; font-size: 12px; opacity: .7; margin-right: 6px; }
+.tab { padding: 6px 8px; font-size: 12px; border: 0; background: none; opacity: .55; }
+.tab.on { opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
+.view { height: calc(100dvh - 44px); overflow: auto; display: none; }
+body[data-tab="carte"] #v-carte, body[data-tab="menu"] #v-menu { display: block; }
+body[data-tab="plancia"] #v-plancia, body[data-tab="effetti"] #v-plancia { display: flex; flex-direction: column; overflow: hidden; }
+
+/* icone */
+.ico { display: inline-block; width: 1.3em; height: 1.3em; vertical-align: -0.3em; background: center / contain no-repeat; flex: none; }
+.ico-W { background-image: var(--ico-W); } .ico-U { background-image: var(--ico-U); } .ico-B { background-image: var(--ico-B); }
+.ico-R { background-image: var(--ico-R); } .ico-G { background-image: var(--ico-G); } .ico-T { background-image: var(--ico-T); }
+
+/* ---------- carta ---------- */
+.card { width: var(--w); height: calc(var(--w) * 1.4); position: relative; flex: none; font-size: calc(var(--w) * .1); }
+.card > * { position: absolute; }
+.card .art { background: center / cover no-repeat; overflow: hidden; }
+.k-W .art { background-image: var(--art-W); } .k-U .art { background-image: var(--art-U); } .k-B .art { background-image: var(--art-B); }
+.k-R .art { background-image: var(--art-R); } .k-G .art { background-image: var(--art-G); }
+.card .gem { display: grid; place-items: center; }
+.card .gem .ico { width: 70%; height: 70%; }
+.card .nm, .card .tx { text-align: center; line-height: 1.05; white-space: nowrap; }
+.card .tx { white-space: normal; }
+.card .bk { display: none; background: var(--bk) center / contain no-repeat; inset: 20% 12%; }
+.card.back > *:not(.bk) { display: none; }
+.card.back .bk { display: block; }
+.card.off::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: #000; opacity: .5; }
+.card.mini .tx { display: none; }
+
+/* ---------- scheda carte ---------- */
+#v-carte { padding: 10px 12px 30px; }
+#v-carte h2, #v-menu h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; opacity: .7; margin: 14px 0 8px; text-align: center; }
+.crow { display: flex; gap: min(2vw, 18px); justify-content: center; padding: 12px 0; --w: min(16.5vw, 150px); }
+
+/* ---------- plancia ---------- */
+.fxbar { display: none; flex: none; gap: 6px; padding: 4px 8px; overflow-x: auto; justify-content: safe center; position: relative; z-index: 4; }
+body[data-tab="effetti"] .fxbar { display: flex; }
+.fxbar .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; flex: none; }
+.board { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1vh; padding: 1vh 2vw 0; position: relative; overflow: hidden;
+  --sw: min(17vw, 10.5vh); --hw: min(17.5vw, 12.5vh); --cw: min(24vw, 13vh); }
+.zone { display: flex; flex-direction: column; gap: .8vh; flex: none; }
+.zone.me { flex-direction: column-reverse; }
+.info { display: flex; align-items: center; gap: 10px; font-size: 13px; min-height: 34px; }
+.info .pn { margin-right: auto; font-weight: 800; white-space: nowrap; }
+.cnt { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+.minib { display: inline-block; width: 12px; height: 17px; border-radius: 2px; }
+.gy { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; font-weight: 800; }
+.gy .chips { display: inline-flex; gap: 5px; font-size: 11px; opacity: .9; }
+.field { display: flex; justify-content: center; gap: 1.6vw; }
+.slot { --w: var(--sw); width: var(--w); height: calc(var(--w) * 1.4); position: relative; flex: none; }
+.slot .card { position: absolute; left: 0; top: 0; }
+.slot .em { position: absolute; inset: 0; display: grid; place-items: center; }
+.slot .em .ico { width: 46%; height: 34%; opacity: .28; }
+.slot .n { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; display: grid; place-items: center; font-size: 13px; font-weight: 900; z-index: 2; }
+.center { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4vh; }
+.center .ring { position: absolute; left: 50%; top: 50%; height: min(92%, 80vw); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; }
+.center .card { --w: var(--cw); }
+.center > * { position: relative; }
+.hand { display: flex; justify-content: center; align-items: flex-start; flex: none; height: calc(var(--hw) * 1.55); padding-top: calc(var(--hw) * .26); overflow: hidden; margin: 0 -2vw; }
+.hand .card { --w: var(--hw); margin: 0 calc(var(--hw) * -.1); transform: translateY(var(--dy, 0px)) rotate(var(--rot, 0deg)); transform-origin: 50% 100%; }
+.hand .card.sel { transform: translateY(calc(var(--dy, 0px) - var(--hw) * .2)) rotate(var(--rot, 0deg)) scale(1.06); z-index: 5; }
+
+@media (min-aspect-ratio: 11/10) {
+  .board { --sw: min(14.5vh, 9vw); --hw: min(15vh, 9vw); --cw: min(12vh, 9vw); gap: .6vh; }
+  .zone, .zone.me { flex-direction: row; justify-content: center; align-items: center; gap: 2vw; }
+  .zone::after { content: ""; width: 17vw; flex: none; }
+  .info { flex-direction: column; align-items: flex-start; justify-content: center; width: 17vw; flex: none; padding: 1.2vh 1vw; gap: .8vh; font-size: max(11px, 2vh); min-height: 0; }
+  .info .pn { margin: 0; }
+  .gy .chips { font-size: max(9px, 1.5vh); }
+  .field { gap: 1.2vw; }
+  .center { flex-direction: row; gap: 4vw; }
+  .center .ring { height: 150%; }
+  @media (min-height: 600px) { .hand { height: calc(var(--hw) * 1.72); } }
+  .slot .n { min-width: 3.6vh; height: 3.6vh; font-size: 2vh; }
+}
+
+/* ---------- menu ---------- */
+#v-menu { padding: 6px 12px 30px; }
+.screens { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; align-items: flex-start; }
+.screen { width: min(100%, 360px); }
+.panel { display: flex; flex-direction: column; gap: 12px; padding: 20px 18px; }
+.panel h1 { margin: 0; text-align: center; font-size: 26px; }
+.panel h3 { margin: 0; font-size: 17px; }
+.panel p { margin: 0; font-size: 14px; line-height: 1.45; }
+.panel .sub { text-align: center; opacity: .75; font-size: 13px; }
+.panel ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; }
+.pips { display: flex; justify-content: center; gap: 8px; font-size: 26px; }
+.btn { padding: 12px 16px; font-weight: 800; text-align: center; }
+.field2 { display: flex; flex-direction: column; gap: 5px; }
+.field2 label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: .75; }
+.inp { padding: 11px 12px; width: 100%; }
+.row { display: flex; gap: 8px; }
+.seg { display: flex; gap: 3px; padding: 3px; }
+.seg span { flex: 1; text-align: center; padding: 8px 0; font-size: 13px; font-weight: 700; }
+.mrow { display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; font-weight: 700; font-size: 14px; }
+.mrow.col { flex-direction: column; align-items: stretch; gap: 7px; }
+.tog { width: 40px; height: 22px; position: relative; flex: none; }
+.tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; }
+.tog.on::after { left: 21px; }
+.code { text-align: center; font-size: 44px; font-weight: 900; letter-spacing: 10px; }
+.or { text-align: center; font-size: 12px; opacity: .7; }
+
+/* ---------- effetti (elementi DOM: solo transform e opacity) ---------- */
+#fx { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 20; visibility: hidden; }
+#fx.on { visibility: visible; }
+.flash { position: fixed; pointer-events: none; z-index: 19; opacity: 0; }
+.fnum { position: fixed; pointer-events: none; z-index: 21; font-weight: 900; font-size: 26px; transform: translate(-50%, -50%); white-space: nowrap; }
+.winb { position: absolute; left: 50%; top: 44%; z-index: 22; pointer-events: none; padding: 16px 34px; font-size: clamp(24px, 6vh, 54px); font-weight: 900; white-space: nowrap; transform: translate(-50%, -50%); }
+
+/* hub */
+.hub { max-width: 560px; margin: 0 auto; padding: 30px 18px; display: flex; flex-direction: column; gap: 14px; height: 100%; overflow: auto; }
+.hub a { display: block; padding: 16px; text-decoration: none; color: inherit; }
+.hub small { display: block; opacity: .75; margin-top: 4px; }
