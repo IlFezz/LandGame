@@ -47,21 +47,21 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - **Partita contro il computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.
 - Musica ambient di sottofondo generata al momento, disattivabile dalla home e dal menu.
-- Su PC e tablet il gioco usa tutto lo schermo: carte e campo più grandi, barra laterale con cimiteri e registro, scorciatoie da tastiera (P passa, Esc annulla, M menu).
+- Su PC e tablet il gioco usa tutto lo schermo: carte e campo più grandi, scorciatoie da tastiera (P passa, Esc annulla, M menu).
 - Quando una terra risolve, prima avviene il suo effetto e poi la terra va al suo posto.
 - Palude: la mano avversaria appare a tutto schermo su sfondo sfocato.
 - Stanze con codice di 4 caratteri e link di invito; rientro automatico se cade la connessione.
 - **Le carte si giocano sempre al centro della plancia**: si trascinano (la presa è immediata e la carta fluttua) oppure, con i comandi a tocco, si tocca la carta e poi il centro. Se la terra ha un bersaglio, dopo si tocca la carta da colpire; una freccia mostra chi colpisce cosa.
 - Mano a ventaglio: le carte si stringono quando sono tante, tutto resta sempre a schermo.
-- Cimitero compatto (🪦 con il totale) che si apre toccandolo.
+- Cimitero compatto (un segnalino con il totale) che si apre toccandolo.
 - Animazioni per ogni evento (distribuzione, pescata, giocata, contrasto, terra annullata, ingresso in gioco, distruzione, recupero, scarto, Pianura) con didascalia che spiega cosa succede.
 - Azioni nel pannello centrale e direttamente sul campo (i bersagli validi lampeggiano): la mano resta sempre visibile.
 - Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Lo stesso tempo vale per contrastare e per le scelte. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
-- ⚠️ accanto al nome quando un giocatore è a un passo dalla vittoria.
+- Un segnale rosso accanto al nome quando un giocatore è a un passo dalla vittoria.
 - Plancia pulita: le spiegazioni testuali si attivano dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
 - Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
 - Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
-- Menu in partita: comandi (trascina/tocca), info nella plancia, velocità animazioni (lenta/media/veloce, predefinita lenta), effetti sonori, vibrazione, registro, regole, esci.
+- Menu in partita: comandi (trascina/tocca), velocità animazioni (lenta/media/veloce, predefinita lenta), tema (Notte/Giorno), effetti grafici (completi/ridotti), info nella plancia, musica, effetti sonori, vibrazione, registro, regole, esci.
 
 ## Struttura
 
