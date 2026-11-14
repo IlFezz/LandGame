@@ -24,10 +24,16 @@ const server = http.createServer((req, res) => {
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     const ext = path.extname(file);
-    res.writeHead(200, {
+    // Il codice dell'app va sempre ricontrollato (con ETag, quindi senza riscaricarlo se non è cambiato);
+    // solo le icone possono restare in cache.
+    const etag = '"' + crypto.createHash('sha1').update(data).digest('base64').slice(0, 16) + '"';
+    const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' || file.endsWith('sw.js') ? 'no-cache' : 'public, max-age=3600',
-    });
+      'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache',
+      ETag: etag,
+    };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    res.writeHead(200, headers);
     res.end(data);
   });
 });
