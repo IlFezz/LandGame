@@ -34,11 +34,13 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 ## Grafica
 
-- Stile dark fantasy in pixel art moderna: altare di pietra con cerchio runico che prende il colore dell'ultima terra giocata.
-- Tutta l'arte è generata da `tools/make_art.py` (Pillow + numpy) in `public/art/`: per cambiarla si modifica lo script e lo si rilancia.
-- Due stili di carta, a scelta dal menu: **Illustrate** (un paesaggio per terra) ed **Emblemi** (più semplice).
-- Effetti particellari (`public/fx.js`, canvas a bassa risoluzione): radici e foglie per la Foresta, eruzione di fuoco per la Montagna, schizzi e onde per l'Isola, fumo e ombre per la Palude, colonna di luce per la Pianura; esplosione quando una terra viene distrutta, onda per il contrasto, carta che si sbriciola quando è annullata, scie dietro le carte in volo. Dal menu si può passare a "Effetti ridotti".
-- Su PC e tablet in orizzontale il tavolo occupa tutto lo schermo; il registro è nel menu.
+- Stile **Atlante**: ogni terra è una tavola di un atlante vista dall'alto, in carta ritagliata a strati; il tavolo è una carta nautica con le curve di livello e al centro c'è una rosa dei venti, che fa un quinto di giro a ogni terra giocata.
+- Due temi, a scelta dal menu: **Notte** (predefinito) e **Giorno**.
+- Tutti i disegni (terre, simboli, rosa, dorso, sfondo) sono SVG generati all'avvio da `public/art.js`: nessuna immagine da scaricare. Per cambiarli si modifica quel file.
+- Caratteri: TeX Gyre Adventor (licenza GUST) e Lora corsivo (licenza OFL), ridotti ai soli segni necessari con `tools/make_fonts.py` e salvati in `public/fonts/`.
+- Effetti (`public/fx.js`): figurine animate solo con `transform` e `opacity` più un canvas a bassa risoluzione per la polvere, con un tetto alle particelle. Ogni terra ha il suo ingresso: sole e pula per la Pianura, marea per l'Isola, fuochi fatui per la Palude, crepa e faville per la Montagna, alberi che spuntano per la Foresta. Una terra distrutta si strappa in frammenti di carta, una terra contrastata riceve il timbro "Annullata", la vittoria accende le cinque terre sulla rosa dei venti. Dal menu si può passare a "Effetti ridotti"; sui dispositivi lenti la riduzione parte da sola.
+- Le icone dell'app si rigenerano con `tools/make_icons.py`.
+- Su PC e tablet in orizzontale il tavolo occupa tutto lo schermo; sul telefono in orizzontale la rosa dei venti passa a destra per lasciare spazio alle carte. Il registro è nel menu.
 
 ## Funzioni
 
@@ -66,8 +68,9 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).
 - `bot.js` – giocatore computer.
 - `server.js` – server HTTP + WebSocket, gestione stanze e riconnessione.
-- `public/` – client (HTML/CSS/JS), effetti (`fx.js`), arte (`art/`), manifest e service worker.
-- `tools/make_art.py` – genera la pixel art.
+- `public/` – client (HTML/CSS/JS), disegni (`art.js`), effetti (`fx.js`), caratteri (`fonts/`), manifest e service worker.
+- `tools/make_fonts.py`, `tools/make_icons.py` – riducono i caratteri e generano le icone.
+- `preview-stili/` – le anteprime grafiche usate per scegliere lo stile (non fanno parte del gioco).
 - `test/` – test delle regole e test end-to-end con due client.
 
 ## Regole implementate

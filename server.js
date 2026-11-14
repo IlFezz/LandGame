@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff': 'font/woff',
 };
 
 // ---------- HTTP statico ----------
@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
     const etag = '"' + crypto.createHash('sha1').update(data).digest('base64').slice(0, 16) + '"';
     const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache',
+      'Cache-Control': ext === '.png' || ext === '.woff' ? 'public, max-age=86400' : 'no-cache',
       ETag: etag,
     };
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }

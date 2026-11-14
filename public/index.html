@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" data-theme="notte">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0b0910">
+  <meta name="theme-color" content="#0a232b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,7 +12,9 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preload" href="fonts/adventor-bold.woff" as="font" type="font/woff" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script>try { if (JSON.parse(localStorage.getItem('blg.theme')) === 'giorno') document.documentElement.dataset.theme = 'giorno'; } catch (e) {}</script>
 </head>
 <body>
   <div id="altar"></div>
@@ -21,7 +23,9 @@
   <div id="sheet" class="hidden"></div>
   <div id="toast" class="hidden"></div>
   <svg id="arrows" aria-hidden="true"></svg>
+  <div id="fxl" aria-hidden="true"></div>
   <canvas id="fx" aria-hidden="true"></canvas>
+  <script src="art.js"></script>
   <script src="fx.js"></script>
   <script src="app.js"></script>
 </body>

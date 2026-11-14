@@ -1,347 +1,240 @@
 'use strict';
 // =====================================================================
-//  Effetti particellari in pixel art (canvas a bassa risoluzione, leggero)
+//  Effetti, stile "Atlante". Due strumenti soltanto, entrambi leggeri:
+//   - figurine DOM (curve di livello, raggi, timbri, frammenti di carta) animate solo con transform e opacity;
+//   - un canvas a bassa risoluzione per la polvere, con un tetto al numero di particelle.
 // =====================================================================
 const FX = (() => {
-  const PAL = {
-    W: ['#ffffff', '#fffbe0', '#ffe680', '#ffc23a', '#e08a20'],
-    U: ['#ffffff', '#c8ecff', '#7cc4ff', '#3a8ae0', '#1f5cb0'],
-    B: ['#f0dcff', '#c890ff', '#9048e0', '#5a1ea0', '#2a1040'],
-    R: ['#fffbe0', '#ffe27a', '#ffb82a', '#f05a14', '#a01c0a'],
-    G: ['#f0ffc8', '#b8f09a', '#7ad86a', '#2f9a48', '#1a6a32'],
-    N: ['#ffffff', '#d8d0f0', '#a89cd8', '#6a5aa0', '#3e3466'],
-  };
-  const SMOKE = ['#4a3a5a', '#32263e', '#20182a', '#120c18'];
-  const ROCK = ['#8a84a0', '#5a5470', '#3a3448', '#1e1a28'];
+  const { COL, ICO, PAPER, blob, uri } = ATL;
   const COARSE = window.matchMedia && matchMedia('(pointer: coarse)').matches; // telefono o tablet
-  let cv, ctx, S = 2, parts = [], objs = [], running = false, last = 0;
-  let quality = 1, userQ = 1, ambient = false, ambientTint = 'N', ambT = 0, skip = false;
-  let MAX = COARSE ? 380 : 900;
-  // misura dei tempi di frame per abbassare la qualità da solo se il dispositivo fatica
-  let perfT = 0, perfN = 0, perfSlow = 0, autoLevel = 0;
+  const CALM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const TINT = { W: ['#fff3c4', '#f1c453', '#d99a22'], U: ['#e3fbff', '#7fd3ea', '#1f8fb8'], B: ['#d9ffe9', '#9fd9a8', '#7557a6'], R: ['#ffe9a8', '#ff9a3c', '#d9482f'], G: ['#e6f7b8', '#63c98a', '#23855a'], N: ['#fffaf0', '#f4eddd', '#cfc3a8'] };
+  let layer, cv, ctx, S = COARSE ? 4 : 3, parts = [], run = false, last = 0, live = 0;
+  let quality = 1, userQ = 1, autoLevel = 0, MAX = COARSE ? 110 : 160;
+  let perfT = 0, perfN = 0, perfSlow = 0;
+  const stats = { peak: 0, sprites: 0, frames: 0, ms: 0, max: 0 };
   const R = (a, b) => a + Math.random() * (b - a);
-  const pick = (a) => a[(Math.random() * a.length) | 0];
+  const mid = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  const ok = (r) => r && r.width > 0 && r.height > 0;
+  const low = () => quality < 0.7;
+
+  // ---------- figurine precalcolate ----------
+  const SP = {};
+  for (const l of ATL.L) {
+    let s = `<g fill="none" stroke="${COL[l]}" stroke-linecap="round">`;
+    [92, 74, 58].forEach((r, i) => { s += `<path d="${blob(100, 100, r, 90 + l.charCodeAt(0), 0.13)}" stroke-width="${2.4 - i * 0.6}" opacity="${1 - i * 0.25}"/>`; });
+    SP['c' + l] = uri(s + '</g>', '0 0 200 200');
+  }
+  { let s = `<g stroke="#f1c453" stroke-linecap="round">`; for (let i = 0; i < 24; i++) { const a = (i / 24) * 6.283, r1 = i % 2 ? 78 : 96; s += `<path d="M${100 + Math.cos(a) * 44} ${100 + Math.sin(a) * 44}L${100 + Math.cos(a) * r1} ${100 + Math.sin(a) * r1}" stroke-width="${i % 2 ? 1.2 : 2}"/>`; } SP.burst = uri(s + '</g>', '0 0 200 200'); }
+  SP.crack = uri(`<path d="M0 22L14 18 24 26 38 12 52 24 66 16 78 28 92 14 108 24 120 18 134 27 148 15 160 22" fill="none" stroke="#ffb347" stroke-width="3" stroke-linejoin="round"/><path d="M38 12L44 2M92 14L88 4M134 27L140 36M66 16L60 30" stroke="#ffe08a" stroke-width="2" stroke-linecap="round"/>`, '0 0 160 40');
+  SP.tree = uri(`<circle cx="13" cy="14" r="10" fill="#0a1418" opacity=".3"/><circle cx="12" cy="12" r="10" fill="#2f9e6a"/><circle cx="9" cy="9" r="4.5" fill="#fff" opacity=".18"/>`, '0 0 24 26');
+  SP.wisp = uri(`<circle cx="12" cy="12" r="11" fill="#b6ffd6" opacity=".25"/><circle cx="12" cy="12" r="4" fill="#e4fff0"/>`, '0 0 24 24');
 
   function init() {
-    cv = document.getElementById('fx');
+    layer = document.getElementById('fxl'); cv = document.getElementById('fx');
     if (!cv) return;
-    ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
-    resize();
-    window.addEventListener('resize', resize);
+    ctx = cv.getContext('2d');
+    const rs = () => { cv.width = Math.ceil(innerWidth / S); cv.height = Math.ceil(innerHeight / S); };
+    rs(); window.addEventListener('resize', rs);
   }
-  function resize() {
-    if (!cv) return;
-    S = Math.min(innerWidth, innerHeight) > 620 ? 3 : 2;
-    if (COARSE) S = 3; // su telefono pixel più grossi: meno lavoro, stesso stile
-    cv.width = Math.ceil(innerWidth / S); cv.height = Math.ceil(innerHeight / S);
-    ctx.imageSmoothingEnabled = false;
+  function sp(bg, x, y, w, h, kf, o = {}) {
+    if (CALM || !layer) return null;
+    const d = document.createElement('i'); d.className = 'sp' + (o.cls ? ' ' + o.cls : '');
+    d.style.cssText = `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px;` + (bg ? `background-image:${bg}` : '');
+    layer.appendChild(d); live++; if (live > stats.sprites) stats.sprites = live;
+    d.animate(kf, { duration: o.dur || 800, delay: o.delay || 0, easing: o.ease || 'cubic-bezier(.2,.7,.2,1)', fill: 'both' }).finished.catch(() => {}).then(() => { d.remove(); live--; });
+    return d;
   }
-  const ambientOn = () => ambient && quality >= 1 && !COARSE;
-  function kick() {
-    if (!running && ctx && !document.hidden) { running = true; last = performance.now(); cv.classList.add('on'); requestAnimationFrame(loop); }
+  // le curve di livello che si allargano dalla carta: la firma dello stile
+  function contours(l, r, n = 3, o = {}) {
+    const c = mid(r), size = r.width * (o.size || 2.7);
+    if (low()) n = 1;
+    for (let i = 0; i < n; i++) sp(SP['c' + l], c.x, c.y, size, size, o.inward
+      ? [{ opacity: 0, transform: `scale(1.1) rotate(${i * 25}deg)` }, { opacity: 0.9, offset: 0.4 }, { opacity: 0, transform: `scale(.3) rotate(${i * 25 + 30}deg)` }]
+      : [{ opacity: 0, transform: `scale(.3) rotate(${i * 25}deg)` }, { opacity: 0.95, offset: 0.25 }, { opacity: 0, transform: `scale(1) rotate(${i * 25 + (i % 2 ? -14 : 14)}deg)` }],
+    { dur: o.dur || 1150, delay: i * (o.gap || 170) });
+  }
+  function shake(p = 3, ms = 240) {
+    const el = document.querySelector('.game');
+    if (CALM || low() || !el) return;
+    const k = []; for (let i = 0; i < 6; i++) k.push({ transform: `translate(${R(-p, p).toFixed(1)}px,${R(-p, p).toFixed(1)}px)` });
+    k.push({ transform: 'none' }); el.animate(k, { duration: ms });
   }
 
-  // p: x,y,vx,vy (px CSS e px/s), g gravità, drag, life, size, cols, add, shape
+  // ---------- polvere su canvas ----------
   function P(o) {
-    if (parts.length >= MAX) return;
-    o.age = 0; o.g = o.g || 0; o.drag = o.drag || 0; o.size = o.size || S; o.cols = o.cols || PAL.N;
-    parts.push(o);
+    if (CALM || !ctx || parts.length >= MAX) return;
+    o.age = 0; parts.push(o); if (parts.length > stats.peak) stats.peak = parts.length;
+    if (!run && !document.hidden) { run = true; last = performance.now(); cv.classList.add('on'); requestAnimationFrame(loop); }
   }
-  function many(n, fn) { n = Math.max(1, Math.round(n * quality)); for (let i = 0; i < n; i++) P(fn(i, n)); kick(); }
-  function O(o) { o.age = 0; objs.push(o); kick(); }
-
-  // Se per circa 1,5 secondi di effetti i frame superano i 24 ms, riduce la qualità (al massimo due volte)
+  const many = (n, fn) => { n = Math.max(1, Math.round(n * quality)); for (let i = 0; i < n; i++) P(fn(i, n)); };
+  // se per un secondo e mezzo di effetti i frame superano i 24 ms, la qualità scende da sola (al massimo due volte)
   function watch(dt) {
-    if (parts.length < 40 || autoLevel >= 2) return;
-    perfT += dt; perfN++;
-    if (dt > 0.024) perfSlow++;
+    if (parts.length < 30 || autoLevel >= 2) return;
+    perfT += dt; perfN++; if (dt > 0.024) perfSlow++;
     if (perfT < 1.5) return;
-    if (perfSlow / perfN > 0.35) {
-      autoLevel++;
-      quality = Math.max(0.3, quality * 0.55);
-      MAX = Math.round(MAX * 0.6);
-      document.body.classList.add('auto-low');
-    }
+    if (perfSlow / perfN > 0.35) { autoLevel++; quality = Math.max(0.3, quality * 0.55); MAX = Math.round(MAX * 0.6); document.body.classList.add('auto-low'); }
     perfT = 0; perfN = 0; perfSlow = 0;
   }
-
-  const stats = { frames: 0, ms: 0, max: 0 }; // misura del costo del motore (per i test)
   function loop(now) {
-    const t0 = performance.now();
-    const dt = Math.min(0.05, (now - last) / 1000);
-    const busy = parts.length > 12 || objs.length > 0;
-    // con solo il pulviscolo d'ambiente basta disegnare un frame sì e uno no
-    if (!busy) { skip = !skip; if (skip) { requestAnimationFrame(loop); return; } }
-    last = now;
-    if (busy) watch(dt);
-    if (ambientOn()) {
-      ambT += dt;
-      if (ambT > 0.4) {
-        ambT = 0;
-        P({ x: R(0, innerWidth), y: R(innerHeight * 0.3, innerHeight), vx: R(-6, 6), vy: R(-22, -8), life: R(4, 7), size: S, cols: [PAL[ambientTint][2], PAL[ambientTint][3]], add: true, soft: 0.5, wob: R(0, 6) });
-      }
-    }
+    const t0 = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+    watch(dt);
     ctx.clearRect(0, 0, cv.width, cv.height);
-    for (let i = objs.length - 1; i >= 0; i--) {
-      const o = objs[i]; o.age += dt;
-      if (o.age >= o.life) { objs[i] = objs[objs.length - 1]; objs.pop(); continue; }
-      ctx.globalCompositeOperation = o.add ? 'lighter' : 'source-over';
-      o.draw(ctx, o.age / o.life, o.age);
-    }
-    // aggiornamento (rimozione per scambio, senza splice)
+    let lastCol = '', lastA = -1;
     for (let i = parts.length - 1; i >= 0; i--) {
-      const p = parts[i];
-      p.age += dt;
+      const p = parts[i]; p.age += dt;
       if (p.age >= p.life) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
       if (p.delay > 0) { p.delay -= dt; p.age -= dt; continue; }
-      p.vy += p.g * dt;
+      p.vy += (p.g || 0) * dt;
       if (p.drag) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; }
-      p.x += p.vx * dt + (p.wob ? Math.sin(p.age * 3 + p.wob) * 0.4 : 0); p.y += p.vy * dt;
-    }
-    // disegno: prima le opache, poi le luminose; colore e trasparenza cambiano solo quando serve
-    let lastCol = '', lastA = -1;
-    for (let pass = 0; pass < 2; pass++) {
-      ctx.globalCompositeOperation = pass ? 'lighter' : 'source-over';
-      for (let i = 0; i < parts.length; i++) {
-        const p = parts[i];
-        if (!!p.add !== !!pass || p.delay > 0) continue;
-        const t = p.age / p.life;
-        const a = Math.round((t > 0.7 ? (1 - t) / 0.3 : 1) * (p.soft || 1) * 8) / 8; // 8 livelli
-        if (a !== lastA) { ctx.globalAlpha = a; lastA = a; }
-        const col = p.cols[Math.min(p.cols.length - 1, (t * p.cols.length) | 0)];
-        if (col !== lastCol) { ctx.fillStyle = col; lastCol = col; }
-        const s = Math.max(1, Math.round((p.shrink ? p.size * (1 - t * 0.7) : p.size) / S));
-        const x = Math.round(p.x / S), y = Math.round(p.y / S);
-        if (p.shape === 1 && (p.age * 9 + (p.wob || 0)) % 2 < 1.3) { ctx.fillRect(x - s, y, s * 3, s); ctx.fillRect(x, y - s, s, s * 3); }
-        else ctx.fillRect(x, y, s, s);
-      }
+      p.x += (p.vx + (p.sway ? Math.sin(p.age * 5 + p.sway) * 30 : 0)) * dt; p.y += p.vy * dt;
+      const t = p.age / p.life, a = Math.round((t > 0.65 ? (1 - t) / 0.35 : 1) * 8) / 8;
+      if (a !== lastA) { ctx.globalAlpha = a; lastA = a; }
+      const col = p.cols[Math.min(p.cols.length - 1, (t * p.cols.length) | 0)];
+      if (col !== lastCol) { ctx.fillStyle = col; lastCol = col; }
+      const s = Math.max(1, (p.size * (p.shrink ? 1 - t * 0.6 : 1)) / S);
+      ctx.fillRect(p.x / S - s / 2, p.y / S - s / 2, s, p.flat ? s * 0.5 : s);
     }
     ctx.globalAlpha = 1;
     const ms = performance.now() - t0; stats.frames++; stats.ms += ms; if (ms > stats.max) stats.max = ms;
-    if (parts.length || objs.length || ambientOn()) requestAnimationFrame(loop);
-    else { running = false; ctx.clearRect(0, 0, cv.width, cv.height); cv.classList.remove('on'); }
+    if (parts.length) requestAnimationFrame(loop); else { run = false; ctx.clearRect(0, 0, cv.width, cv.height); cv.classList.remove('on'); }
   }
 
-  // ---------- mattoncini ----------
-  const mid = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  function edgePoint(r, t) { // punto sul perimetro, t in [0,1)
-    const per = 2 * (r.width + r.height); let d = t * per;
-    if (d < r.width) return { x: r.left + d, y: r.top, nx: 0, ny: -1 }; d -= r.width;
-    if (d < r.height) return { x: r.right, y: r.top + d, nx: 1, ny: 0 }; d -= r.height;
-    if (d < r.width) return { x: r.right - d, y: r.bottom, nx: 0, ny: 1 }; d -= r.width;
-    return { x: r.left, y: r.bottom - d, nx: -1, ny: 0 };
-  }
-  function flash(r, color, life = 0.35, grow = 10) {
-    O({ life, add: true, draw(c, t) {
-      c.globalAlpha = (1 - t) * 0.55; c.fillStyle = color;
-      const g = grow * t; c.fillRect(Math.round((r.left - g) / S), Math.round((r.top - g) / S), Math.round((r.width + g * 2) / S), Math.round((r.height + g * 2) / S));
-    } });
-  }
-  function ring(x, y, r0, r1, cols, life = 0.6, squash = 1, thick = 1) {
-    O({ life, add: true, draw(c, t) {
-      const rad = (r0 + (r1 - r0) * (1 - (1 - t) * (1 - t))) / S;
-      c.globalAlpha = 1 - t; c.fillStyle = cols[Math.min(cols.length - 1, (t * cols.length) | 0)];
-      const n = Math.max(12, Math.round(rad * 3));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        c.fillRect(Math.round(x / S + Math.cos(a) * rad), Math.round(y / S + Math.sin(a) * rad * squash), thick, thick);
-      }
-    } });
-  }
-  function shake(power = 6, ms = 300) {
-    const el = document.getElementById('app');
-    if (!el || quality < 1 || COARSE || !el.animate) return; // sul telefono si usa la vibrazione
-    const k = [];
-    for (let i = 0; i < 7; i++) k.push({ transform: `translate(${Math.round(R(-power, power))}px, ${Math.round(R(-power, power))}px)` });
-    k.push({ transform: 'none' });
-    el.animate(k, { duration: ms, easing: 'steps(8)' });
-  }
-
-  // ---------- effetti d'ingresso, uno per colore ----------
-  // Foresta: radici e rampicanti che avvolgono la carta
-  function vines(r) {
-    const paths = [];
-    const mk = (dir, startT) => {
-      const pts = []; const n = 70;
-      for (let i = 0; i < n; i++) {
-        const e = edgePoint(r, (((startT + dir * (i / n) * 0.52) % 1) + 1) % 1);
-        const w = Math.sin(i * 0.55) * 3 + 2;
-        pts.push({ i, x: e.x + e.nx * w, y: e.y + e.ny * w, leaf: i % 6 === 3, nx: e.nx, ny: e.ny });
-        if (i % 11 === 7) { // viticcio che si arriccia verso l'esterno
-          let a = Math.atan2(e.ny, e.nx) + R(-0.5, 0.5), x = e.x, y = e.y;
-          for (let k = 0; k < 9; k++) { a += 0.35 * dir; x += Math.cos(a) * S * 1.3; y += Math.sin(a) * S * 1.3; pts.push({ x, y, tend: true, at: i }); }
-        }
-      }
-      return pts;
-    };
-    const bottomMid = (r.width + r.height + r.width / 2) / (2 * (r.width + r.height));
-    paths.push(mk(1, bottomMid), mk(-1, bottomMid));
-    // le radici crescono soltanto: ogni punto si disegna una volta su un canvas a parte
-    const pad = 12;
-    const ox = Math.floor((r.left - pad) / S), oy = Math.floor((r.top - pad) / S);
-    const off = document.createElement('canvas');
-    off.width = Math.ceil((r.width + pad * 2) / S) + 4; off.height = Math.ceil((r.height + pad * 2) / S) + 4;
-    const oc = off.getContext('2d');
-    const done = paths.map(() => 0);
-    const order = paths.map((pts) => pts.slice().sort((p, q) => (p.tend ? p.at + 2 : p.i) - (q.tend ? q.at + 2 : q.i)));
-    O({ life: 1.9, draw(c, t) {
-      const lim = Math.floor(Math.min(1, t / 0.45) * 70);
-      order.forEach((pts, k) => {
-        while (done[k] < pts.length && (pts[done[k]].tend ? pts[done[k]].at + 2 : pts[done[k]].i) <= lim) {
-          const p = pts[done[k]++];
-          const x = Math.round(p.x / S) - ox, y = Math.round(p.y / S) - oy;
-          oc.fillStyle = '#0c3a1e'; oc.fillRect(x, y, 2, 2);
-          oc.fillStyle = p.tend ? '#2f9a48' : '#1a6a32'; oc.fillRect(x, y, 1, 1);
-          if (p.leaf) { oc.fillStyle = '#7ad86a'; oc.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 2, 2); oc.fillStyle = '#d8ffb0'; oc.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 1, 1); }
-        }
-      });
-      c.globalAlpha = t > 0.75 ? (1 - t) / 0.25 : 1;
-      c.drawImage(off, ox, oy);
-    } });
-  }
+  // ---------- un ingresso per ogni terra ----------
   const ENTER = {
-    G(r) {
-      vines(r);
-      many(26, () => { const e = edgePoint(r, Math.random()); return { x: e.x, y: e.y, vx: e.nx * R(10, 60) + R(-20, 20), vy: e.ny * R(10, 60) - R(10, 50), g: 90, drag: 1.5, life: R(0.7, 1.5), size: S * pick([1, 1, 2]), cols: [PAL.G[1], PAL.G[2], PAL.G[3]], delay: R(0, 0.6), wob: R(0, 6) }; });
-      many(14, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-8, 8), vy: R(-40, -12), life: R(1, 2), cols: [PAL.G[0], PAL.G[1]], add: true, shape: 1, wob: R(0, 6), delay: R(0.2, 0.9) }));
+    W(r, c) { // il sole si apre dietro la tavola, il vento porta via la pula
+      contours('W', r);
+      sp(SP.burst, c.x, c.y, r.width * 3.2, r.width * 3.2, [{ opacity: 0, transform: 'scale(.5) rotate(0deg)' }, { opacity: 0.85, offset: 0.3 }, { opacity: 0, transform: 'scale(1) rotate(50deg)' }], { dur: 1300 });
+      many(26, () => ({ x: R(r.left - 20, r.right), y: R(r.top, r.bottom), vx: R(40, 130), vy: R(-40, -5), drag: 0.6, life: R(0.9, 1.7), size: R(3, 5), cols: TINT.W, delay: R(0, 0.5), sway: R(0, 6) }));
     },
-    R(r) {
-      flash(r, '#ff7a1a', 0.4, 14); shake(5, 280);
-      many(60, () => ({ x: R(r.left - 4, r.right + 4), y: r.bottom - R(0, r.height * 0.35), vx: R(-22, 22), vy: R(-190, -50), g: -60, drag: 1.2, life: R(0.35, 0.95), size: S * pick([1, 2, 2, 3]), shrink: true, cols: PAL.R, add: true, delay: R(0, 0.25) }));
-      many(22, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-50, 50), vy: R(-170, -60), g: 120, life: R(0.8, 1.7), cols: [PAL.R[1], PAL.R[2], PAL.R[3]], add: true, wob: R(0, 6) }));
-      many(10, () => ({ x: R(r.left, r.right), y: r.top + R(0, 10), vx: R(-10, 10), vy: R(-45, -20), drag: 0.6, life: R(0.9, 1.6), size: S * 3, cols: SMOKE, soft: 0.6, delay: R(0.15, 0.5) }));
+    U(r, c) { // la marea: onde larghe e uno spruzzo
+      contours('U', r, 4, { size: 3, gap: 200, dur: 1300 });
+      sp('', c.x, c.y, r.width * 2.2, r.width * 2.2, [{ opacity: 0.5, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(1)' }], { dur: 700, cls: 'wash' });
+      many(34, () => { const a = R(-2.75, -0.4), v = R(120, 320); return { x: c.x + R(-r.width * 0.3, r.width * 0.3), y: r.bottom - 6, vx: Math.cos(a) * v * 0.6, vy: Math.sin(a) * v, g: 560, life: R(0.5, 1), size: R(3, 5), cols: TINT.U }; });
     },
-    U(r) {
-      const c = mid(r);
-      ring(c.x, r.bottom - 4, 6, r.width * 0.95, PAL.U, 0.8, 0.35, 1);
-      setTimeout(() => ring(c.x, r.bottom - 4, 6, r.width * 1.25, PAL.U, 0.9, 0.35, 1), 160);
-      many(46, () => { const a = R(-Math.PI * 0.92, -Math.PI * 0.08), v = R(80, 250); return { x: c.x + R(-r.width * 0.35, r.width * 0.35), y: r.bottom - 6, vx: Math.cos(a) * v * 0.6, vy: Math.sin(a) * v, g: 420, life: R(0.5, 1.0), size: S * pick([1, 1, 2]), cols: [PAL.U[0], PAL.U[1], PAL.U[2], PAL.U[3]], add: true }; });
-      many(16, () => ({ x: R(r.left, r.right), y: R(r.top + r.height * 0.4, r.bottom), vx: R(-6, 6), vy: R(-50, -20), life: R(0.8, 1.6), cols: [PAL.U[1], PAL.U[2]], add: true, wob: R(0, 6), delay: R(0.1, 0.6) }));
-      flash(r, '#3a8ae0', 0.3, 6);
+    B(r, c) { // il terreno si chiude sulla carta, bolle e fuochi fatui
+      contours('B', r, 3, { inward: true, dur: 1200 });
+      for (let i = 0; i < (low() ? 2 : 4); i++) { const a = i * 1.57 + 0.6, d = r.width * 0.9;
+        sp(SP.wisp, c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, 22, 22, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: `translate(${-Math.sin(a) * 26}px,${Math.cos(a) * 26}px) scale(1)`, offset: 0.4 }, { opacity: 0, transform: `translate(${-Math.cos(a) * d * 0.7}px,${-Math.sin(a) * d * 0.7}px) scale(.4)` }], { dur: 1400, delay: i * 110, ease: 'ease-in-out' }); }
+      many(18, () => ({ x: R(r.left - 12, r.right + 12), y: R(r.top + r.height * 0.5, r.bottom + 10), vx: R(-6, 6), vy: R(-55, -20), life: R(0.9, 1.8), size: R(3, 6), cols: TINT.B, delay: R(0, 0.6), sway: R(0, 6) }));
     },
-    B(r) {
-      const c = mid(r);
-      many(34, () => ({ x: R(r.left - 6, r.right + 6), y: R(r.top + r.height * 0.3, r.bottom + 4), vx: R(-18, 18), vy: R(-55, -12), drag: 0.9, life: R(0.9, 1.9), size: S * pick([2, 3, 4]), shrink: true, cols: SMOKE, soft: 0.75, wob: R(0, 6), delay: R(0, 0.3) }));
-      many(26, () => { const a = R(0, Math.PI * 2), d = R(r.width * 0.7, r.width * 1.3); return { x: c.x + Math.cos(a) * d, y: c.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 1.5 + Math.sin(a) * 40, vy: -Math.sin(a) * d * 1.5 - Math.cos(a) * 40, drag: 1.1, life: R(0.6, 0.9), cols: [PAL.B[1], PAL.B[2], PAL.B[3]], add: true, delay: R(0, 0.35) }; });
-      many(8, () => ({ x: R(r.left, r.right), y: r.bottom, vx: 0, vy: R(20, 60), g: 80, life: R(0.5, 0.9), cols: [PAL.B[2], PAL.B[3], PAL.B[4]], delay: R(0.2, 0.7) }));
-      flash(r, '#7a2ad0', 0.45, 8);
+    R(r, c) { // l'urto: la terra si spacca, faville
+      shake(3, 220);
+      contours('R', r, 3, { dur: 800, gap: 90, size: 2.4 });
+      sp(SP.crack, c.x, r.bottom, r.width * 2.4, r.width * 0.6, [{ opacity: 0, transform: 'scaleX(.15)' }, { opacity: 1, transform: 'scaleX(1)', offset: 0.25 }, { opacity: 0, transform: 'scaleX(1.06)' }], { dur: 700 });
+      many(40, () => ({ x: R(r.left, r.right), y: r.bottom - R(0, r.height * 0.3), vx: R(-30, 30), vy: R(-280, -70), g: 120, drag: 0.9, life: R(0.4, 1), size: R(3, 6), shrink: true, cols: TINT.R, delay: R(0, 0.15) }));
     },
-    W(r) {
-      const c = mid(r);
-      O({ life: 0.9, add: true, draw(cx, t) { // colonna di luce dal cielo
-        const a = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8;
-        const x0 = Math.round(r.left / S), w = Math.round(r.width / S), y1 = Math.round(r.bottom / S);
-        for (let i = 0; i < w; i++) {
-          const k = 1 - Math.abs(i - w / 2) / (w / 2);
-          cx.globalAlpha = a * (0.12 + 0.3 * k) * ((i + ((t * 20) | 0)) % 3 ? 1 : 0.4);
-          cx.fillStyle = k > 0.6 ? '#fffbe0' : '#ffe680'; cx.fillRect(x0 + i, 0, 1, y1);
-        }
-      } });
-      ring(c.x, c.y, 8, r.width * 1.1, PAL.W, 0.7, 1, 1);
-      many(34, () => ({ x: R(r.left - 14, r.right + 14), y: R(r.top - 14, r.bottom + 14), vx: R(-10, 10), vy: R(-34, -6), life: R(0.7, 1.7), cols: [PAL.W[0], PAL.W[1], PAL.W[2], PAL.W[3]], add: true, shape: 1, wob: R(0, 6), delay: R(0, 0.7) }));
+    G(r, c) { // il bosco si allarga intorno alla carta
+      contours('G', r);
+      const n = low() ? 5 : 9;
+      for (let i = 0; i < n; i++) { const a = (i / n) * 6.283 + 0.3, d = r.width * R(0.72, 0.98), s = r.width * R(0.16, 0.26);
+        sp(SP.tree, c.x + Math.cos(a) * d, c.y + Math.sin(a) * d * 1.15, s, s * 1.08, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1.2)', offset: 0.22 }, { opacity: 1, transform: 'scale(1)', offset: 0.34 }, { opacity: 1, transform: 'scale(1)', offset: 0.8 }, { opacity: 0, transform: 'scale(.6)' }], { dur: 1500, delay: 120 + i * 60, ease: 'ease-out' }); }
+      many(16, () => ({ x: R(r.left - 10, r.right + 10), y: R(r.top - 10, r.top + r.height * 0.4), vx: R(-10, 10), vy: R(20, 60), life: R(1, 1.8), size: R(4, 6), flat: true, cols: TINT.G, delay: R(0.2, 0.8), sway: R(0, 6) }));
     },
   };
+  const burst = (r, cols, n, v = 180) => { const c = mid(r); many(n, () => { const a = R(0, 6.283), s = R(v * 0.25, v); return { x: c.x, y: c.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 2.4, life: R(0.4, 0.8), size: R(3, 5), cols }; }); };
 
   const api = {
-    init, PAL,
-    // q: 1 = completi, <1 = ridotti. Sul telefono "completi" usa comunque un po' meno particelle.
-    setQuality(q) { userQ = q; quality = q * (COARSE ? 0.75 : 1) * (autoLevel ? 0.55 ** autoLevel : 1); kick(); },
-    stats, get quality() { return quality; }, get autoLevel() { return autoLevel; }, get count() { return parts.length; },
-    setAmbient(on, tint) { ambient = on; if (tint) ambientTint = tint; if (on) kick(); },
-    tint(t) { ambientTint = t || 'N'; },
-    enter(type, r) { if (r && r.width && ENTER[type]) ENTER[type](r); },
-    // carta posata sull'altare
-    cast(type, r) {
-      if (!r || !r.width) return;
+    init, stats,
+    // q: 1 = completi, meno di 1 = ridotti
+    setQuality(q) { userQ = q; quality = q * (autoLevel ? 0.55 ** autoLevel : 1); },
+    get quality() { return quality; },
+    enter(l, r) { if (ok(r) && ENTER[l]) ENTER[l](r, mid(r)); },
+    // la carta posata al centro
+    cast(l, r) { if (!ok(r)) return; contours(l, r, 1, { size: 2.2, dur: 700 }); burst(r, TINT[l] || TINT.N, 10, 150); },
+    sparkle(r, l = 'N', n = 8) { if (ok(r)) many(n, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-20, 20), vy: R(-50, -10), life: R(0.4, 0.9), size: R(3, 4), cols: TINT[l] || TINT.N })); },
+    // un po' di polvere dietro una carta in volo (la posizione si calcola dal percorso, senza leggere la pagina)
+    trail(path, l, ms) {
+      if (low() || CALM || !path) return;
+      const cols = TINT[l] || TINT.N, t0 = performance.now();
+      const iv = setInterval(() => {
+        const k = (performance.now() - t0) / ms; if (k >= 1) return clearInterval(iv);
+        const e = 1 - (1 - k) * (1 - k);
+        P({ x: path.sx + (path.ex - path.sx) * e + R(-path.w / 2, path.w / 2), y: path.sy + (path.ey - path.sy) * e - Math.sin(k * Math.PI) * 30 + R(-path.h / 2, path.h / 2), vx: R(-12, 12), vy: R(-12, 12), life: R(0.25, 0.5), size: R(3, 4), shrink: true, cols });
+      }, 60);
+    },
+    // la tavola si strappa in frammenti di carta. `slot` è la casella sul campo.
+    destroy(slot) {
+      const el = slot && (slot.querySelector('.card') || slot), r = el && el.getBoundingClientRect();
+      if (!ok(r)) return;
       const c = mid(r);
-      ring(c.x, c.y, r.width * 0.4, r.width * 1.15, PAL[type], 0.5, 1, 1);
-      many(18, () => { const e = edgePoint(r, Math.random()); return { x: e.x, y: e.y, vx: e.nx * R(20, 80), vy: e.ny * R(20, 80), drag: 3, life: R(0.3, 0.7), cols: PAL[type], add: true }; });
+      shake(5, 300);
+      sp(SP.crack, c.x, c.y, r.width * 2, r.width * 0.5, [{ opacity: 1, transform: 'rotate(-28deg) scaleX(.2)' }, { opacity: 1, transform: 'rotate(-28deg) scaleX(1)', offset: 0.3 }, { opacity: 0, transform: 'rotate(-28deg) scaleX(1.1)' }], { dur: 420 });
+      many(26, () => { const a = R(0, 6.283), v = R(40, 220); return { x: c.x, y: c.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, g: 420, drag: 1.4, life: R(0.5, 1), size: R(3, 6), flat: true, cols: [PAPER, '#e7dcc5', TINT.R[1]], delay: 0.1 }; });
+      if (CALM || !layer) return;
+      const host = document.createElement('div'); host.className = 'shards';
+      host.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
+      const E = low() ? [[0, 0], [100, 0], [100, 100], [0, 100]] : [[0, 0], [50, 0], [100, 0], [100, 50], [100, 100], [50, 100], [0, 100], [0, 50]], k = [50 + R(-10, 10), 46 + R(-10, 10)];
+      E.forEach((a, i) => {
+        const b = E[(i + 1) % E.length], piece = document.createElement('div'); piece.className = 'shard';
+        piece.style.clipPath = `polygon(${k[0]}% ${k[1]}%,${a[0]}% ${a[1]}%,${b[0]}% ${b[1]}%)`;
+        const clone = el.cloneNode(true); clone.removeAttribute('id'); clone.className = clone.className.replace(/\b(target|boom|landed|aimed|shine)\b/g, '');
+        clone.style.cssText = `position:absolute;left:0;top:0;margin:0;--w:${r.width}px`; piece.appendChild(clone); host.appendChild(piece);
+        const dx = (a[0] + b[0]) / 2 - k[0], dy = (a[1] + b[1]) / 2 - k[1], n = Math.hypot(dx, dy) || 1, f = R(0.5, 1.1) * r.width;
+        piece.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${(dx / n) * f * 0.5}px,${(dy / n) * f * 0.5}px) rotate(${R(-18, 18)}deg)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${(dx / n) * f}px,${(dy / n) * f + r.height * 0.45}px) rotate(${R(-70, 70)}deg) scale(.8)`, opacity: 0 }], { duration: 900, delay: 90, easing: 'cubic-bezier(.3,.5,.5,1)', fill: 'both' });
+      });
+      layer.appendChild(host); setTimeout(() => host.remove(), 1050);
     },
-    // esplosione: una terra viene distrutta
-    destroy(r) {
-      if (!r || !r.width) return;
-      const c = mid(r);
-      flash(r, '#ffb82a', 0.35, 26); shake(10, 420);
-      ring(c.x, c.y, 6, r.width * 1.5, PAL.R, 0.5, 1, 2);
-      many(70, () => { const a = R(0, Math.PI * 2), v = R(40, 330); return { x: c.x, y: c.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, drag: 2.6, life: R(0.3, 0.9), size: S * pick([1, 2, 2, 3]), shrink: true, cols: PAL.R, add: true }; });
-      many(26, () => { const a = R(-Math.PI, 0), v = R(80, 300); return { x: c.x + R(-10, 10), y: c.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 620, life: R(0.6, 1.2), size: S * pick([1, 2, 3]), cols: ROCK }; });
-      many(14, () => ({ x: c.x + R(-r.width / 2, r.width / 2), y: c.y + R(-10, 10), vx: R(-16, 16), vy: R(-60, -20), drag: 0.7, life: R(0.9, 1.7), size: S * 4, shrink: true, cols: SMOKE, soft: 0.7, delay: R(0.1, 0.35) }));
+    // contrasto: un'onda investe la carta al centro
+    counter(r) { if (!ok(r)) return; shake(2.5, 180); contours('U', r, 3, { size: 2.8, dur: 900, gap: 120 }); burst(r, TINT.U, 20, 200); },
+    // il timbro "Annullata" cala sulla carta
+    stamp(r) {
+      if (!ok(r) || !layer) return;
+      const c = mid(r), d = document.createElement('div'); d.className = 'stamp'; d.textContent = 'Annullata'; d.style.cssText = `left:${c.x}px;top:${c.y}px`; layer.appendChild(d);
+      const T = 'translate(-50%,-50%) rotate(-9deg)';
+      d.animate(CALM ? [{ opacity: 0, transform: T }, { opacity: 1, transform: T, offset: 0.2 }, { opacity: 1, transform: T, offset: 0.8 }, { opacity: 0, transform: T }]
+        : [{ opacity: 0, transform: `${T} scale(2.8)` }, { opacity: 1, transform: `${T} scale(.94)`, offset: 0.2 }, { opacity: 1, transform: `${T} scale(1.03)`, offset: 0.27 }, { opacity: 1, transform: `${T} scale(1)`, offset: 0.33 }, { opacity: 1, transform: `${T} scale(1)`, offset: 0.8 }, { opacity: 0, transform: `${T} scale(1)` }],
+      { duration: 1300, easing: 'cubic-bezier(.5,0,.9,.6)' }).finished.catch(() => {}).then(() => d.remove());
+      setTimeout(() => shake(2.5, 160), 250);
     },
-    // contrasto: un'onda travolge la carta sull'altare
-    counter(r) {
-      if (!r || !r.width) return;
-      const c = mid(r);
-      many(70, (i, n) => { const k = i / n; return { x: r.left - 60 - R(0, 50), y: r.top + k * r.height + R(-8, 8), vx: R(380, 620), vy: R(-50, 50), drag: 2.4, life: R(0.45, 0.9), size: S * pick([1, 2, 2]), cols: PAL.U, add: true, delay: R(0, 0.12) }; });
-      setTimeout(() => { ring(c.x, c.y, 8, r.width * 1.4, PAL.U, 0.55, 1, 2); flash(r, '#7cc4ff', 0.3, 12); shake(4, 200); }, 140);
-      many(24, () => { const a = R(-Math.PI, 0), v = R(60, 220); return { x: c.x, y: c.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 500, life: R(0.5, 0.9), cols: [PAL.U[0], PAL.U[1], PAL.U[2]], add: true, delay: 0.16 }; });
-    },
-    // la carta annullata si sbriciola in pixel
-    dissolve(r, type) {
-      if (!r || !r.width) return;
-      const cell = S * 3;
-      for (let y = r.top; y < r.bottom; y += cell) for (let x = r.left; x < r.right; x += cell) {
-        if (Math.random() > 0.6 * quality + 0.2) continue;
-        P({ x, y, vx: R(-70, 70), vy: R(-120, 20), g: 380, life: R(0.5, 1.1), size: cell, shrink: true, cols: [PAL[type][2], PAL[type][3], PAL[type][4], '#1e1a28'], delay: (y - r.top) / r.height * 0.25 });
-      }
-      kick();
-    },
-    regrow(r) {
-      if (!r || !r.width) return;
-      const c = mid(r);
-      many(26, (i) => { const a = i * 0.7; return { x: c.x + Math.cos(a) * 10, y: c.y + Math.sin(a) * 10, vx: Math.cos(a) * 70, vy: Math.sin(a) * 70 - 40, drag: 2, life: R(0.5, 1.0), cols: [PAL.G[0], PAL.G[1], PAL.G[2]], add: true, shape: i % 3 ? 0 : 1, delay: i * 0.012 }; });
-      ring(c.x, c.y, 4, 40, PAL.G, 0.5);
-    },
-    discard(r) {
-      if (!r || !r.width) return;
-      const c = mid(r);
-      many(26, () => ({ x: c.x + R(-r.width / 2, r.width / 2), y: c.y + R(-r.height / 2, r.height / 2), vx: R(-60, 60), vy: R(-80, 30), g: 260, life: R(0.4, 0.9), size: S * pick([1, 2]), cols: [PAL.B[0], PAL.B[1], PAL.B[2], PAL.B[3]], add: true }));
-    },
-    // la Palude scruta una mano
+    regrow(r) { if (!ok(r)) return; contours('G', r, 2, { size: 3, dur: 800 }); burst(r, TINT.G, 16, 160); },
+    discard(r) { if (!ok(r)) return; const c = mid(r); many(18, () => ({ x: c.x + R(-r.width / 2, r.width / 2), y: c.y + R(-r.height / 2, r.height / 2), vx: R(-60, 60), vy: R(-80, 20), g: 260, life: R(0.4, 0.9), size: R(3, 5), flat: true, cols: [PAPER, TINT.B[2]] })); },
+    // la Palude scruta una mano: fuochi fatui che la attraversano
     look(r) {
-      if (!r || !r.width) return;
-      many(30, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-14, 14), vy: R(-40, -8), life: R(0.6, 1.3), size: S * pick([1, 2]), cols: [PAL.B[1], PAL.B[2], PAL.B[3]], add: true, wob: R(0, 6), delay: R(0, 0.4) }));
-      many(10, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-10, 10), vy: R(-20, -5), drag: 0.5, life: R(0.8, 1.4), size: S * 3, shrink: true, cols: SMOKE, soft: 0.6 }));
+      if (!ok(r)) return;
+      for (let i = 0; i < (low() ? 2 : 5); i++) { const x = R(r.left, r.right), y = R(r.top, r.bottom);
+        sp(SP.wisp, x, y, 22, 22, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: `translate(${R(-20, 20)}px,${R(-14, 14)}px) scale(1)`, offset: 0.4 }, { opacity: 0, transform: `translate(${R(-40, 40)}px,${R(-30, 0)}px) scale(.5)` }], { dur: 1000, delay: i * 90, ease: 'ease-in-out' }); }
+      many(14, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-14, 14), vy: R(-40, -8), life: R(0.6, 1.3), size: R(3, 5), cols: TINT.B, delay: R(0, 0.4), sway: R(0, 6) }));
     },
     reuse(r) {
-      if (!r || !r.width) return;
-      const c = mid(r);
-      ring(c.x, c.y, r.width * 0.2, r.width * 0.9, PAL.W, 0.6, 1, 2);
-      many(24, () => { const e = edgePoint(r, Math.random()); return { x: e.x, y: e.y, vx: e.nx * R(10, 50), vy: e.ny * R(10, 50) - 20, life: R(0.5, 1.2), cols: PAL.W, add: true, shape: 1, wob: R(0, 6), delay: R(0, 0.3) }; });
+      if (!ok(r)) return; const c = mid(r);
+      sp(SP.burst, c.x, c.y, r.width * 2.6, r.width * 2.6, [{ opacity: 0, transform: 'scale(.5) rotate(0deg)' }, { opacity: 0.85, offset: 0.3 }, { opacity: 0, transform: 'scale(1) rotate(40deg)' }], { dur: 900 });
+      contours('W', r, 1, { size: 2.4, dur: 800 }); burst(r, TINT.W, 14, 150);
     },
-    sparkle(r, type = 'N', n = 8) {
-      if (!r || !r.width) return;
-      many(n, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-20, 20), vy: R(-50, -10), life: R(0.4, 0.9), cols: PAL[type], add: true, shape: 1, wob: R(0, 6) }));
+    // Vittoria: la rosa dei venti gira e si ferma; le cinque terre si accendono sui suoi punti, unite da una rotta.
+    // Restituisce la durata in millisecondi, così la finestra finale compare dopo.
+    win() {
+      if (CALM || !layer) return 0;
+      const altar = document.getElementById('altar'), ar = altar && altar.classList.contains('on') ? altar.getBoundingClientRect() : null;
+      const size = Math.min(innerWidth * 0.9, innerHeight * 0.62), r = ok(ar) ? ar : { left: innerWidth / 2 - size / 2, top: innerHeight / 2 - size / 2, width: size, height: size };
+      const c = mid(r), rad = Math.min(r.width, innerWidth * 0.92) * 0.45, B = 'translate(-50%,-50%)', END = 3000;
+      sp('', innerWidth / 2, innerHeight / 2, innerWidth, innerHeight, [{ opacity: 0 }, { opacity: 0.72, offset: 0.12 }, { opacity: 0.72, offset: 0.85 }, { opacity: 0 }], { dur: END, cls: 'dim', ease: 'linear' });
+      sp('var(--rosa)', c.x, c.y, r.width, r.height, [{ opacity: 0, transform: 'rotate(0deg) scale(.9)' }, { opacity: 1, transform: 'rotate(150deg) scale(1.1)', offset: 0.3 }, { opacity: 1, transform: 'rotate(216deg) scale(1.06)', offset: 0.6 }, { opacity: 1, transform: 'rotate(216deg) scale(1.06)', offset: 0.86 }, { opacity: 0, transform: 'rotate(216deg) scale(1)' }], { dur: END, ease: 'linear' });
+      const pts = ATL.L.map((l, i) => { const a = -1.5708 + (i * 6.283) / 5; return [c.x + Math.cos(a) * rad, c.y + Math.sin(a) * rad, l]; });
+      const pin = Math.max(28, rad * 0.24);
+      pts.forEach(([x, y, l], i) => {
+        const t0 = 450 + i * 170, k0 = t0 / END;
+        sp(ICO[l], x, y, pin, pin, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 0, transform: 'scale(0)', offset: k0 }, { opacity: 1, transform: 'scale(1.35)', offset: k0 + 0.05 }, { opacity: 1, transform: 'scale(1)', offset: k0 + 0.09 }, { opacity: 1, transform: 'scale(1)', offset: 0.86 }, { opacity: 0, transform: 'scale(.7)' }], { dur: END, ease: 'linear', cls: 'pin' });
+        setTimeout(() => many(10, () => { const a = R(0, 6.283), v = R(40, 150); return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, drag: 2, life: R(0.4, 0.8), size: R(3, 5), cols: TINT[l] }; }), t0 + 120);
+        const [x2, y2] = pts[(i + 2) % 5], len = Math.hypot(x2 - x, y2 - y), ang = Math.atan2(y2 - y, x2 - x), k1 = (1350 + i * 130) / END;
+        const ln = sp('', x + len / 2, y, len, 2, [{ opacity: 0, transform: `rotate(${ang}rad) scaleX(0)` }, { opacity: 0.9, transform: `rotate(${ang}rad) scaleX(0)`, offset: k1 }, { opacity: 0.9, transform: `rotate(${ang}rad) scaleX(1)`, offset: k1 + 0.09 }, { opacity: 0.9, transform: `rotate(${ang}rad) scaleX(1)`, offset: 0.86 }, { opacity: 0, transform: `rotate(${ang}rad) scaleX(1)` }], { dur: END, ease: 'linear', cls: 'route' });
+        if (ln) ln.style.transformOrigin = '0 50%';
+      });
+      const t = document.createElement('div'); t.className = 'wint'; t.textContent = 'Vittoria'; t.style.cssText = `left:${c.x}px;top:${c.y}px;font-size:${Math.round(rad * 0.36)}px`; layer.appendChild(t);
+      t.animate([{ opacity: 0, transform: `${B} scale(.7)` }, { opacity: 0, transform: `${B} scale(.7)`, offset: 0.66 }, { opacity: 1, transform: `${B} scale(1.06)`, offset: 0.74 }, { opacity: 1, transform: `${B} scale(1)`, offset: 0.78 }, { opacity: 1, transform: `${B} scale(1)`, offset: 0.9 }, { opacity: 0, transform: `${B} scale(1)` }], { duration: END, fill: 'both' }).finished.catch(() => {}).then(() => t.remove());
+      for (let w = 0; w < 3; w++) setTimeout(() => many(34, () => ({ x: R(0, innerWidth), y: R(-30, -5), vx: R(-20, 20), vy: R(90, 240), g: 60, life: R(1.4, 2.2), size: R(5, 9), flat: true, sway: R(0, 6), cols: [[PAPER], TINT.W, TINT.U, TINT.R, TINT.G][(Math.random() * 5) | 0].slice(0, 2) })), 1900 + w * 330);
+      return END - 250;
     },
-    // scia colorata dietro a una carta in volo
-    // scia dietro a una carta in volo: la posizione si calcola dal percorso, senza leggere il DOM
-    trail(path, type, ms) {
-      if (quality < 0.7 || !path) return;
-      const cols = [PAL[type][1], PAL[type][2], PAL[type][3]];
-      const t0 = performance.now();
-      const iv = setInterval(() => {
-        const k = (performance.now() - t0) / ms;
-        if (k >= 1) return clearInterval(iv);
-        const e = 1 - (1 - k) * (1 - k);
-        const x = path.sx + (path.ex - path.sx) * e, y = path.sy + (path.ey - path.sy) * e - Math.sin(k * Math.PI) * 30;
-        for (let i = 0; i < 2; i++) P({ x: x + R(-path.w / 2, path.w / 2), y: y + R(-path.h / 2, path.h / 2), vx: R(-14, 14), vy: R(-14, 14), life: R(0.25, 0.5), cols, add: true, size: S * pick([1, 1, 2]), shrink: true });
-        kick();
-      }, 45);
-    },
-    // fontana di luce per la vittoria
-    win(colors = 'WUBRG') {
-      let n = 0;
-      const iv = setInterval(() => {
-        if (++n > 26) return clearInterval(iv);
-        const x = R(innerWidth * 0.15, innerWidth * 0.85), y = R(innerHeight * 0.2, innerHeight * 0.6), t = colors[(Math.random() * colors.length) | 0];
-        ring(x, y, 4, R(40, 90), PAL[t], 0.7, 1, 2);
-        many(28, () => { const a = R(0, Math.PI * 2), v = R(40, 240); return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 160, drag: 1.6, life: R(0.6, 1.4), size: S * pick([1, 2]), cols: PAL[t], add: true, shape: Math.random() < 0.3 ? 1 : 0, wob: R(0, 6) }; });
-      }, 110);
-    },
+    // Sconfitta: il tavolo si oscura un momento, cade qualche frammento di carta
     lose() {
-      many(60, () => ({ x: R(0, innerWidth), y: R(-20, innerHeight * 0.4), vx: R(-10, 10), vy: R(30, 120), drag: 0.3, life: R(1.2, 2.6), size: S * pick([2, 3]), shrink: true, cols: SMOKE, soft: 0.6, delay: R(0, 0.8) }));
+      if (CALM || !layer) return 0;
+      sp('', innerWidth / 2, innerHeight / 2, innerWidth, innerHeight, [{ opacity: 0 }, { opacity: 0.6, offset: 0.3 }, { opacity: 0.6, offset: 0.7 }, { opacity: 0 }], { dur: 1400, cls: 'dim', ease: 'linear' });
+      many(30, () => ({ x: R(0, innerWidth), y: R(-30, -5), vx: R(-10, 10), vy: R(60, 160), g: 40, life: R(1.2, 2), size: R(4, 7), flat: true, sway: R(0, 6), cols: ['#8fa3a8', '#5d7480'] }));
+      return 900;
     },
-    clear() { parts = []; objs = []; },
+    clear() { parts = []; if (layer) layer.textContent = ''; live = 0; },
   };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && parts.length && !run && ctx) { run = true; last = performance.now(); requestAnimationFrame(loop); } });
   return api;
 })();

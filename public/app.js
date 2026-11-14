@@ -10,10 +10,10 @@ for (const t of TYPES) SYM[t] = `<i class="ico ico-${t}"></i>`;
 const TOMB = '<i class="ico ico-tomb"></i>';
 const FXTXT = {
   W: 'Riattiva una tua terra',
-  U: 'Pesca 1 · Contrasta',
-  B: 'Scarta dalla mano avversaria',
+  U: 'Pesca una carta, o contrasta',
+  B: 'Fai scartare una terra',
   R: 'Distruggi una terra',
-  G: 'Recupera dal cimitero',
+  G: 'Riprendi una terra dal cimitero',
 };
 // Descrizioni dal punto di vista di chi gioca la carta
 const LONG_FX = {
@@ -46,7 +46,7 @@ const prefs = {
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
   get info() { return ls.get('info', false); }, set info(v) { ls.set('info', v); },
-  get cardStyle() { return ls.get('cardStyle', 'art'); }, set cardStyle(v) { ls.set('cardStyle', v); },
+  get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
   get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
@@ -224,7 +224,9 @@ function vibrate(pattern) {
 
 // ---------- Aspetto ----------
 function applyPrefs() {
-  document.body.classList.toggle('simple-cards', prefs.cardStyle === 'simple');
+  document.documentElement.dataset.theme = prefs.theme;
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -247,9 +249,8 @@ let lastPlay = null;     // { card, idx, rect } per far partire l'animazione dal
 let lastCounter = null;  // { islandIdx, pickIdx }
 let lastReuse = null;    // { w, card } terra riattivata dalla Pianura (origine delle frecce del suo effetto)
 let needRender = false;
-let runeTint = 'N';       // colore delle rune dell'altare (ultima terra giocata)
 
-// Cerchio runico dell'altare: un solo elemento fisso, mai ricreato dai render (così non va ridisegnato)
+// La rosa dei venti al centro del tavolo: un solo elemento fisso, mai ricreato dai render (così non va ridisegnato)
 const Altar = {
   el: null, ang: 0,
   place() {
@@ -258,30 +259,19 @@ const Altar = {
     if (!el) return;
     if (!c) { el.classList.remove('on'); return; }
     const r = c.getBoundingClientRect();
-    const wide = innerWidth >= 900 && innerWidth / innerHeight >= 1.1;
-    const size = wide ? innerHeight * 0.66 : Math.min(r.height * 0.84, innerWidth * 0.84);
+    const land = innerWidth / innerHeight >= 1.1;
+    const size = land && innerHeight > 520 ? Math.min(innerHeight * 0.5, r.width * 0.5) : Math.min(r.height * 0.96, r.width * 0.96);
     Object.assign(el.style, { left: `${r.left + r.width / 2 - size / 2}px`, top: `${r.top + r.height / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` });
     el.classList.add('on');
-    this.state();
   },
-  state() {
-    const el = this.el; if (!el) return;
-    const c = $('#center');
-    el.classList.remove('t-W', 't-U', 't-B', 't-R', 't-G', 't-X');
-    const drop = c && c.classList.contains('droppable');
-    if (drop) el.classList.add('t-X'); else if (runeTint !== 'N') el.classList.add('t-' + runeTint);
-    el.classList.toggle('drop', !!drop);
-    el.classList.toggle('over', !!(c && c.classList.contains('dropover')));
-  },
-  // giro breve quando si gioca una carta (invece di una rotazione continua)
-  cast(t) {
-    runeTint = t; FX.tint(t);
+  state() {},
+  // un quinto di giro quando si gioca una carta (invece di una rotazione continua)
+  cast() {
     const el = this.el; if (!el) return;
     el.style.setProperty('--ang0', `${this.ang}deg`);
     this.ang += 72;
     el.style.setProperty('--ang', `${this.ang}deg`);
     el.classList.remove('cast'); void el.offsetWidth; el.classList.add('cast');
-    this.state();
   },
 };
 let autoAllowKey = null;
@@ -367,9 +357,11 @@ function toast(msg, info) {
   t.textContent = msg; t.className = info ? 'info' : '';
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2400);
 }
-const pips = () => `<div class="pips">${TYPES.map((t) => `<div class="pip p-${t}">${SYM[t]}</div>`).join('')}</div>`;
-const cardHtml = (t, extra = '', attrs = '', inner = '') => `<div class="card k-${t} ${extra}" data-card="${t}" ${attrs}>
-  <div class="nm">${NAMES[t]}</div><div class="fx">${FXTXT[t]}</div>${inner}</div>`;
+// le parti di una carta: tavola (la terra vista dall'alto), simbolo, nome, effetto
+const cardFace = (t, text = true) => `<div class="art"></div><i class="gem ico ico-${t}"></i><div class="nm">${NAMES[t]}</div>${text ? `<div class="tx">${FXTXT[t]}</div>` : ''}`;
+const cardHtml = (t, extra = '', attrs = '', inner = '') => `<div class="card k-${t} ${extra}" data-card="${t}" ${attrs}>${cardFace(t)}${inner}</div>`;
+// il ventaglio delle cinque terre in cima alla home
+const pips = () => `<div class="fan">${TYPES.map((t, i) => `<div class="card mini k-${t}" style="--rot:${(i - 2) * 9}deg;--dy:${Math.abs(i - 2) * Math.abs(i - 2) * 3}px"><div class="art"></div><i class="gem ico ico-${t}"></i></div>`).join('')}</div>`;
 const who = (p) => (G && p === G.you ? 'me' : 'opp');
 const winsWith = (bf, t) => { const b = { ...bf, [t]: bf[t] + 1 }; return TYPES.every((x) => b[x] > 0) || TYPES.some((x) => b[x] >= 5); };
 const closeToWin = (bf) => TYPES.filter((t) => bf[t] > 0).length >= 4 || Math.max(...TYPES.map((t) => bf[t])) >= 4;
@@ -401,10 +393,10 @@ function renderLobby() {
     <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
     ${pips()}
     <h1>Basic Land Game</h1>
-    <p class="sub">Cinque terre, un altare. Domina tutti i colori o padroneggiane uno.</p>
+    <p class="sub">Metti in gioco tutte e cinque le terre, oppure cinque uguali.</p>
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
-    <div class="field"><label>Il tuo nome</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="Es. Claudio" autocomplete="nickname"></div>
+    <div class="field"><label>Il tuo nome</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="Come ti chiami?" autocomplete="nickname"></div>
     <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
       <button class="btn modebtn">Contro il computer<span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
@@ -491,7 +483,7 @@ function bfHtml(pl, w, targets) {
     const tg = targets && targets.includes(t);
     return `<div id="slot-${w}-${t}" class="slot s-${t} ${n ? 'full' : 'empty'} ${n >= 4 ? 'five' : ''} ${tg ? 'target' : ''}"
       ${tg ? `data-act="target" data-v="${t}"` : ''}>
-      ${SYM[t]}<div class="nm">${NAMES[t]}</div>${n ? `<div class="count">${n}</div>` : ''}</div>`;
+      <div class="em">${SYM[t]}</div>${n ? `<div class="card mini k-${t}">${cardFace(t, false)}</div>` : ''}${n > 1 ? `<div class="count">${n}</div>` : ''}</div>`;
   }).join('')}</div>`;
 }
 
@@ -765,6 +757,7 @@ function layoutHand() {
   const start = Math.max(pad, (W - total) / 2);
   const mid = (n - 1) / 2;
   const ang = n > 1 ? Math.min(3, 15 / (n - 1)) : 0;
+  hand.classList.add('laying'); // le carte vanno al loro posto senza scivolare dall'angolo
   cards.forEach((c, i) => {
     const off = i - mid;
     c.style.setProperty('--x', `${Math.round(start + i * step)}px`);
@@ -772,6 +765,7 @@ function layoutHand() {
     c.style.setProperty('--dy', `${Math.min(10, off * off * ang * 0.25)}px`);
     c.style.zIndex = String(i + 1);
   });
+  void hand.offsetWidth; hand.classList.remove('laying');
 }
 window.addEventListener('resize', () => { layoutHand(); drawArrows(); Altar.place(); });
 
@@ -810,7 +804,7 @@ function menuHtml() {
       <button class="btn" data-act="leave-no">Annulla</button>` : `
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
     <div class="mrow col"><span>Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
-    <div class="mrow col"><span>Stile delle carte</span>${seg('set-cards', prefs.cardStyle, [['art', 'Illustrate'], ['simple', 'Emblemi']])}</div>
+    <div class="mrow col"><span>Tema</span>${seg('set-theme', prefs.theme, [['notte', 'Notte'], ['giorno', 'Giorno']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
@@ -919,7 +913,7 @@ app.addEventListener('click', (e) => {
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-speed': prefs.speed = v; send({ t: 'prefs', speed: SPEEDS[v] }); Sound.play('click'); return render();
-    case 'set-cards': prefs.cardStyle = v; applyPrefs(); Sound.play('click'); return render();
+    case 'set-theme': prefs.theme = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
@@ -1072,7 +1066,7 @@ function cancelDrag(instant) {
 // =====================================================================
 //  Frecce: chi colpisce cosa
 // =====================================================================
-const ARROW_COLOR = { R: '#ff5a4a', W: '#ffe58a', G: '#5fd38a', B: '#c39bff', U: '#6cb6ff' };
+const ARROW_COLOR = { R: '#d9482f', W: '#e0a92e', G: '#2f9e6a', B: '#8a6cc0', U: '#1f8fb8' };
 function clearArrows(cls) {
   const svg = $('#arrows'); if (!svg) return;
   $$(cls ? `g.${cls}` : 'g.arrow', svg).forEach((n) => n.remove());
@@ -1207,7 +1201,7 @@ const stackCard = () => $('#stack .card') || $('#stack');
 
 function makeFlyer(face, w, h) {
   const f = document.createElement('div');
-  if (face) { f.className = `flyer card k-${face}`; f.innerHTML = `<div class="nm">${NAMES[face]}</div>`; }
+  if (face) { f.className = `flyer card k-${face} ${w < 120 ? 'compact' : ''}`; f.innerHTML = cardFace(face, w >= 120); }
   else f.className = 'flyer cardback';
   Object.assign(f.style, { width: w + 'px', height: h + 'px' }); f.style.setProperty('--w', w + 'px');
   document.body.appendChild(f);
@@ -1262,8 +1256,9 @@ function setCaption(text) {
 function endSound(ev) {
   if (!G) return;
   if (ev.winner == null) Sound.play('lose');
-  else if (ev.winner === G.you) { Sound.play('win'); vibrate([60, 40, 120]); FX.win(); }
-  else { Sound.play('lose'); vibrate(200); FX.lose(); }
+  else if (ev.winner === G.you) { Sound.play('win'); vibrate([60, 40, 120]); return FX.win(); }
+  else { Sound.play('lose'); vibrate(200); return FX.lose(); }
+  return 0;
 }
 
 async function animateStep(ev, next) {
@@ -1338,10 +1333,8 @@ async function animateStep(ev, next) {
       const sc = stackCard();
       clearArrows('pending');
       if (sc && sc.classList.contains('card')) {
-        const stamp = document.createElement('div'); stamp.className = 'stamp'; stamp.textContent = 'ANNULLATA';
-        sc.appendChild(stamp);
-        await wait(450);
-        FX.dissolve(rectOf(sc), ev.card);
+        FX.stamp(rectOf(sc));
+        await new Promise((r) => setTimeout(r, 950));
         sc.classList.add('fizzle');
         await wait(350);
       }
@@ -1369,12 +1362,13 @@ async function animateStep(ev, next) {
       if (direct('R', ev.card)) await wait(150); else await flashArrow(srcEl(), s, ARROW_COLOR.R, 450);
       arrowDone = `${G.turn}|${r ? r.land : ''}`; clearArrows('pending');
       Sound.play('destroy');
-      FX.destroy(rectOf(s));
       if (ev.player === G.you) vibrate(80);
-      await pulse(s, 'boom', 450);
-      const from = rectOf(s);
+      await pulse(s, 'boom', 300);
+      // la tavola si strappa: i frammenti sono una copia, la casella si aggiorna subito sotto
+      FX.destroy(s);
       G = next; render();
-      await fly(from, gyEl(w, ev.card), ev.card, { dur: 420 });
+      await new Promise((r) => setTimeout(r, 750));
+      await pulse(gyEl(w), 'landed', 450);
       return;
     }
     case 'regrow': {
@@ -1430,8 +1424,8 @@ async function animateStep(ev, next) {
     }
     case 'end': {
       G = next; ui.caption = null; render();
-      endSound(ev);
-      await wait(500);
+      // la finestra del risultato compare quando la scena finale è terminata
+      await new Promise((r) => setTimeout(r, Math.max(500, endSound(ev) || 0)));
       return;
     }
     default:
@@ -1474,6 +1468,5 @@ document.addEventListener('keydown', (e) => {
 });
 FX.init();
 applyPrefs();
-FX.setAmbient(true);
 render();
 connect();
