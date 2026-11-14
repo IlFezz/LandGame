@@ -5,8 +5,10 @@
 // =====================================================================
 const TYPES = ['W', 'U', 'B', 'R', 'G'];
 const NAMES = { W: 'Pianura', U: 'Isola', B: 'Palude', R: 'Montagna', G: 'Foresta' };
-const SYM = { W: '☀️', U: '💧', B: '💀', R: '🔥', G: '🌲' };
-const FX = {
+const SYM = {};
+for (const t of TYPES) SYM[t] = `<i class="ico ico-${t}"></i>`;
+const TOMB = '<i class="ico ico-tomb"></i>';
+const FXTXT = {
   W: 'Riattiva una tua terra',
   U: 'Pesca 1 · Contrasta',
   B: 'Scarta dalla mano avversaria',
@@ -44,6 +46,8 @@ const prefs = {
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
   get info() { return ls.get('info', false); }, set info(v) { ls.set('info', v); },
+  get cardStyle() { return ls.get('cardStyle', 'art'); }, set cardStyle(v) { ls.set('cardStyle', v); },
+  get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
   get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
   get speed() { const v = ls.get('speed', 'slow'); return SPEEDS[v] ? v : 'slow'; }, set speed(v) { ls.set('speed', v); },
@@ -115,13 +119,14 @@ document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true }
 const Music = {
   on: false, master: null, bus: null, timer: null, nextChord: 0, nextNote: 0, step: 0,
   // Am9 · Fmaj7 · Cadd9 · G6 (note MIDI)
-  chords: [[45, 57, 60, 64, 71], [41, 57, 60, 64, 69], [36, 55, 60, 62, 64], [43, 55, 59, 62, 64]],
-  scale: [69, 72, 74, 76, 79, 81, 84],
+  // Dm9 · Bbmaj7 · Gm(add9) · A7sus4: lento e cupo
+  chords: [[38, 50, 53, 57, 64], [34, 50, 53, 58, 62], [31, 50, 55, 58, 62], [33, 52, 57, 62, 64]],
+  scale: [62, 65, 67, 69, 72, 74, 77],
   mtof: (m) => 440 * 2 ** ((m - 69) / 12),
   setup() {
     const c = Sound.ctx;
     this.master = c.createGain(); this.master.gain.value = 0;
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 950;
     const rev = c.createConvolver();
     const len = Math.floor(c.sampleRate * 3.5), buf = c.createBuffer(2, len, c.sampleRate);
     for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.5; }
@@ -155,10 +160,10 @@ const Music = {
   tick() {
     const c = Sound.ctx;
     if (!c || c.state !== 'running') return;
-    while (this.nextChord < c.currentTime + 1.5) { this.chord(this.nextChord); this.nextChord += 9; }
+    while (this.nextChord < c.currentTime + 1.5) { this.chord(this.nextChord); this.nextChord += 11; }
     while (this.nextNote < c.currentTime + 1.5) {
-      if (Math.random() < 0.7) this.note(this.nextNote);
-      this.nextNote += 1.4 + Math.random() * 2.8;
+      if (Math.random() < 0.55) this.note(this.nextNote);
+      this.nextNote += 2.2 + Math.random() * 4;
     }
   },
   voice(freq, t, { type = 'sine', peak = 0.04, attack = 2.5, hold = 6, release = 3.5, detune = 0 } = {}) {
@@ -176,14 +181,14 @@ const Music = {
     const notes = this.chords[this.step++ % this.chords.length];
     notes.forEach((m, i) => {
       const f = this.mtof(m);
-      if (i === 0) { this.voice(f, t, { peak: 0.05 }); return; } // basso
+      if (i === 0) { this.voice(f, t, { peak: 0.06, hold: 8 }); this.voice(f / 2, t, { peak: 0.035, hold: 8, attack: 4 }); return; } // basso + bordone
       this.voice(f, t + i * 0.12, { type: 'triangle', peak: 0.018, detune: -6 });
       this.voice(f, t + i * 0.12, { peak: 0.022, detune: 6 });
     });
   },
   note(t) {
     const m = this.scale[Math.floor(Math.random() * this.scale.length)];
-    this.voice(this.mtof(m), t, { type: 'triangle', peak: 0.03, attack: 0.02, hold: 0.05, release: 2.6 });
+    this.voice(this.mtof(m), t, { peak: 0.028, attack: 0.4, hold: 0.1, release: 4.5 });
   },
 };
 function setMusic(on) {
@@ -212,6 +217,13 @@ function vibrate(pattern) {
   } catch {}
 }
 
+// ---------- Aspetto ----------
+function applyPrefs() {
+  document.body.classList.toggle('simple-cards', prefs.cardStyle === 'simple');
+  document.body.classList.toggle('low-fx', prefs.fx === 'low');
+  FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
+}
+
 // ---------- Stato ----------
 let S = null;          // metadati stanza dall'ultimo messaggio
 let G = null;          // vista di gioco attualmente mostrata
@@ -230,6 +242,7 @@ let lastPlay = null;     // { card, idx, rect } per far partire l'animazione dal
 let lastCounter = null;  // { islandIdx, pickIdx }
 let lastReuse = null;    // { w, card } terra riattivata dalla Pianura (origine delle frecce del suo effetto)
 let needRender = false;
+let runeTint = 'N';       // colore delle rune dell'altare (ultima terra giocata)
 let autoAllowKey = null;
 
 // ---------- Connessione ----------
@@ -313,9 +326,9 @@ function toast(msg, info) {
   t.textContent = msg; t.className = info ? 'info' : '';
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2400);
 }
-const pips = () => `<div class="pips">${TYPES.map((t) => `<div class="pip c-${t}">${SYM[t]}</div>`).join('')}</div>`;
-const cardHtml = (t, extra = '', attrs = '', inner = '') => `<div class="card c-${t} ${extra}" data-card="${t}" ${attrs}>
-  <div class="sym">${SYM[t]}</div><div class="nm">${NAMES[t]}</div><div class="fx">${FX[t]}</div>${inner}</div>`;
+const pips = () => `<div class="pips">${TYPES.map((t) => `<div class="pip p-${t}">${SYM[t]}</div>`).join('')}</div>`;
+const cardHtml = (t, extra = '', attrs = '', inner = '') => `<div class="card k-${t} ${extra}" data-card="${t}" ${attrs}>
+  <div class="nm">${NAMES[t]}</div><div class="fx">${FXTXT[t]}</div>${inner}</div>`;
 const who = (p) => (G && p === G.you ? 'me' : 'opp');
 const winsWith = (bf, t) => { const b = { ...bf, [t]: bf[t] + 1 }; return TYPES.every((x) => b[x] > 0) || TYPES.some((x) => b[x] >= 5); };
 const closeToWin = (bf) => TYPES.filter((t) => bf[t] > 0).length >= 4 || Math.max(...TYPES.map((t) => bf[t])) >= 4;
@@ -342,15 +355,15 @@ function renderLobby() {
   const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
   app.innerHTML = `
   <div class="lobby">
-    <button class="musicbtn" id="music" aria-label="Musica">${prefs.music ? '🎵' : '🔇'}</button>
+    <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
     ${pips()}
     <h1>Basic Land Game</h1>
-    <p class="sub">10 terre per colore. Fai dominio o cinque uguali.</p>
+    <p class="sub">Cinque terre, un altare. Domina tutti i colori o padroneggiane uno.</p>
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
     <div class="field"><label>Il tuo nome</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="Es. Claudio" autocomplete="nickname"></div>
     <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
-      <button class="btn modebtn">🤖 Contro il computer<span class="chev">▾</span></button>
+      <button class="btn modebtn">Contro il computer<span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
         <div class="field"><label>Difficoltà</label>
           <div class="seg" data-group="lvl"><button data-lvl="easy" class="${prefs.level === 'easy' ? 'on' : ''}">Facile</button><button data-lvl="normal" class="${prefs.level !== 'easy' ? 'on' : ''}">Normale</button></div></div>
@@ -359,7 +372,7 @@ function renderLobby() {
       </div></div>
     </div>
     <div class="mode ${ui.mode === 'friend' ? 'open' : ''}" data-mode="friend">
-      <button class="btn modebtn">👥 Con un amico<span class="chev">▾</span></button>
+      <button class="btn modebtn">Con un amico<span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
         <div class="field"><label>Tempo per turno</label>${ttSeg}</div>
         <button class="btn primary" id="create">Crea stanza</button>
@@ -370,7 +383,7 @@ function renderLobby() {
     <button class="linkbtn" id="rules">Regole del gioco</button>`}
   </div>${ui.rules ? rulesHtml() : ''}`;
   bindOverlays();
-  $('#music').onclick = () => { setMusic(!prefs.music); $('#music').textContent = prefs.music ? '🎵' : '🔇'; };
+  $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
   if (reconnecting) { $('#forget').onclick = () => { prefs.session = null; render(); }; return; }
   // le scelte aggiornano la pagina senza ridisegnarla, così le animazioni restano fluide
   $$('.mode').forEach((m) => {
@@ -431,9 +444,9 @@ function bfHtml(pl, w, targets) {
   return `<div class="bf" id="bf-${w}">${TYPES.map((t) => {
     const n = pl.bf[t];
     const tg = targets && targets.includes(t);
-    return `<div id="slot-${w}-${t}" class="slot c-${t} ${n ? '' : 'empty'} ${n >= 4 ? 'five' : ''} ${tg ? 'target' : ''}"
+    return `<div id="slot-${w}-${t}" class="slot s-${t} ${n ? 'full' : 'empty'} ${n >= 4 ? 'five' : ''} ${tg ? 'target' : ''}"
       ${tg ? `data-act="target" data-v="${t}"` : ''}>
-      <div class="sym">${SYM[t]}</div><div class="nm">${NAMES[t]}</div>${n ? `<div class="count">${n}</div>` : ''}</div>`;
+      ${SYM[t]}<div class="nm">${NAMES[t]}</div>${n ? `<div class="count">${n}</div>` : ''}</div>`;
   }).join('')}</div>`;
 }
 
@@ -444,11 +457,11 @@ function gyHtml(pl, w, targets) {
   const chips = TYPES.filter((t) => pl.gy[t]).map((t) => {
     const tg = targets && targets.includes(t);
     return `<button id="gy-${w}-${t}" class="gchip c-${t} ${tg ? 'target' : ''}" ${tg ? `data-act="target" data-v="${t}"` : ''}>
-      <span class="sym">${SYM[t]}</span><span class="nm">${NAMES[t]}</span><b>×${pl.gy[t]}</b></button>`;
+      ${SYM[t]}<span class="nm">${NAMES[t]}</span><b>×${pl.gy[t]}</b></button>`;
   }).join('');
   return `<span class="gywrap"><button class="gybadge ${open ? 'open' : ''} ${targets && targets.length && !open ? 'target' : ''}" id="gy-${w}" data-act="gy" data-v="${w}" title="Cimitero">
-      <span>🪦</span><b>${total}</b></button>
-    ${open ? `<div class="gypop ${w}"><div class="gyhead">🪦 Cimitero${w === 'opp' ? ` di ${esc(G.opp.name)}` : ''}</div>
+      ${TOMB}<b>${total}</b></button>
+    ${open ? `<div class="gypop ${w}"><div class="gyhead">Cimitero${w === 'opp' ? ` di ${esc(G.opp.name)}` : ''}</div>
       ${chips || '<div class="gyempty">Vuoto</div>'}</div>` : ''}</span>`;
 }
 
@@ -493,7 +506,7 @@ function stackHtml() {
   if (!p && G.resolving) return `<div id="stack" class="stack-area">${cardHtml(G.resolving.land, 'onstack resolving ' + (G.resolving.owner === G.you ? 'mine' : 'theirs'))}</div>`;
   if (!p) return `<div id="stack" class="stack-area"><div class="stack-slot"></div></div>`;
   const counters = p.counters
-    ? `<div class="ctr ${p.counters % 2 ? 'neg' : 'pos'}">${'💧'.repeat(Math.min(p.counters, 6))}<span>${p.counters % 2 ? '🚫' : '✅'}</span></div>` : '';
+    ? `<div class="ctr ${p.counters % 2 ? 'neg' : 'pos'}">${SYM.U.repeat(Math.min(p.counters, 6))}<span class="${p.counters % 2 ? 'no' : 'yes'}">${p.counters % 2 ? '✕' : '✓'}</span></div>` : '';
   return `<div id="stack" class="stack-area">${cardHtml(p.land, 'onstack ' + (p.owner === G.you ? 'mine' : 'theirs'))}${counters}</div>`;
 }
 
@@ -503,7 +516,7 @@ function statusHtml() {
   if (ui.caption !== null) return { text: ui.caption, cls: 'cap' };
   if (g.phase !== 'playing') return { text: '', cls: '' };
   if (g.step === 'response' && g.pending.responder === me && g.pending.owner !== me && winsWith(g.opp.bf, g.pending.land)) {
-    return { text: `⚠️ Se entra, ${opp} vince!`, cls: 'danger' };
+    return { text: `Se entra, ${opp} vince!`, cls: 'danger' };
   }
   if (!info()) return { text: '', cls: '' };
   if (g.step === 'main') return g.active === me ? { text: 'Il tuo turno', cls: 'mine' } : { text: `Turno di ${opp}`, cls: '' };
@@ -568,13 +581,13 @@ function actionsHtml() {
     if (!plan) return hint(consequenceText(p)); // nessun contrasto possibile: si risolve da solo
     if (!ui.counter) {
       return `${hint(consequenceText(p))}
-        <div class="acts"><button class="btn counterbtn" data-act="counter-start">💧 Contrasta</button>
+        <div class="acts"><button class="btn counterbtn" data-act="counter-start">${SYM.U} Contrasta</button>
         <button class="btn primary" data-act="allow">${allowLabel}</button></div>
         ${hint('Contrastare costa un\'Isola e un\'altra terra dalla tua mano.')}`;
     }
-    const result = p.owner === g.you ? '✅' : '🚫';
-    const second = ui.pick ? `<span class="fcard c-${ui.pick.card}">${SYM[ui.pick.card]}</span>` : '<span class="fcard q">?</span>';
-    return `<div class="formula"><span class="fcard c-U">💧</span><b>+</b>${second}<b>→</b><span class="fcard c-${p.land} res">${SYM[p.land]}<i>${result}</i></span></div>
+    const result = p.owner === g.you ? '<i class="yes">✓</i>' : '<i class="no">✕</i>';
+    const second = ui.pick ? `<span class="fcard">${SYM[ui.pick.card]}</span>` : '<span class="fcard q">?</span>';
+    return `<div class="formula"><span class="fcard">${SYM.U}</span><b>+</b>${second}<b>→</b><span class="fcard res">${SYM[p.land]}${result}</span></div>
       ${ui.pick ? '' : hint('Tocca in mano la seconda terra da scartare.')}
       <div class="acts">${ui.pick ? '<button class="btn counterbtn" data-act="counter-confirm">Conferma</button>' : ''}
       <button class="btn ghost" data-act="counter-cancel">Annulla</button></div>`;
@@ -625,14 +638,14 @@ function renderGame() {
   app.innerHTML = `
   <div class="game ${ui.animating ? 'busy' : ''}">
     <div class="topbar">
-      <span>${S.vsBot ? '🤖 Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
+      <span>${S.vsBot ? 'Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
       <button class="menubtn" data-act="menu" aria-label="Menu">☰</button>
     </div>
     ${timerHtml()}
 
     <section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
       <div class="zhead">
-        <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">⚠️</span>' : ''}</span>
+        <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">!</span>' : ''}</span>
         <div class="backs" id="hand-opp">${'<div class="back"></div>'.repeat(Math.min(g.opp.handCount, 10))}<small>${g.opp.handCount}</small></div>
         ${deckHtml(g.opp, 'opp')}
         ${gyHtml(g.opp, 'opp')}
@@ -640,7 +653,7 @@ function renderGame() {
       ${bfHtml(g.opp, 'opp', tg.opp)}
     </section>
 
-    <section class="center ${centerDrop ? 'droppable' : ''}" id="center" ${task === 'main' && ui.sel && !ui.staged ? 'data-act="center"' : ''}>
+    <section class="center rune-${runeTint} ${centerDrop ? 'droppable' : ''}" id="center" ${task === 'main' && ui.sel && !ui.staged ? 'data-act="center"' : ''}>
       ${stackHtml()}
       <div class="status ${st.cls}" id="status">${st.text}</div>
       <div class="actions-area">${actionsHtml()}</div>
@@ -649,14 +662,13 @@ function renderGame() {
     <section class="zone me ${g.active === me && g.phase === 'playing' ? 'active' : ''}">
       ${bfHtml(g.me, 'me', tg.me)}
       <div class="zhead">
-        <span class="pname"><span class="dot"></span>${esc(g.me.name)}${closeToWin(g.me.bf) ? ' <span class="near">⚠️</span>' : ''}</span>
+        <span class="pname"><span class="dot"></span>${esc(g.me.name)}${closeToWin(g.me.bf) ? ' <span class="near">!</span>' : ''}</span>
         ${deckHtml(g.me, 'me')}
         ${gyHtml(g.me, 'me', tg.gyMe)}
       </div>
     </section>
 
     <div class="hand ${task === 'response' && ui.counter ? 'counter-mode' : ''}" id="hand-me">${handHtml(task)}</div>
-    ${sideHtml()}
   </div>
   <div id="banner" class="banner hidden"></div>
   ${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
@@ -717,27 +729,12 @@ function revealHtml() {
   </div>`;
 }
 
-// Barra laterale (solo su schermi larghi): registro sempre visibile e cimiteri aperti
-function sideHtml() {
-  const g = G;
-  const gyList = (pl) => {
-    const items = TYPES.filter((t) => pl.gy[t]).map((t) => `<span class="schip c-${t}">${SYM[t]} ${NAMES[t]} <b>×${pl.gy[t]}</b></span>`).join('');
-    return items || '<i>vuoto</i>';
-  };
-  return `<aside class="side">
-    <div class="side-sec"><h4>🪦 Cimitero di ${esc(g.opp.name)}</h4><div class="sgy">${gyList(g.opp)}</div></div>
-    <div class="side-sec"><h4>🪦 Il tuo cimitero</h4><div class="sgy">${gyList(g.me)}</div></div>
-    <div class="side-sec grow"><h4>📜 Registro</h4><ol class="slog">${g.log.slice(-40).reverse().map((l) => `<li>${esc(l)}</li>`).join('')}</ol></div>
-    <div class="side-sec keys">⌨️ <b>P</b> passa · <b>Esc</b> annulla · <b>M</b> menu</div>
-  </aside>`;
-}
-
 function overHtml() {
   const g = G;
   const won = g.winner === g.you;
-  const title = g.winner == null ? 'Pareggio' : won ? '🏆 Hai vinto!' : `Ha vinto ${esc(g.opp.name)}`;
+  const title = g.winner == null ? 'Pareggio' : won ? 'Hai vinto!' : `Ha vinto ${esc(g.opp.name)}`;
   const iAsked = S.rematch[g.you], oppAsked = S.rematch[g.opp.seat];
-  return `<div class="overlay"><div class="box">
+  return `<div class="overlay"><div class="box endbox ${g.winner == null ? '' : won ? 'won' : 'lost'}">
     <h2>${title}</h2>
     <p class="muted">${esc(g.endText || '')}</p>
     ${iAsked && !S.vsBot ? `<p>In attesa che ${esc(g.opp.name)} accetti la rivincita…</p>`
@@ -756,14 +753,16 @@ function menuHtml() {
       <p>Vuoi davvero uscire? ${S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
       <button class="btn danger" data-act="leave-now">Esci dalla partita</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
-    <div class="mrow col"><span>🎮 Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>⚡ Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
-    <button class="mrow" data-act="toggle-info">💬 Info nella plancia ${tog(prefs.info)}</button>
-    <button class="mrow" data-act="toggle-music">🎵 Musica ${tog(prefs.music)}</button>
-    <button class="mrow" data-act="toggle-sound">🔊 Effetti sonori ${tog(prefs.sound)}</button>
-    <button class="mrow" data-act="toggle-vibe">📳 Vibrazione ${tog(prefs.vibe)}</button>
-    <div class="mrow two"><button data-act="open-log">📜 Registro</button><button data-act="open-rules">📖 Regole</button></div>
-    <button class="mrow danger" data-act="leave-ask">🚪 Esci dalla partita</button>
+    <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
+    <div class="mrow col"><span>Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
+    <div class="mrow col"><span>Stile delle carte</span>${seg('set-cards', prefs.cardStyle, [['art', 'Illustrate'], ['simple', 'Emblemi']])}</div>
+    <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
+    <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
+    <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
+    <button class="mrow" data-act="toggle-sound">Effetti sonori ${tog(prefs.sound)}</button>
+    <button class="mrow" data-act="toggle-vibe">Vibrazione ${tog(prefs.vibe)}</button>
+    <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button></div>
+    <button class="mrow danger" data-act="leave-ask">Esci dalla partita</button>
     <button class="btn" data-act="menu-close">Chiudi</button>`}
   </div>`;
 }
@@ -808,7 +807,9 @@ function stageCard(card, idx, rect) {
     ui.staged = { card, idx }; ui.sel = null;
     if (card === 'G') ui.gyOpen = 'me';
     Sound.play('play'); vibrate(15);
+    runeTint = card; FX.tint(card);
     render();
+    FX.cast(card, rectOf($('#stack .card')));
     const el = $('#stack .card');
     if (rect && el) fly(rect, el, card, { dur: 220 });
   } else {
@@ -863,6 +864,8 @@ app.addEventListener('click', (e) => {
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-speed': prefs.speed = v; send({ t: 'prefs', speed: SPEEDS[v] }); Sound.play('click'); return render();
+    case 'set-cards': prefs.cardStyle = v; applyPrefs(); Sound.play('click'); return render();
+    case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
     case 'toggle-music': setMusic(!prefs.music); return render();
@@ -918,6 +921,7 @@ function startDrag() {
   document.body.classList.add('dragging');
   moveGhost(drag.x, drag.y);
   Sound.play('grab'); vibrate(15);
+  FX.sparkle(r, drag.card, 8);
 }
 
 function moveGhost(x, y) {
@@ -1127,7 +1131,7 @@ const stackCard = () => $('#stack .card') || $('#stack');
 
 function makeFlyer(face, w, h) {
   const f = document.createElement('div');
-  if (face) { f.className = `flyer card c-${face}`; f.innerHTML = `<div class="sym">${SYM[face]}</div><div class="nm">${NAMES[face]}</div>`; }
+  if (face) { f.className = `flyer card k-${face}`; f.innerHTML = `<div class="nm">${NAMES[face]}</div>`; }
   else f.className = 'flyer cardback';
   Object.assign(f.style, { width: w + 'px', height: h + 'px' });
   document.body.appendChild(f);
@@ -1138,17 +1142,18 @@ function makeFlyer(face, w, h) {
 function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0 } = {}) {
   const to = rectOf(toEl);
   if (!okRect(from) || !okRect(to)) return Promise.resolve();
-  const W = Math.max(46, Math.min(to.width, 70)), H = W * 1.4;
+  const W = Math.max(46, Math.min(Math.max(to.width, from.width * 0.8), 190)), H = W * 1.4;
   const f = makeFlyer(face, W, H);
   const sx = from.left + from.width / 2 - W / 2, sy = from.top + from.height / 2 - H / 2;
   const ex = to.left + to.width / 2 - W / 2, ey = to.top + to.height / 2 - H / 2;
-  const s0 = Math.max(0.3, Math.min(from.width / W, 1.2)), s1 = Math.max(0.3, Math.min(to.width / W, 1.2));
+  const s0 = Math.max(0.15, Math.min(from.width / W, 1.2)), s1 = Math.max(0.15, Math.min(to.width / W, 1.2));
   if (hideTarget && toEl) toEl.style.visibility = 'hidden';
   const anim = f.animate([
     { transform: `translate(${sx}px, ${sy}px) scale(${s0})`, opacity: 0.9 },
     { transform: `translate(${(sx + ex) / 2}px, ${Math.min(sy, ey) - 30}px) scale(${Math.max(s0, s1) * 1.08})`, opacity: 1, offset: 0.5 },
     { transform: `translate(${ex}px, ${ey}px) scale(${s1})`, opacity: 1 },
   ], { duration: D(dur), delay: D(delay), easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' });
+  setTimeout(() => FX.trail(f, face || 'N', D(dur)), D(delay));
   return anim.finished.catch(() => {}).then(() => {
     f.remove();
     if (hideTarget && toEl) toEl.style.visibility = '';
@@ -1174,14 +1179,14 @@ function banner(text, mine) {
 function setCaption(text) {
   ui.caption = text;
   const s = $('#status');
-  if (s) { s.textContent = text; s.className = 'status cap'; }
+  if (s) { s.innerHTML = text; s.className = 'status cap'; }
 }
 
 function endSound(ev) {
   if (!G) return;
   if (ev.winner == null) Sound.play('lose');
-  else if (ev.winner === G.you) { Sound.play('win'); vibrate([60, 40, 120]); }
-  else { Sound.play('lose'); vibrate(200); }
+  else if (ev.winner === G.you) { Sound.play('win'); vibrate([60, 40, 120]); FX.win(); }
+  else { Sound.play('lose'); vibrate(200); FX.lose(); }
 }
 
 async function animateStep(ev, next) {
@@ -1191,7 +1196,7 @@ async function animateStep(ev, next) {
     return;
   }
   const w = who(ev.player);
-  const opp = G.opp.name;
+  const opp = esc(G.opp.name);
   const say = (p, mine, theirs) => (p === G.you ? mine.charAt(0).toUpperCase() + mine.slice(1) : `${opp} ${theirs}`);
   // origine delle frecce degli effetti: la terra che risolve, o la terra riattivata dalla Pianura
   const srcEl = () => (lastReuse ? slotEl(lastReuse.w, lastReuse.card) : stackCard());
@@ -1203,7 +1208,7 @@ async function animateStep(ev, next) {
       G = next; ui.caption = ''; render();
       const mine = ev.player === G.you;
       if (mine) { Sound.play('turn'); vibrate(30); }
-      await banner(mine ? 'Il tuo turno' : `Turno di ${opp}`, mine);
+      await banner(mine ? 'Il tuo turno' : `Turno di ${G.opp.name}`, mine);
       return;
     }
     case 'draw': {
@@ -1212,7 +1217,7 @@ async function animateStep(ev, next) {
       Sound.play('draw');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
       await fly(from, to, w === 'me' ? ev.card : null, { dur: 380 });
-      if (w === 'me') pulse(to, 'newcard', 700);
+      if (w === 'me') { pulse(to, 'newcard', 700); FX.sparkle(rectOf(to), ev.card, 6); }
       return;
     }
     case 'play': {
@@ -1223,7 +1228,10 @@ async function animateStep(ev, next) {
       G = next; render(); clearArrows('pending');
       if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
+      runeTint = ev.card; FX.tint(ev.card);
+      const cen = $('#center'); if (cen) cen.className = cen.className.replace(/rune-\w/, 'rune-' + ev.card);
       await fly(from, stackCard(), ev.card, { dur: 420 });
+      FX.cast(ev.card, rectOf(stackCard()));
       if (ev.target) { lastArrowKey = null; drawArrows(); await pulse(pendingTargetEl(G.pending), 'aimed', 500); }
       else await wait(250);
       return;
@@ -1237,7 +1245,7 @@ async function animateStep(ev, next) {
       else { fromU = fromX = rectOf(handEl('opp')); }
       lastCounter = null;
       G = next; render();
-      setCaption(say(ev.player, `contrasti (💧 + ${SYM[ev.other]})`, `contrasta (💧 + ${SYM[ev.other]})`));
+      setCaption(say(ev.player, `contrasti ${SYM.U}+${SYM[ev.other]}`, `contrasta ${SYM.U}+${SYM[ev.other]}`));
       Sound.play('counter');
       if (ev.player !== G.you) vibrate(60);
       const st = $('#stack');
@@ -1246,7 +1254,8 @@ async function animateStep(ev, next) {
         fly(fromU, gyEl(w, 'U'), 'U', { dur: 480 }),
         fly(fromX, gyEl(w, ev.other), ev.other, { dur: 480, delay: 120 }),
       ]);
-      await flashArrow(gyEl(w), stackCard(), ARROW_COLOR.U, 450);
+      FX.counter(rectOf(stackCard()));
+      await wait(550);
       return;
     }
     case 'countered': {
@@ -1255,7 +1264,8 @@ async function animateStep(ev, next) {
       if (sc && sc.classList.contains('card')) {
         const stamp = document.createElement('div'); stamp.className = 'stamp'; stamp.textContent = 'ANNULLATA';
         sc.appendChild(stamp);
-        await wait(500);
+        await wait(450);
+        FX.dissolve(rectOf(sc), ev.card);
         sc.classList.add('fizzle');
         await wait(350);
       }
@@ -1274,7 +1284,8 @@ async function animateStep(ev, next) {
       Sound.play('land');
       const to = slotEl(w, ev.card);
       await fly(from, to, ev.card, { dur: 420 });
-      await pulse(to, 'landed', 450);
+      FX.enter(ev.card, rectOf(to));
+      await pulse(to, 'landed', 650);
       return;
     }
     case 'destroy': {
@@ -1282,6 +1293,7 @@ async function animateStep(ev, next) {
       if (direct('R', ev.card)) await wait(150); else await flashArrow(srcEl(), s, ARROW_COLOR.R, 450);
       arrowDone = `${G.turn}|${r ? r.land : ''}`; clearArrows('pending');
       Sound.play('destroy');
+      FX.destroy(rectOf(s));
       if (ev.player === G.you) vibrate(80);
       await pulse(s, 'boom', 450);
       const from = rectOf(s);
@@ -1293,6 +1305,7 @@ async function animateStep(ev, next) {
       if (!direct('G', ev.card)) await flashArrow(srcEl(), gyEl(w), ARROW_COLOR.G, 400);
       const from = rectOf(gyEl(w, ev.card));
       arrowDone = `${G.turn}|${r ? r.land : ''}`; clearArrows('pending');
+      FX.regrow(from);
       G = next; render();
       Sound.play('regrow');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
@@ -1301,6 +1314,7 @@ async function animateStep(ev, next) {
     }
     case 'discard': {
       const from = rectOf(w === 'me' ? handEl('me', ev.card) : handEl('opp'));
+      FX.discard(from);
       G = next; render();
       Sound.play('discard');
       await fly(from, gyEl(w, ev.card), ev.card, { dur: 420 });
@@ -1311,12 +1325,15 @@ async function animateStep(ev, next) {
       await flashArrow(srcEl(), target, ARROW_COLOR.B, 450);
       G = next; render();
       Sound.play('look');
-      if (ev.player !== G.you) { setCaption('👀'); await pulse($('#hand-me'), 'peek', 700); }
+      FX.look(rectOf(target));
+      if (ev.player !== G.you) { setCaption(`${opp} scruta la tua mano`); await pulse($('#hand-me'), 'peek', 700); }
+      else await wait(350);
       return;
     }
     case 'reuse': {
       G = next; render(); // la freccia Pianura → terra riattivata è già sul tavolo
       Sound.play('reuse');
+      FX.reuse(rectOf(slotEl(w, ev.card)));
       lastReuse = { w, card: ev.card }; // l'effetto riattivato parte da questa terra
       await pulse(slotEl(w, ev.card), 'shine', 650);
       return;
@@ -1329,7 +1346,7 @@ async function animateStep(ev, next) {
     }
     case 'timeout': {
       G = next; render();
-      setCaption('⏱ Tempo scaduto');
+      setCaption('Tempo scaduto');
       Sound.play('timeout');
       if (ev.player === G.you) vibrate(150);
       await wait(700);
@@ -1379,5 +1396,8 @@ document.addEventListener('keydown', (e) => {
   if (k === 'm') { ui.menu = !ui.menu; ui.confirmLeave = false; return render(); }
   if (k === 'p' && myTask() === 'main' && !ui.staged) return act({ type: 'pass' });
 });
+FX.init();
+applyPrefs();
+FX.setAmbient(true);
 render();
 connect();

@@ -32,6 +32,14 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - **Android (Chrome):** apri il sito → menu ⋮ → *Installa app* / *Aggiungi a schermata Home*.
 - **iPhone (Safari):** tasto Condividi → *Aggiungi alla schermata Home*.
 
+## Grafica
+
+- Stile dark fantasy in pixel art moderna: altare di pietra con cerchio runico che prende il colore dell'ultima terra giocata.
+- Tutta l'arte è generata da `tools/make_art.py` (Pillow + numpy) in `public/art/`: per cambiarla si modifica lo script e lo si rilancia.
+- Due stili di carta, a scelta dal menu: **Illustrate** (un paesaggio per terra) ed **Emblemi** (più semplice).
+- Effetti particellari (`public/fx.js`, canvas a bassa risoluzione): radici e foglie per la Foresta, eruzione di fuoco per la Montagna, schizzi e onde per l'Isola, fumo e ombre per la Palude, colonna di luce per la Pianura; esplosione quando una terra viene distrutta, onda per il contrasto, carta che si sbriciola quando è annullata, scie dietro le carte in volo. Dal menu si può passare a "Effetti ridotti".
+- Su PC e tablet in orizzontale il tavolo occupa tutto lo schermo; il registro è nel menu.
+
 ## Funzioni
 
 - **Partita contro il computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
@@ -58,7 +66,8 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).
 - `bot.js` – giocatore computer.
 - `server.js` – server HTTP + WebSocket, gestione stanze e riconnessione.
-- `public/` – client (HTML/CSS/JS), manifest e service worker.
+- `public/` – client (HTML/CSS/JS), effetti (`fx.js`), arte (`art/`), manifest e service worker.
+- `tools/make_art.py` – genera la pixel art.
 - `test/` – test delle regole e test end-to-end con due client.
 
 ## Regole implementate
