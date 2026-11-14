@@ -40,6 +40,7 @@ class Game {
     this.step = null; // 'main' | 'response' | 'choice'
     this.landPlayed = false;
     this.pending = null; // { owner, land, target, counters, responder }
+    this.resolving = null; // terra che sta risolvendo il suo effetto (non ancora in gioco)
     this.choice = null; // { player, kind, options }
     this.passStreak = 0;
     this.lastLandPlayer = null;
@@ -266,16 +267,33 @@ class Game {
       this.endTurn();
       return;
     }
+    // Se questa terra fa vincere, entra subito e la partita finisce.
     me.bf[land]++;
-    this.lastLandPlayer = owner;
-    this.addLog(`${NAMES[land]} entra in gioco per ${me.name}.`);
-    this.emit({ type: 'enter', player: owner, card: land });
-    if (this.hasWon(owner)) {
-      const five = TYPES.find((t) => me.bf[t] >= 5);
-      this.endGame(owner, 'combo', five ? `${me.name} ha 5 ${NAMES[five]} in gioco!` : `${me.name} ha una terra di ogni tipo in gioco!`);
-      return;
-    }
+    const wins = this.hasWon(owner);
+    me.bf[land]--;
+    this.resolving = { owner, land, target };
+    if (wins) { this.finishResolve(); return; }
+    // Altrimenti prima si risolve l'effetto, poi la terra va al suo posto (finishResolve).
     this.applyEffect(owner, land, target, false);
+  }
+
+  // La terra risolta entra in gioco; controlla la vittoria e chiude il turno.
+  finishResolve() {
+    const r = this.resolving;
+    this.resolving = null;
+    if (r) {
+      const me = this.players[r.owner];
+      me.bf[r.land]++;
+      this.lastLandPlayer = r.owner;
+      this.addLog(`${NAMES[r.land]} entra in gioco per ${me.name}.`);
+      this.emit({ type: 'enter', player: r.owner, card: r.land });
+      if (this.hasWon(r.owner)) {
+        const five = TYPES.find((t) => me.bf[t] >= 5);
+        this.endGame(r.owner, 'combo', five ? `${me.name} ha 5 ${NAMES[five]} in gioco!` : `${me.name} ha una terra di ogni tipo in gioco!`);
+        return;
+      }
+    }
+    this.endTurn();
   }
 
   // Applica l'effetto d'ingresso. Ritorna dopo aver chiuso il turno o aperto una scelta.
@@ -324,7 +342,7 @@ class Game {
         }
         break;
     }
-    this.endTurn();
+    this.finishResolve();
   }
 
   destroy(p, t) {
@@ -355,7 +373,7 @@ class Game {
       this.regrow(p, c);
     }
     this.choice = null;
-    this.endTurn();
+    this.finishResolve();
     return null;
   }
 
@@ -379,6 +397,7 @@ class Game {
       hand: sortTypes(me.hand),
       landPlayed: this.landPlayed,
       pending: this.pending ? { ...this.pending } : null,
+      resolving: this.resolving ? { ...this.resolving } : null,
       choice: null,
       winner: this.winner, endReason: this.endReason, endText: this.endText || '',
       firstPlayer: this.firstPlayer,

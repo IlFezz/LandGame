@@ -166,7 +166,7 @@ function stateMsg(room, i, events) {
   const msg = {
     t: 'state', code: room.code, seat: i, now: Date.now(),
     seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn || !!x.bot, bot: !!x.bot } : null)),
-    vsBot: !!room.bot,
+    vsBot: !!room.bot, botLevel: room.botLevel || null,
     rematch: room.rematch.slice(), turnTime: room.turnTime,
     timer: room.timer ? { deadline: room.timer.deadline, total: room.timer.total, actor: room.timer.actor } : null,
     game: room.game ? room.game.view(i) : null,
@@ -212,7 +212,7 @@ function scheduleBot(room, nEvents) {
   const handle = setTimeout(() => {
     room.botTimer = null;
     if (!room.game || room.game !== g || g.actor() !== BOT_SEAT) return;
-    const a = new Bot(g, BOT_SEAT).decide();
+    const a = new Bot(g, BOT_SEAT, { level: room.botLevel }).decide();
     if (!a || g.act(BOT_SEAT, a)) g.act(BOT_SEAT, g.step === 'main' ? { type: 'pass' } : { type: 'allow' });
     broadcast(room, g.takeEvents());
   }, (animTime(room, nEvents) + think) * TIME_SCALE);
@@ -263,7 +263,9 @@ function handleConnection(conn) {
         seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, { name: 'Computer 🤖', token: null, conn: null, bot: true }],
         game: null, rematch: [false, false], touched: Date.now(), timer: null, botTimer: null,
         turnTime: TURN_TIMES.includes(tt) ? tt : 60, animFactor: speedOf(m.speed),
+        botLevel: m.level === 'easy' ? 'easy' : 'normal',
       };
+      room.seats[1].name = room.botLevel === 'easy' ? 'Computer (facile)' : 'Computer';
       rooms.set(code, room);
       attach(conn, room, 0);
       startGame(room);

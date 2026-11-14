@@ -68,7 +68,7 @@ input { font: inherit; }
 
 .zone { position: relative; background: var(--panel); border-radius: 14px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; flex: none; transition: box-shadow .3s; }
 .zone.active { box-shadow: inset 0 0 0 2px var(--accent); }
-.zhead { display: flex; align-items: center; gap: 10px; font-size: 12px; height: 26px; }
+.zhead { display: flex; align-items: center; gap: 10px; font-size: 12px; height: 38px; }
 .zhead .pname { margin-right: auto; min-width: 0; }
 .pname { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .near { animation: throb 1s ease-in-out infinite; display: inline-block; }
@@ -97,8 +97,10 @@ input { font: inherit; }
 
 /* Cimitero: segnalino + dettaglio a comparsa */
 .gywrap { position: relative; display: inline-flex; }
-.gybadge { display: inline-flex; align-items: center; gap: 4px; background: #15131c; border: 1px solid #3a3548; padding: 3px 9px; border-radius: 12px; font-size: 13px; }
-.gybadge b { font-size: 13px; }
+.gybadge { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #15131c; border: 1.5px solid #4a4459;
+  min-width: 58px; height: 38px; padding: 0 12px; border-radius: 12px; font-size: 18px; box-shadow: 0 2px 6px #0006; }
+.gybadge b { font-size: 16px; }
+.gybadge:active { transform: scale(.95); }
 .gybadge.open { border-color: var(--accent); }
 .gypop { position: absolute; right: 0; z-index: 25; background: #1b1824; border: 1px solid #4a4459; border-radius: 14px; padding: 8px; min-width: 190px;
   display: flex; flex-direction: column; gap: 5px; box-shadow: 0 12px 30px #000c; animation: gyopen .22s cubic-bezier(.2,.9,.3,1.2); }
@@ -237,7 +239,8 @@ body.dragging { cursor: grabbing; }
 /* Schermi bassi: compatta tutto */
 @media (max-height: 640px) {
   .topbar { height: 28px; }
-  .zhead { height: 22px; }
+  .zhead { height: 34px; }
+  .gybadge { height: 34px; }
   .zone { padding: 4px 6px; gap: 4px; }
   .slot .nm { display: none; }
   .hand { height: 100px; }
@@ -284,3 +287,89 @@ body.dragging { cursor: grabbing; }
 .seg.small { background: var(--panel); }
 .seg.small button { padding: 7px 0; font-size: 13.5px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- Home: modalità che si aprono verso il basso ---------- */
+.lobby { position: relative; }
+.musicbtn { position: absolute; top: 14px; right: 16px; width: 44px; height: 44px; border-radius: 50%; background: var(--panel); font-size: 20px; }
+.mode { background: var(--panel); border-radius: 14px; overflow: hidden; transition: box-shadow .2s; }
+.mode.open { box-shadow: inset 0 0 0 2px var(--accent); }
+.modebtn { width: 100%; display: flex; justify-content: space-between; align-items: center; background: transparent; font-size: 16px; padding: 15px 16px; }
+.chev { transition: transform .3s; color: var(--muted); }
+.mode.open .chev { transform: rotate(180deg); }
+.modebody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s cubic-bezier(.2,.8,.2,1); }
+.mode.open .modebody { grid-template-rows: 1fr; }
+.modeinner { overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 0 14px; }
+.mode.open .modeinner { padding-bottom: 14px; }
+.modeinner .row { align-items: stretch; }
+.modeinner .row .code-input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid #3a3548; color: var(--text); border-radius: 10px; padding: 10px; outline: none; }
+.modeinner .row .btn { flex: none; }
+
+/* ---------- Palude: mano rivelata a schermo intero ---------- */
+.overlay.blur { background: #0009; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 22px; }
+.rv-title { color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.rv-cards { display: flex; flex-wrap: nowrap; gap: 14px; justify-content: center; max-width: 900px; }
+.card.big { width: clamp(64px, min(calc((100vw - 40px) / var(--n, 4) - 14px), 24vh), 170px); padding: 14px 6px 10px; font-size: clamp(13px, 2vh, 17px); border-radius: 14px;
+  animation: dealin .35s ease-out both; cursor: pointer; box-shadow: 0 0 0 3px #e0b75a88, 0 12px 28px #000c; }
+.card.big .sym { font-size: clamp(36px, 6vh, 60px); }
+.card.big .fx { font-size: clamp(10px, 1.5vh, 13px); }
+.card.big:hover, .card.big:active { transform: translateY(-6px) scale(1.04); box-shadow: 0 0 0 3px var(--accent), 0 0 26px var(--accent); }
+@keyframes dealin { from { transform: translateY(30px) rotateY(80deg); opacity: 0 } }
+.card.onstack.resolving { box-shadow: 0 0 0 2px #fff8, 0 0 20px #fff4; }
+
+/* ---------- Barra laterale (solo schermi larghi) ---------- */
+.side { display: none; }
+
+/* ---------- Tablet ---------- */
+@media (min-width: 700px) {
+  .game { max-width: 980px; padding: 10px 18px calc(10px + var(--safe-b)); gap: 10px; }
+  .topbar { height: 44px; font-size: 15px; }
+  .menubtn { width: 48px; height: 42px; font-size: 22px; }
+  .timer { height: 22px; border-radius: 11px; } .tlabel { line-height: 22px; font-size: 13px; }
+  .zone { padding: 10px 14px; gap: 10px; border-radius: 18px; }
+  .zhead { height: 46px; gap: 16px; }
+  .pname { font-size: 18px; }
+  .deck { font-size: 15px; } .pile { width: 20px; height: 28px; }
+  .back { width: 16px; height: 24px; } .backs small { font-size: 15px; }
+  .gybadge { height: 46px; min-width: 76px; font-size: 22px; } .gybadge b { font-size: 19px; }
+  .bf { gap: 12px; }
+  .slot { height: clamp(80px, 11vh, 130px); font-size: 13px; border-radius: 12px; }
+  .slot .sym { font-size: clamp(26px, 4vh, 38px); }
+  .slot .count { min-width: 30px; height: 30px; border-radius: 15px; font-size: 15px; }
+  .center { border-radius: 18px; gap: 10px; }
+  .card.onstack { width: clamp(80px, 11vh, 120px); font-size: 13px; padding: 10px 4px; }
+  .card.onstack .sym { font-size: clamp(30px, 5vh, 46px); }
+  .stack-slot { width: 80px; height: 112px; }
+  .status { font-size: 18px; }
+  .hint { font-size: 15px; }
+  .btn { font-size: 17px; }
+  .passbtn { font-size: 19px; padding: 13px 36px; }
+  .fcard { width: 54px; height: 72px; font-size: 28px; }
+  .hand { height: clamp(150px, 19vh, 210px); }
+  .hand .card { width: clamp(90px, 10vh, 130px); bottom: 14px; padding: 12px 5px 8px; font-size: 14px; border-radius: 12px; }
+  .hand .card .sym { font-size: clamp(32px, 4.4vh, 46px); }
+  .hand .card .fx { font-size: 11.5px; }
+  .gypop { min-width: 240px; } .gchip { font-size: 15px; padding: 10px 12px; }
+  .banner { font-size: 32px; padding: 18px 36px; }
+}
+
+/* ---------- PC e tablet in orizzontale: tutto lo schermo, con barra laterale ---------- */
+@media (min-width: 1000px) and (min-aspect-ratio: 1/1) {
+  .game { max-width: 1500px; display: grid; gap: 12px 18px; padding: 14px 22px;
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 22vw, 340px);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "top top" "timer side" "opp side" "center side" "me side" "hand side"; }
+  .topbar { grid-area: top; } #timer { grid-area: timer; } .zone.opp { grid-area: opp; } .center { grid-area: center; }
+  .zone.me { grid-area: me; } .hand { grid-area: hand; }
+  .side { grid-area: side; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .side-sec { background: var(--panel); border-radius: 16px; padding: 12px 14px; font-size: 14px; }
+  .side-sec h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .side-sec.grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .sgy { display: flex; flex-wrap: wrap; gap: 6px; } .sgy i { color: var(--muted); }
+  .schip { padding: 5px 9px; border-radius: 8px; font-weight: 700; font-size: 13px; }
+  .slog { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .slog li:first-child { color: var(--text); }
+  .side-sec.keys { font-size: 12.5px; color: var(--muted); } .keys b { color: var(--text); background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+  .slot { height: clamp(84px, 12vh, 140px); }
+  .hand { height: clamp(170px, 21vh, 240px); }
+  .hand .card { width: clamp(100px, 11.5vh, 150px); }
+}

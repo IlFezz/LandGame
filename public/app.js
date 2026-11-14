@@ -44,6 +44,8 @@ const prefs = {
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
   get info() { return ls.get('info', false); }, set info(v) { ls.set('info', v); },
+  get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
+  get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
   get speed() { const v = ls.get('speed', 'slow'); return SPEEDS[v] ? v : 'slow'; }, set speed(v) { ls.set('speed', v); },
 };
 // Durata scalata secondo la velocità scelta
@@ -58,6 +60,7 @@ const Sound = {
     try {
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (prefs.music && !document.hidden) Music.start();
     } catch {}
   },
   tone(freq, dur, { type = 'sine', vol = 0.12, at = 0, to = null } = {}) {
@@ -108,13 +111,95 @@ const Sound = {
 };
 document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
 
+// ---------- Musica di sottofondo: ambient generata al volo, morbida e lenta ----------
+const Music = {
+  on: false, master: null, bus: null, timer: null, nextChord: 0, nextNote: 0, step: 0,
+  // Am9 · Fmaj7 · Cadd9 · G6 (note MIDI)
+  chords: [[45, 57, 60, 64, 71], [41, 57, 60, 64, 69], [36, 55, 60, 62, 64], [43, 55, 59, 62, 64]],
+  scale: [69, 72, 74, 76, 79, 81, 84],
+  mtof: (m) => 440 * 2 ** ((m - 69) / 12),
+  setup() {
+    const c = Sound.ctx;
+    this.master = c.createGain(); this.master.gain.value = 0;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500;
+    const rev = c.createConvolver();
+    const len = Math.floor(c.sampleRate * 3.5), buf = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.5; }
+    rev.buffer = buf;
+    const dry = c.createGain(); dry.gain.value = 0.55;
+    const wet = c.createGain(); wet.gain.value = 0.7;
+    lp.connect(dry).connect(this.master);
+    lp.connect(rev).connect(wet).connect(this.master);
+    this.master.connect(c.destination);
+    this.bus = lp;
+  },
+  start() {
+    const c = Sound.ctx;
+    if (this.on || !c) return;
+    if (!this.master) this.setup();
+    this.on = true;
+    this.master.gain.cancelScheduledValues(c.currentTime);
+    this.master.gain.setTargetAtTime(0.11, c.currentTime, 1.8);
+    this.nextChord = Math.max(this.nextChord, c.currentTime + 0.1);
+    this.nextNote = this.nextChord + 2;
+    this.timer = setInterval(() => this.tick(), 300);
+  },
+  stop() {
+    if (!this.on) return;
+    this.on = false;
+    clearInterval(this.timer);
+    const c = Sound.ctx;
+    this.master.gain.cancelScheduledValues(c.currentTime);
+    this.master.gain.setTargetAtTime(0, c.currentTime, 0.5);
+  },
+  tick() {
+    const c = Sound.ctx;
+    if (!c || c.state !== 'running') return;
+    while (this.nextChord < c.currentTime + 1.5) { this.chord(this.nextChord); this.nextChord += 9; }
+    while (this.nextNote < c.currentTime + 1.5) {
+      if (Math.random() < 0.7) this.note(this.nextNote);
+      this.nextNote += 1.4 + Math.random() * 2.8;
+    }
+  },
+  voice(freq, t, { type = 'sine', peak = 0.04, attack = 2.5, hold = 6, release = 3.5, detune = 0 } = {}) {
+    const c = Sound.ctx;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = freq; o.detune.value = detune;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + attack);
+    g.gain.setValueAtTime(peak, t + attack + hold);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + hold + release);
+    o.connect(g).connect(this.bus);
+    o.start(t); o.stop(t + attack + hold + release + 0.1);
+  },
+  chord(t) {
+    const notes = this.chords[this.step++ % this.chords.length];
+    notes.forEach((m, i) => {
+      const f = this.mtof(m);
+      if (i === 0) { this.voice(f, t, { peak: 0.05 }); return; } // basso
+      this.voice(f, t + i * 0.12, { type: 'triangle', peak: 0.018, detune: -6 });
+      this.voice(f, t + i * 0.12, { peak: 0.022, detune: 6 });
+    });
+  },
+  note(t) {
+    const m = this.scale[Math.floor(Math.random() * this.scale.length)];
+    this.voice(this.mtof(m), t, { type: 'triangle', peak: 0.03, attack: 0.02, hold: 0.05, release: 2.6 });
+  },
+};
+function setMusic(on) {
+  prefs.music = on;
+  Sound.unlock();
+  if (on) Music.start(); else Music.stop();
+}
+
 // ---------- Vibrazione ----------
 // Android: Vibration API. iPhone (Safari 18+): non ha l'API, ma un interruttore "switch" nascosto produce un feedback aptico.
 let iosSwitch = null;
 function vibrate(pattern) {
   if (!prefs.vibe) return;
   try {
-    if (navigator.vibrate) { navigator.vibrate(pattern); return; }
+    // sotto i ~35 ms molti telefoni Android non vibrano affatto
+    if (navigator.vibrate) { navigator.vibrate(Array.isArray(pattern) ? pattern : Math.max(40, pattern)); return; }
     if (!iosSwitch) {
       const label = document.createElement('label');
       label.style.cssText = 'position:fixed;left:-100px;top:-100px;opacity:0;pointer-events:none';
@@ -132,6 +217,7 @@ let S = null;          // metadati stanza dall'ultimo messaggio
 let G = null;          // vista di gioco attualmente mostrata
 let clockOffset = 0;   // ora server - ora locale
 const ui = {
+  mode: null,           // modalità aperta nella home
   sel: null,            // { card, idx } carta sollevata (comandi a tocco)
   staged: null,         // { card, idx } carta posata al centro in attesa del bersaglio
   counter: false,       // sto scegliendo come contrastare
@@ -142,7 +228,7 @@ const ui = {
 };
 let lastPlay = null;     // { card, idx, rect } per far partire l'animazione dalla carta giusta
 let lastCounter = null;  // { islandIdx, pickIdx }
-let lastEnter = null;    // { w, card } ultima terra entrata (origine delle frecce degli effetti)
+let lastReuse = null;    // { w, card } terra riattivata dalla Pianura (origine delle frecce del suo effetto)
 let needRender = false;
 let autoAllowKey = null;
 
@@ -250,31 +336,57 @@ function renderLobby() {
   clearArrows();
   const params = new URLSearchParams(location.search);
   const pre = (params.get('room') || '').toUpperCase();
+  if (pre && !ui.mode) ui.mode = 'friend';
   const reconnecting = prefs.session && !S;
   const tt = prefs.turnTime;
+  const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
   app.innerHTML = `
   <div class="lobby">
+    <button class="musicbtn" id="music" aria-label="Musica">${prefs.music ? '🎵' : '🔇'}</button>
     ${pips()}
     <h1>Basic Land Game</h1>
     <p class="sub">10 terre per colore. Fai dominio o cinque uguali.</p>
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
     <div class="field"><label>Il tuo nome</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="Es. Claudio" autocomplete="nickname"></div>
-    <div class="field"><label>Tempo per turno</label>
-      <div class="seg">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div></div>
-    <button class="btn primary" id="bot">🤖 Gioca contro il computer</button>
-    <button class="btn" id="create">👥 Crea stanza per 2 giocatori</button>
-    <div class="or">oppure entra con un codice</div>
-    <div class="field"><input id="code" class="code-input" maxlength="4" value="${esc(pre)}" placeholder="CODICE" autocomplete="off" autocapitalize="characters"></div>
-    <button class="btn" id="join">Entra nella stanza</button>
+    <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
+      <button class="btn modebtn">🤖 Contro il computer<span class="chev">▾</span></button>
+      <div class="modebody"><div class="modeinner">
+        <div class="field"><label>Difficoltà</label>
+          <div class="seg" data-group="lvl"><button data-lvl="easy" class="${prefs.level === 'easy' ? 'on' : ''}">Facile</button><button data-lvl="normal" class="${prefs.level !== 'easy' ? 'on' : ''}">Normale</button></div></div>
+        <div class="field"><label>Tempo per turno</label>${ttSeg}</div>
+        <button class="btn primary" id="bot">Inizia la partita</button>
+      </div></div>
+    </div>
+    <div class="mode ${ui.mode === 'friend' ? 'open' : ''}" data-mode="friend">
+      <button class="btn modebtn">👥 Con un amico<span class="chev">▾</span></button>
+      <div class="modebody"><div class="modeinner">
+        <div class="field"><label>Tempo per turno</label>${ttSeg}</div>
+        <button class="btn primary" id="create">Crea stanza</button>
+        <div class="or">oppure entra con un codice</div>
+        <div class="row"><input id="code" class="code-input" maxlength="4" value="${esc(pre)}" placeholder="CODICE" autocomplete="off" autocapitalize="characters"><button class="btn" id="join">Entra</button></div>
+      </div></div>
+    </div>
     <button class="linkbtn" id="rules">Regole del gioco</button>`}
   </div>${ui.rules ? rulesHtml() : ''}`;
   bindOverlays();
+  $('#music').onclick = () => { setMusic(!prefs.music); $('#music').textContent = prefs.music ? '🎵' : '🔇'; };
   if (reconnecting) { $('#forget').onclick = () => { prefs.session = null; render(); }; return; }
-  $$('.seg button').forEach((b) => { b.onclick = () => { prefs.turnTime = Number(b.dataset.tt); render(); }; });
-  const getName = () => { const n = $('#name').value.trim(); if (!n) { toast('Scrivi il tuo nome'); return null; } prefs.name = n; return n; };
+  // le scelte aggiornano la pagina senza ridisegnarla, così le animazioni restano fluide
+  $$('.mode').forEach((m) => {
+    $('.modebtn', m).onclick = () => {
+      const open = !m.classList.contains('open');
+      $$('.mode').forEach((x) => x.classList.remove('open'));
+      if (open) m.classList.add('open');
+      ui.mode = open ? m.dataset.mode : null;
+      Sound.play('click');
+    };
+  });
+  $$('[data-tt]').forEach((b) => { b.onclick = () => { prefs.turnTime = Number(b.dataset.tt); $$('[data-tt]').forEach((x) => x.classList.toggle('on', x.dataset.tt === b.dataset.tt)); }; });
+  $$('[data-lvl]').forEach((b) => { b.onclick = () => { prefs.level = b.dataset.lvl; $$('[data-lvl]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  const getName = () => { const n = $('#name').value.trim(); if (!n) { toast('Scrivi il tuo nome'); $('#name').focus(); return null; } prefs.name = n; return n; };
   const speed = SPEEDS[prefs.speed];
-  $('#bot').onclick = () => { const n = getName(); if (n) send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed }); };
+  $('#bot').onclick = () => { const n = getName(); if (n) send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed, level: prefs.level }); };
   $('#create').onclick = () => { const n = getName(); if (n) send({ t: 'create', name: n, turnTime: prefs.turnTime, speed }); };
   $('#join').onclick = () => {
     const n = getName(); if (!n) return;
@@ -378,6 +490,7 @@ function stackHtml() {
   if (ui.staged) {
     return `<div id="stack" class="stack-area">${cardHtml(ui.staged.card, 'onstack staged', '', '<button class="unstage" data-act="unstage" aria-label="Annulla">✕</button>')}</div>`;
   }
+  if (!p && G.resolving) return `<div id="stack" class="stack-area">${cardHtml(G.resolving.land, 'onstack resolving ' + (G.resolving.owner === G.you ? 'mine' : 'theirs'))}</div>`;
   if (!p) return `<div id="stack" class="stack-area"><div class="stack-slot"></div></div>`;
   const counters = p.counters
     ? `<div class="ctr ${p.counters % 2 ? 'neg' : 'pos'}">${'💧'.repeat(Math.min(p.counters, 6))}<span>${p.counters % 2 ? '🚫' : '✅'}</span></div>` : '';
@@ -468,9 +581,7 @@ function actionsHtml() {
   }
   if (task === 'choice') {
     const c = g.choice;
-    if (c.kind === 'discard') {
-      return `<div class="revealed">${c.revealed.map((t) => cardHtml(t, 'small pick', `data-act="choose" data-v="${t}"`)).join('')}</div>`;
-    }
+    if (c.kind === 'discard') return '';
     return hint(c.kind === 'destroy' ? 'Tocca la terra avversaria da distruggere.' : 'Tocca nel tuo cimitero la terra da recuperare.');
   }
   return '';
@@ -545,8 +656,10 @@ function renderGame() {
     </section>
 
     <div class="hand ${task === 'response' && ui.counter ? 'counter-mode' : ''}" id="hand-me">${handHtml(task)}</div>
+    ${sideHtml()}
   </div>
   <div id="banner" class="banner hidden"></div>
+  ${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
   ${g.phase === 'over' && !ui.animating ? overHtml() : ''}
   ${ui.menu ? menuHtml() : ''}
   ${ui.log ? logHtml() : ''}
@@ -579,7 +692,7 @@ function layoutHand() {
   if (!n) return;
   const W = hand.clientWidth;
   const cw = cards[0].offsetWidth || 66;
-  const pad = 6 + cw * 0.08; // margine per la rotazione delle carte esterne
+  const pad = 10 + cw * 0.14; // margine per la rotazione delle carte esterne
   const step = n > 1 ? Math.min(cw + 6, (W - cw - pad * 2) / (n - 1)) : 0;
   const total = cw + step * (n - 1);
   const start = Math.max(pad, (W - total) / 2);
@@ -594,6 +707,30 @@ function layoutHand() {
   });
 }
 window.addEventListener('resize', () => { layoutHand(); drawArrows(); });
+
+// Palude: la mano avversaria a schermo intero, sfondo sfocato
+function revealHtml() {
+  const c = G.choice;
+  return `<div class="overlay blur reveal">
+    <div class="rv-title">Mano di ${esc(G.opp.name)}</div>
+    <div class="rv-cards" style="--n:${Math.max(3, c.revealed.length)}">${c.revealed.map((t, i) => cardHtml(t, 'big pick', `data-act="choose" data-v="${t}" style="animation-delay:${i * 60}ms"`)).join('')}</div>
+  </div>`;
+}
+
+// Barra laterale (solo su schermi larghi): registro sempre visibile e cimiteri aperti
+function sideHtml() {
+  const g = G;
+  const gyList = (pl) => {
+    const items = TYPES.filter((t) => pl.gy[t]).map((t) => `<span class="schip c-${t}">${SYM[t]} ${NAMES[t]} <b>×${pl.gy[t]}</b></span>`).join('');
+    return items || '<i>vuoto</i>';
+  };
+  return `<aside class="side">
+    <div class="side-sec"><h4>🪦 Cimitero di ${esc(g.opp.name)}</h4><div class="sgy">${gyList(g.opp)}</div></div>
+    <div class="side-sec"><h4>🪦 Il tuo cimitero</h4><div class="sgy">${gyList(g.me)}</div></div>
+    <div class="side-sec grow"><h4>📜 Registro</h4><ol class="slog">${g.log.slice(-40).reverse().map((l) => `<li>${esc(l)}</li>`).join('')}</ol></div>
+    <div class="side-sec keys">⌨️ <b>P</b> passa · <b>Esc</b> annulla · <b>M</b> menu</div>
+  </aside>`;
+}
 
 function overHtml() {
   const g = G;
@@ -622,6 +759,7 @@ function menuHtml() {
     <div class="mrow col"><span>🎮 Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
     <div class="mrow col"><span>⚡ Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
     <button class="mrow" data-act="toggle-info">💬 Info nella plancia ${tog(prefs.info)}</button>
+    <button class="mrow" data-act="toggle-music">🎵 Musica ${tog(prefs.music)}</button>
     <button class="mrow" data-act="toggle-sound">🔊 Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">📳 Vibrazione ${tog(prefs.vibe)}</button>
     <div class="mrow two"><button data-act="open-log">📜 Registro</button><button data-act="open-rules">📖 Regole</button></div>
@@ -727,7 +865,14 @@ app.addEventListener('click', (e) => {
     case 'set-speed': prefs.speed = v; send({ t: 'prefs', speed: SPEEDS[v] }); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
-    case 'toggle-vibe': prefs.vibe = !prefs.vibe; vibrate(40); return render();
+    case 'toggle-music': setMusic(!prefs.music); return render();
+    case 'toggle-vibe':
+      prefs.vibe = !prefs.vibe;
+      if (prefs.vibe) {
+        vibrate([90, 60, 90]); // prova
+        if (!navigator.vibrate && !/iP(hone|ad|od)/.test(navigator.userAgent)) toast('Questo browser non supporta la vibrazione', true);
+      }
+      return render();
     case 'open-log': ui.menu = false; ui.log = true; return render();
     case 'close-log': ui.log = false; return render();
     case 'open-rules': ui.menu = false; ui.rules = true; return render();
@@ -870,6 +1015,10 @@ function arrow(a, b, color, cls = 'pending', animate = true) {
   const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
   if (len < 20) return null;
   const shrink = b.r ? Math.min(b.r.width, b.r.height) * 0.42 : 0; // la punta si ferma sul bordo
+  if (a.r) { // la freccia parte dal bordo della carta, non dal centro
+    const k = Math.min(a.r.width, a.r.height) * 0.45 / len;
+    a = { x: a.x + dx * k, y: a.y + dy * k };
+  }
   const ex = b.x - (dx / len) * shrink, ey = b.y - (dy / len) * shrink;
   const nx = -dy / len, ny = dx / len, bend = Math.min(60, len * 0.25) * (dx >= 0 ? -1 : 1);
   const cx = (a.x + ex) / 2 + nx * bend, cy = (a.y + ey) / 2 + ny * bend;
@@ -880,9 +1029,12 @@ function arrow(a, b, color, cls = 'pending', animate = true) {
   path.setAttribute('d', `M${a.x},${a.y} Q${cx},${cy} ${ex},${ey}`);
   path.setAttribute('stroke', color);
   path.setAttribute('class', 'shaft');
-  const ang = Math.atan2(ey - cy, ex - cx), s = 14;
+  const ang = Math.atan2(ey - cy, ex - cx), s = 16;
+  // la linea si ferma alla base della punta, così le "ali" partono esattamente dalla fine
+  const bx = ex - s * 0.8 * Math.cos(ang), by = ey - s * 0.8 * Math.sin(ang);
+  path.setAttribute('d', `M${a.x},${a.y} Q${cx},${cy} ${bx},${by}`);
   const head = document.createElementNS(ns, 'path');
-  head.setAttribute('d', `M${ex},${ey} L${ex - s * Math.cos(ang - 0.45)},${ey - s * Math.sin(ang - 0.45)} L${ex - s * Math.cos(ang + 0.45)},${ey - s * Math.sin(ang + 0.45)} Z`);
+  head.setAttribute('d', `M${ex},${ey} L${ex - s * Math.cos(ang - 0.5)},${ey - s * Math.sin(ang - 0.5)} L${ex - s * Math.cos(ang + 0.5)},${ey - s * Math.sin(ang + 0.5)} Z`);
   head.setAttribute('fill', color);
   head.setAttribute('class', 'head');
   g.appendChild(path); g.appendChild(head);
@@ -908,10 +1060,11 @@ function pendingTargetEl(p) {
 }
 
 let lastArrowKey = null;
+let arrowDone = null; // l'effetto mirato è già avvenuto: la freccia sparisce
 function drawArrows() {
   clearArrows('pending');
-  if (!G || !G.pending || !G.pending.target || ui.staged) { lastArrowKey = null; return; }
-  const p = G.pending;
+  const p = G && (G.pending || G.resolving);
+  if (!p || !p.target || ui.staged || arrowDone === `${G.turn}|${p.land}`) { if (!p) lastArrowKey = null; return; }
   const key = `${G.turn}|${p.land}|${p.target}`;
   arrow(centerOf($('#stack .card')), centerOf(pendingTargetEl(p)), ARROW_COLOR[p.land], 'pending', key !== lastArrowKey);
   lastArrowKey = key;
@@ -1040,7 +1193,10 @@ async function animateStep(ev, next) {
   const w = who(ev.player);
   const opp = G.opp.name;
   const say = (p, mine, theirs) => (p === G.you ? mine.charAt(0).toUpperCase() + mine.slice(1) : `${opp} ${theirs}`);
-  const srcEl = () => (lastEnter ? slotEl(lastEnter.w, lastEnter.card) : stackCard());
+  // origine delle frecce degli effetti: la terra che risolve, o la terra riattivata dalla Pianura
+  const srcEl = () => (lastReuse ? slotEl(lastReuse.w, lastReuse.card) : stackCard());
+  const r = next.resolving || G.resolving;
+  const direct = (land, card) => r && !lastReuse && r.land === land && r.target === card; // freccia già disegnata
 
   switch (ev.type) {
     case 'turn': {
@@ -1063,7 +1219,7 @@ async function animateStep(ev, next) {
       let from;
       if (w === 'me' && lastPlay && lastPlay.card === ev.card) from = lastPlay.rect || rectOf(handEl('me', ev.card, lastPlay.idx));
       else from = rectOf(handEl(w, w === 'me' ? ev.card : null));
-      lastPlay = null;
+      lastPlay = null; lastReuse = null; arrowDone = null;
       G = next; render(); clearArrows('pending');
       if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
@@ -1112,18 +1268,19 @@ async function animateStep(ev, next) {
     case 'enter': {
       const from = rectOf(stackCard());
       clearArrows('pending');
+      lastReuse = null;
       G = next; render();
       setCaption('');
       Sound.play('land');
       const to = slotEl(w, ev.card);
-      lastEnter = { w, card: ev.card };
       await fly(from, to, ev.card, { dur: 420 });
       await pulse(to, 'landed', 450);
       return;
     }
     case 'destroy': {
       const s = slotEl(w, ev.card);
-      await flashArrow(srcEl(), s, ARROW_COLOR.R, 450);
+      if (direct('R', ev.card)) await wait(150); else await flashArrow(srcEl(), s, ARROW_COLOR.R, 450);
+      arrowDone = `${G.turn}|${r ? r.land : ''}`; clearArrows('pending');
       Sound.play('destroy');
       if (ev.player === G.you) vibrate(80);
       await pulse(s, 'boom', 450);
@@ -1133,8 +1290,9 @@ async function animateStep(ev, next) {
       return;
     }
     case 'regrow': {
-      await flashArrow(srcEl(), gyEl(w), ARROW_COLOR.G, 400);
+      if (!direct('G', ev.card)) await flashArrow(srcEl(), gyEl(w), ARROW_COLOR.G, 400);
       const from = rectOf(gyEl(w, ev.card));
+      arrowDone = `${G.turn}|${r ? r.land : ''}`; clearArrows('pending');
       G = next; render();
       Sound.play('regrow');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
@@ -1157,10 +1315,9 @@ async function animateStep(ev, next) {
       return;
     }
     case 'reuse': {
-      await flashArrow(srcEl(), slotEl(w, ev.card), ARROW_COLOR.W, 450);
-      G = next; render();
+      G = next; render(); // la freccia Pianura → terra riattivata è già sul tavolo
       Sound.play('reuse');
-      lastEnter = { w, card: ev.card }; // l'effetto riattivato parte da questa terra
+      lastReuse = { w, card: ev.card }; // l'effetto riattivato parte da questa terra
       await pulse(slotEl(w, ev.card), 'shine', 650);
       return;
     }
@@ -1203,6 +1360,24 @@ async function animateDeal() {
 
 // ---------- Avvio ----------
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-document.addEventListener('visibilitychange', () => { if (!document.hidden) connect(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) connect();
+  const c = Sound.ctx;
+  if (c) { if (document.hidden) c.suspend(); else { c.resume(); if (prefs.music) Music.start(); } }
+});
+document.addEventListener('keydown', (e) => {
+  if (!G || e.target.closest('input')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'escape') {
+    if (ui.menu || ui.log || ui.rules) { ui.menu = ui.log = ui.rules = false; ui.confirmLeave = false; }
+    else if (ui.staged) { ui.staged = null; clearArrows('aim'); }
+    else if (ui.counter) { ui.counter = false; ui.pick = null; }
+    else if (ui.sel) ui.sel = null;
+    else if (ui.gyOpen) ui.gyOpen = null;
+    return render();
+  }
+  if (k === 'm') { ui.menu = !ui.menu; ui.confirmLeave = false; return render(); }
+  if (k === 'p' && myTask() === 'main' && !ui.staged) return act({ type: 'pass' });
+});
 render();
 connect();

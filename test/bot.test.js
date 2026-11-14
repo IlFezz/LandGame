@@ -95,6 +95,16 @@ test('batte quasi sempre un giocatore casuale', () => {
   assert.ok(wins > 250, `vittorie ${wins}/300`);
 });
 
+test('il livello normale batte spesso il facile', () => {
+  let w = 0;
+  for (let i = 0; i < 300; i++) {
+    const g = new Game(['N', 'F']); const b = [new Bot(g, 0), new Bot(g, 1, { level: 'easy' })];
+    while (g.phase === 'playing') { const p = g.actor(); ok(g.act(p, b[p].decide())); }
+    if (g.winner === 0) w++;
+  }
+  assert.ok(w > 180, `vittorie del normale ${w}/300`);
+});
+
 // ---- Partita contro il computer attraverso il server ----
 const PORT = 3997;
 const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, TIME_SCALE: '0.01' }, stdio: 'ignore' });

@@ -34,7 +34,12 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 ## Funzioni
 
-- **Partita contro il computer** (difficoltà media): valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
+- **Partita contro il computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
+- Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.
+- Musica ambient di sottofondo generata al momento, disattivabile dalla home e dal menu.
+- Su PC e tablet il gioco usa tutto lo schermo: carte e campo più grandi, barra laterale con cimiteri e registro, scorciatoie da tastiera (P passa, Esc annulla, M menu).
+- Quando una terra risolve, prima avviene il suo effetto e poi la terra va al suo posto.
+- Palude: la mano avversaria appare a tutto schermo su sfondo sfocato.
 - Stanze con codice di 4 caratteri e link di invito; rientro automatico se cade la connessione.
 - **Le carte si giocano sempre al centro della plancia**: si trascinano (la presa è immediata e la carta fluttua) oppure, con i comandi a tocco, si tocca la carta e poi il centro. Se la terra ha un bersaglio, dopo si tocca la carta da colpire; una freccia mostra chi colpisce cosa.
 - Mano a ventaglio: le carte si stringono quando sono tante, tutto resta sempre a schermo.

@@ -42,6 +42,7 @@ class Bot {
   constructor(game, seat, opts = {}) {
     this.g = game; this.p = seat;
     this.rng = opts.rng || Math.random;
+    this.easy = opts.level === 'easy'; // facile: sbaglia più spesso e contrasta di rado
   }
   get me() { return this.g.players[this.p]; }
   get op() { return this.g.players[1 - this.p]; }
@@ -92,7 +93,8 @@ class Bot {
         const islands = hand.filter((c) => c === 'U').length;
         if (card === 'U' && islands === 1 && need(this.op.bf) <= 2 && v < 1000) v -= 6;
         if (card !== 'U' && islands >= 1 && hand.length === 2 && need(this.op.bf) <= 1 && v < 1000) v -= 4;
-        v += this.rng() * 1.5; // un po' di varietà, senza stravolgere le priorità
+        v += this.rng() * (this.easy ? 14 : 1.5); // varietà: al livello facile le priorità sono molto meno precise
+        if (this.easy && v >= 1000 && this.rng() < 0.35) v = 5; // a volte non vede la vittoria
         options.push({ card, target, v });
       }
     }
@@ -124,7 +126,9 @@ class Bot {
       const gain = this.playValue(this.p, pend.land, pend.target);
       want = gain >= 1000 || gain >= 18;
     }
+    if (this.easy) want = want && (this.playValue(pend.owner, pend.land, pend.target) >= 1000 ? this.rng() < 0.6 : this.rng() < 0.15);
     if (!want) return { type: 'allow' };
+    if (this.easy) return { type: 'counter', other: others[Math.floor(this.rng() * others.length)] };
     others.sort((a, b) => this.keepValue(a) - this.keepValue(b));
     return { type: 'counter', other: others[0] };
   }
@@ -139,6 +143,7 @@ class Bot {
   decideChoice() {
     const g = this.g, c = g.choice;
     let best = c.options[0];
+    if (this.easy && this.rng() < 0.5) return { type: 'choose', choice: c.options[Math.floor(this.rng() * c.options.length)] };
     if (c.kind === 'discard') {
       // Mano rivelata dalla Palude: togli la carta più utile all'avversario
       const val = (t) => {

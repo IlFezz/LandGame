@@ -236,6 +236,7 @@ test('Partite casuali complete senza errori e con 100 carte conservate', () => {
       let total = 0;
       for (const pl of g.players) total += pl.deck.length + pl.hand.length + TYPES.reduce((s, t) => s + pl.bf[t] + pl.gy[t], 0);
       if (g.pending && g.pending.counters >= 0 && g.phase === 'playing' && g.step === 'response') total += 1;
+      if (g.resolving) total += 1; // terra che sta risolvendo l'effetto
       assert.strictEqual(total, 100);
     }
     assert.strictEqual(g.phase, 'over', 'partita non terminata');
@@ -276,6 +277,24 @@ test('Tempo scaduto: passa il turno / lascia risolvere / sceglie a caso', () => 
   assert.strictEqual(g.step, 'choice');
   g.autoAct();
   assert.strictEqual(g.active, 1);
+});
+
+test('Prima l\'effetto, poi la terra entra in gioco', () => {
+  const g = setup({ h0: ['R'], bf1: { G: 1 } });
+  g.takeEvents();
+  ok(g.act(0, { type: 'play', card: 'R', target: 'G' }));
+  const types = g.takeEvents().map((e) => e.ev.type);
+  assert.ok(types.indexOf('destroy') < types.indexOf('enter'), types.join(','));
+});
+
+test('Durante la scelta della Palude la terra non è ancora in gioco', () => {
+  const g = setup({ h0: ['B'], h1: ['G'] });
+  ok(g.act(0, { type: 'play', card: 'B' }));
+  assert.strictEqual(g.step, 'choice');
+  assert.strictEqual(g.players[0].bf.B, 0);
+  assert.deepStrictEqual(g.view(0).resolving, { owner: 0, land: 'B', target: null });
+  ok(g.act(0, { type: 'choose', choice: 'G' }));
+  assert.strictEqual(g.players[0].bf.B, 1);
 });
 
 console.log(`\n${passed} test superati`);
