@@ -43,6 +43,7 @@ const prefs = {
   get vibe() { return ls.get('vibe', true); }, set vibe(v) { ls.set('vibe', v); },
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
+  get info() { return ls.get('info', false); }, set info(v) { ls.set('info', v); },
   get speed() { const v = ls.get('speed', 'slow'); return SPEEDS[v] ? v : 'slow'; }, set speed(v) { ls.set('speed', v); },
 };
 // Durata scalata secondo la velocità scelta
@@ -105,23 +106,45 @@ const Sound = {
     }
   },
 };
-const vibrate = (ms) => { if (prefs.vibe && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
 document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
+
+// ---------- Vibrazione ----------
+// Android: Vibration API. iPhone (Safari 18+): non ha l'API, ma un interruttore "switch" nascosto produce un feedback aptico.
+let iosSwitch = null;
+function vibrate(pattern) {
+  if (!prefs.vibe) return;
+  try {
+    if (navigator.vibrate) { navigator.vibrate(pattern); return; }
+    if (!iosSwitch) {
+      const label = document.createElement('label');
+      label.style.cssText = 'position:fixed;left:-100px;top:-100px;opacity:0;pointer-events:none';
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.setAttribute('switch', '');
+      label.appendChild(input); document.body.appendChild(label);
+      iosSwitch = label;
+    }
+    iosSwitch.click();
+  } catch {}
+}
 
 // ---------- Stato ----------
 let S = null;          // metadati stanza dall'ultimo messaggio
 let G = null;          // vista di gioco attualmente mostrata
 let clockOffset = 0;   // ora server - ora locale
 const ui = {
-  sel: null,            // { card, idx } carta selezionata (comandi a selezione)
+  sel: null,            // { card, idx } carta sollevata (comandi a tocco)
+  staged: null,         // { card, idx } carta posata al centro in attesa del bersaglio
   counter: false,       // sto scegliendo come contrastare
   pick: null,           // { card, idx } seconda carta da scartare col contrasto
+  gyOpen: null,         // 'me' | 'opp' cimitero aperto
   menu: false, confirmLeave: false, rules: false, log: false,
   animating: false, caption: null,
 };
 let lastPlay = null;     // { card, idx, rect } per far partire l'animazione dalla carta giusta
 let lastCounter = null;  // { islandIdx, pickIdx }
+let lastEnter = null;    // { w, card } ultima terra entrata (origine delle frecce degli effetti)
 let needRender = false;
+let autoAllowKey = null;
 
 // ---------- Connessione ----------
 let ws = null, wsReady = false, queue = [], retry = 0;
@@ -159,7 +182,8 @@ function connect() {
 }
 function send(m) { if (wsReady) ws.send(JSON.stringify(m)); else { queue.push(m); connect(); } }
 function act(a) {
-  ui.sel = null; ui.counter = false; ui.pick = null;
+  ui.sel = null; ui.staged = null; ui.counter = false; ui.pick = null; ui.gyOpen = null;
+  clearArrows('aim');
   Sound.play('click');
   send({ t: 'action', a });
 }
@@ -190,7 +214,7 @@ async function pump() {
     G = game;
     lastPlay = null; lastCounter = null;
     if (!G || G.step !== 'response' || G.pending.responder !== G.you) { ui.counter = false; ui.pick = null; }
-    if (!G || G.step !== 'main' || G.active !== G.you || G.landPlayed) ui.sel = null;
+    if (!G || G.step !== 'main' || G.active !== G.you || G.landPlayed) { ui.sel = null; ui.staged = null; }
     render();
   }
   pumping = false;
@@ -201,15 +225,15 @@ let toastTimer;
 function toast(msg, info) {
   const t = $('#toast');
   t.textContent = msg; t.className = info ? 'info' : '';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2600);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2400);
 }
-const mini = (t) => `<span class="mini c-${t}">${SYM[t]} ${NAMES[t]}</span>`;
 const pips = () => `<div class="pips">${TYPES.map((t) => `<div class="pip c-${t}">${SYM[t]}</div>`).join('')}</div>`;
-const cardHtml = (t, extra = '', attrs = '') => `<div class="card c-${t} ${extra}" data-card="${t}" ${attrs}>
-  <div class="sym">${SYM[t]}</div><div class="nm">${NAMES[t]}</div><div class="fx">${FX[t]}</div></div>`;
+const cardHtml = (t, extra = '', attrs = '', inner = '') => `<div class="card c-${t} ${extra}" data-card="${t}" ${attrs}>
+  <div class="sym">${SYM[t]}</div><div class="nm">${NAMES[t]}</div><div class="fx">${FX[t]}</div>${inner}</div>`;
 const who = (p) => (G && p === G.you ? 'me' : 'opp');
-const pname = (p) => (p === G.you ? 'Tu' : esc(G.opp.name));
 const winsWith = (bf, t) => { const b = { ...bf, [t]: bf[t] + 1 }; return TYPES.every((x) => b[x] > 0) || TYPES.some((x) => b[x] >= 5); };
+const closeToWin = (bf) => TYPES.filter((t) => bf[t] > 0).length >= 4 || Math.max(...TYPES.map((t) => bf[t])) >= 4;
+const info = () => prefs.info;
 
 // =====================================================================
 //  Render
@@ -223,6 +247,7 @@ function render() {
 }
 
 function renderLobby() {
+  clearArrows();
   const params = new URLSearchParams(location.search);
   const pre = (params.get('room') || '').toUpperCase();
   const reconnecting = prefs.session && !S;
@@ -261,6 +286,7 @@ function renderLobby() {
 }
 
 function renderWaiting() {
+  clearArrows();
   const link = `${location.origin}${location.pathname}?room=${S.code}`;
   app.innerHTML = `
   <div class="lobby waiting">
@@ -284,18 +310,11 @@ function leave() {
   cancelDrag(true);
   send({ t: 'leave' });
   prefs.session = null; S = null; G = null;
-  Object.assign(ui, { sel: null, counter: false, pick: null, menu: false, confirmLeave: false, log: false, rules: false });
+  Object.assign(ui, { sel: null, staged: null, counter: false, pick: null, gyOpen: null, menu: false, confirmLeave: false, log: false, rules: false });
   render();
 }
 
-// Avanzamento verso la vittoria
-function progressHtml(pl) {
-  const distinct = TYPES.filter((t) => pl.bf[t] > 0).length;
-  const max = Math.max(...TYPES.map((t) => pl.bf[t]));
-  const close = distinct >= 4 || max >= 4;
-  return `<span class="prog ${close ? 'close' : ''}">${close ? '⚠️ ' : ''}Tipi ${distinct}/5 · Uguali ${max}/5</span>`;
-}
-
+// ---------- Pezzi del tavolo ----------
 function bfHtml(pl, w, targets) {
   return `<div class="bf" id="bf-${w}">${TYPES.map((t) => {
     const n = pl.bf[t];
@@ -306,12 +325,19 @@ function bfHtml(pl, w, targets) {
   }).join('')}</div>`;
 }
 
+// Cimitero: un segnalino col totale; toccandolo si apre il dettaglio
 function gyHtml(pl, w, targets) {
-  const items = TYPES.filter((t) => pl.gy[t]).map((t) => {
+  const total = TYPES.reduce((s, t) => s + pl.gy[t], 0);
+  const open = ui.gyOpen === w;
+  const chips = TYPES.filter((t) => pl.gy[t]).map((t) => {
     const tg = targets && targets.includes(t);
-    return `<span id="gy-${w}-${t}" class="chip c-${t} ${tg ? 'target' : ''}" ${tg ? `data-act="target" data-v="${t}"` : ''}>${SYM[t]}×${pl.gy[t]}</span>`;
+    return `<button id="gy-${w}-${t}" class="gchip c-${t} ${tg ? 'target' : ''}" ${tg ? `data-act="target" data-v="${t}"` : ''}>
+      <span class="sym">${SYM[t]}</span><span class="nm">${NAMES[t]}</span><b>×${pl.gy[t]}</b></button>`;
   }).join('');
-  return `<div class="gybox" id="gy-${w}"><span class="lbl">🪦 Cimitero</span>${items || '<i>vuoto</i>'}</div>`;
+  return `<span class="gywrap"><button class="gybadge ${open ? 'open' : ''} ${targets && targets.length && !open ? 'target' : ''}" id="gy-${w}" data-act="gy" data-v="${w}" title="Cimitero">
+      <span>🪦</span><b>${total}</b></button>
+    ${open ? `<div class="gypop ${w}"><div class="gyhead">🪦 Cimitero${w === 'opp' ? ` di ${esc(G.opp.name)}` : ''}</div>
+      ${chips || '<div class="gyempty">Vuoto</div>'}</div>` : ''}</span>`;
 }
 
 function deckHtml(pl, w) {
@@ -328,70 +354,68 @@ function myTask() {
   if (g.step === 'choice' && g.choice.player === me) return 'choice';
   return null;
 }
+const needsTarget = (card) => { const t = G.playable && G.playable[card]; return !!(t && t.length); };
 
-// Bersagli evidenziati sul campo (comandi a selezione e scelte)
+// Bersagli evidenziati sul campo
 function boardTargets() {
   const out = { opp: null, me: null, gyMe: null };
   const task = myTask();
-  if (task === 'main' && ui.sel) Object.assign(out, targetZones(ui.sel.card));
+  if (task === 'main' && ui.staged) {
+    const c = ui.staged.card, t = G.playable[c];
+    if (c === 'R') out.opp = t;
+    if (c === 'W') out.me = t;
+    if (c === 'G') out.gyMe = t;
+  }
   if (task === 'choice') {
     if (G.choice.kind === 'destroy') out.opp = G.choice.options;
     if (G.choice.kind === 'regrow') out.gyMe = G.choice.options;
   }
   return out;
 }
-function targetZones(card) {
-  const t = G.playable[card];
-  const out = {};
-  if (t && t.length) {
-    if (card === 'R') out.opp = t;
-    if (card === 'W') out.me = t;
-    if (card === 'G') out.gyMe = t;
-  }
-  return out;
-}
 
 function stackHtml() {
   const p = G.pending;
+  if (ui.staged) {
+    return `<div id="stack" class="stack-area">${cardHtml(ui.staged.card, 'onstack staged', '', '<button class="unstage" data-act="unstage" aria-label="Annulla">✕</button>')}</div>`;
+  }
   if (!p) return `<div id="stack" class="stack-area"><div class="stack-slot"></div></div>`;
-  const whose = p.land === 'R' ? (p.owner === G.you ? ' avversaria' : ' tua') : '';
-  const arrow = p.target ? `<div class="arrow">➜</div><div class="tg">${mini(p.target)}<small>${whose}</small></div>` : '';
   const counters = p.counters
-    ? `<div class="ctr">${'💧'.repeat(Math.min(p.counters, 6))}<small>${p.counters % 2 ? 'sarà annullata' : 'risolverà'}</small></div>` : '';
-  return `<div id="stack" class="stack-area"><div class="by">${pname(p.owner)}</div>${cardHtml(p.land, 'onstack')}${arrow}${counters}</div>`;
+    ? `<div class="ctr ${p.counters % 2 ? 'neg' : 'pos'}">${'💧'.repeat(Math.min(p.counters, 6))}<span>${p.counters % 2 ? '🚫' : '✅'}</span></div>` : '';
+  return `<div id="stack" class="stack-area">${cardHtml(p.land, 'onstack ' + (p.owner === G.you ? 'mine' : 'theirs'))}${counters}</div>`;
 }
 
-function statusText() {
+// Testo di stato: solo l'essenziale (più dettagli con "Info nella plancia")
+function statusHtml() {
   const g = G, me = g.you, opp = esc(g.opp.name);
   if (ui.caption !== null) return { text: ui.caption, cls: 'cap' };
-  if (g.phase === 'over') return { text: 'Partita finita', cls: '' };
+  if (g.phase !== 'playing') return { text: '', cls: '' };
+  if (g.step === 'response' && g.pending.responder === me && g.pending.owner !== me && winsWith(g.opp.bf, g.pending.land)) {
+    return { text: `⚠️ Se entra, ${opp} vince!`, cls: 'danger' };
+  }
+  if (!info()) return { text: '', cls: '' };
   if (g.step === 'main') return g.active === me ? { text: 'Il tuo turno', cls: 'mine' } : { text: `Turno di ${opp}`, cls: '' };
   if (g.step === 'response') {
     const p = g.pending;
-    if (p.responder === me) {
-      if (p.owner !== me && p.counters === 0) return { text: `${opp} gioca ${SYM[p.land]} ${NAMES[p.land]}`, cls: 'mine' };
-      if (p.owner === me) return { text: `${opp} contrasta la tua ${NAMES[p.land]}!`, cls: 'mine' };
-      return { text: `${opp} ha annullato il tuo contrasto!`, cls: 'mine' };
-    }
-    return { text: p.counters ? `${opp} può rispondere al tuo contrasto…` : `${opp} sta decidendo se contrastare…`, cls: '' };
+    if (p.responder !== me) return { text: `${opp} può contrastare…`, cls: '' };
+    if (p.owner !== me && p.counters === 0) return { text: `${opp} gioca ${NAMES[p.land]}`, cls: 'mine' };
+    if (p.owner === me) return { text: `${opp} contrasta la tua ${NAMES[p.land]}!`, cls: 'mine' };
+    return { text: `${opp} ha annullato il tuo contrasto!`, cls: 'mine' };
   }
-  if (g.step === 'choice') return g.choice.player === me
-    ? { text: 'Fai la tua scelta', cls: 'mine' } : { text: `${opp} sta scegliendo…`, cls: '' };
+  if (g.step === 'choice' && g.choice.player !== me) return { text: `${opp} sta scegliendo…`, cls: '' };
   return { text: '', cls: '' };
 }
 
-// Cosa succede se la terra in attesa risolve, scritto dal punto di vista di chi guarda
+// Cosa succede se la terra in attesa risolve, dal punto di vista di chi guarda
 function consequenceText(p) {
   const g = G, opp = esc(g.opp.name);
-  if (p.owner === g.you) return `Se non rispondi, la tua ${NAMES[p.land]} viene annullata e non avrà effetto.`;
-  if (winsWith(g.opp.bf, p.land)) return `⚠️ Se la ${NAMES[p.land]} entra in gioco, ${opp} vince la partita!`;
+  if (p.owner === g.you) return `Se non rispondi, la tua ${NAMES[p.land]} viene annullata.`;
   const t = p.target;
-  const reuse = { U: 'pescherà una carta', B: 'guarderà la tua mano e ti farà scartare una terra', R: 'distruggerà una tua terra', G: 'riprenderà in mano una terra dal suo cimitero' };
+  const reuse = { U: 'pescherà una carta', B: 'guarderà la tua mano e ti farà scartare una terra', R: 'distruggerà una tua terra', G: 'riprenderà una terra dal suo cimitero' };
   switch (p.land) {
     case 'U': return `Se risolve, ${opp} pescherà una carta.`;
     case 'B': return `Se risolve, ${opp} guarderà la tua mano e ti farà scartare una terra.`;
-    case 'R': return t ? `Se risolve, la tua ${NAMES[t]} verrà distrutta.` : 'Non hai terre in gioco: entrerà senza effetto.';
-    case 'G': return t ? `Se risolve, ${opp} riprenderà in mano ${NAMES[t]} dal suo cimitero.` : 'Il suo cimitero è vuoto: entrerà senza effetto.';
+    case 'R': return t ? `Se risolve, la tua ${NAMES[t]} verrà distrutta.` : 'Entrerà senza effetto.';
+    case 'G': return t ? `Se risolve, ${opp} riprenderà ${NAMES[t]} dal suo cimitero.` : 'Entrerà senza effetto.';
     case 'W': return t ? `Se risolve, ${opp} riattiverà la sua ${NAMES[t]} e ${reuse[t]}.` : 'Entrerà senza effetto.';
   }
   return '';
@@ -411,61 +435,43 @@ function counterPlan() {
 function actionsHtml() {
   const task = myTask();
   const g = G;
+  const hint = (t) => (info() ? `<div class="hint">${t}</div>` : '');
   if (!task) {
-    if (g.phase === 'playing' && !ui.animating && g.step === 'main' && g.active !== g.you) {
-      return `<div class="hint">${S.vsBot ? 'Il computer sta pensando…' : 'Attendi la mossa dell\'avversario.'}</div>`;
-    }
+    if (g.phase === 'playing' && !ui.animating && S.vsBot && g.active !== g.you && g.step === 'main') return hint('Il computer sta pensando…');
     return '';
   }
-  const passBtn = `<button class="btn passbtn" data-act="pass">⏭ Passa il turno</button>`;
   if (task === 'main') {
-    if (prefs.controls === 'drag') {
-      return `<div class="hint">Tieni premuta una carta e <b>trascinala sul campo</b> per giocarla.</div>${passBtn}`;
+    if (ui.staged) {
+      const c = ui.staged.card;
+      return hint(c === 'R' ? 'Tocca la terra avversaria da distruggere.' : c === 'G' ? 'Tocca nel tuo cimitero la terra da recuperare.' : 'Tocca la tua terra da riattivare.');
     }
-    if (!ui.sel) return `<div class="hint">Tocca una carta della tua mano per selezionarla.</div>${passBtn}`;
-    const c = ui.sel.card, t = g.playable[c];
-    if (t && t.length) {
-      const q = c === 'R' ? 'tocca sul campo avversario la terra da distruggere' : c === 'G' ? 'tocca nel tuo cimitero la terra da recuperare' : 'tocca sul tuo campo la terra da riattivare';
-      return `<div class="hint"><b>${NAMES[c]}</b>: ${q}.</div>
-        <div class="acts"><button class="btn small ghost" data-act="cancel">Annulla</button></div>`;
-    }
-    const none = t ? ' Nessun bersaglio: entrerà senza effetto.' : '';
-    return `<div class="hint"><b>${NAMES[c]}</b> · ${LONG_FX[c]}${none}</div>
-      <div class="acts"><button class="btn primary" data-act="play">Gioca ${NAMES[c]}</button>
-      <button class="btn small ghost" data-act="cancel">Annulla</button></div>`;
+    const how = prefs.controls === 'drag' ? 'Trascina una carta al centro per giocarla.' : 'Tocca una carta e poi il centro per giocarla.';
+    return `${hint(how)}<button class="btn passbtn" data-act="pass">Passa il turno</button>`;
   }
   if (task === 'response') {
     const p = g.pending;
     const plan = counterPlan();
-    const result = p.owner === g.you ? `✅ la tua ${NAMES[p.land]} risolve` : `🚫 ${NAMES[p.land]} annullata`;
-    const allowLabel = p.owner === g.you ? 'Accetta l\'annullamento' : 'Lascia risolvere';
-    let html = `<div class="hint conseq">${consequenceText(p)}</div>`;
+    const allowLabel = p.owner === g.you ? 'Accetta' : 'Lascia risolvere';
+    if (!plan) return hint(consequenceText(p)); // nessun contrasto possibile: si risolve da solo
     if (!ui.counter) {
-      html += plan
-        ? `<div class="acts"><button class="btn counterbtn" data-act="counter-start">💧 Contrasta</button>
-           <button class="btn primary" data-act="allow">${allowLabel}</button></div>
-           <div class="hint dim">Contrastare costa 2 carte: un'Isola e un'altra terra dalla tua mano.</div>`
-        : `<div class="hint dim">Per contrastare servono un'Isola e un'altra terra in mano.</div>
-           <div class="acts"><button class="btn primary" data-act="allow">${allowLabel}</button></div>`;
-      return html;
+      return `${hint(consequenceText(p))}
+        <div class="acts"><button class="btn counterbtn" data-act="counter-start">💧 Contrasta</button>
+        <button class="btn primary" data-act="allow">${allowLabel}</button></div>
+        ${hint('Contrastare costa un\'Isola e un\'altra terra dalla tua mano.')}`;
     }
-    const second = ui.pick ? `<span class="fcard c-${ui.pick.card}">${SYM[ui.pick.card]} ${NAMES[ui.pick.card]}</span>` : '<span class="fcard q">?</span>';
-    html += `<div class="formula"><span class="fcard c-U">💧 Isola</span><b>+</b>${second}<b>=</b><span class="fres">${result}</span></div>`;
-    html += ui.pick
-      ? `<div class="hint">Scarterai queste due carte dalla tua mano.</div>
-         <div class="acts"><button class="btn counterbtn" data-act="counter-confirm">Conferma contrasto</button>
-         <button class="btn small ghost" data-act="counter-cancel">Annulla</button></div>`
-      : `<div class="hint">Tocca nella tua mano <b>la seconda terra</b> da scartare insieme all'Isola.</div>
-         <div class="acts"><button class="btn small ghost" data-act="counter-cancel">Annulla</button></div>`;
-    return html;
+    const result = p.owner === g.you ? '✅' : '🚫';
+    const second = ui.pick ? `<span class="fcard c-${ui.pick.card}">${SYM[ui.pick.card]}</span>` : '<span class="fcard q">?</span>';
+    return `<div class="formula"><span class="fcard c-U">💧</span><b>+</b>${second}<b>→</b><span class="fcard c-${p.land} res">${SYM[p.land]}<i>${result}</i></span></div>
+      ${ui.pick ? '' : hint('Tocca in mano la seconda terra da scartare.')}
+      <div class="acts">${ui.pick ? '<button class="btn counterbtn" data-act="counter-confirm">Conferma</button>' : ''}
+      <button class="btn ghost" data-act="counter-cancel">Annulla</button></div>`;
   }
   if (task === 'choice') {
     const c = g.choice;
     if (c.kind === 'discard') {
-      return `<div class="hint">Mano di ${esc(g.opp.name)}: tocca la terra che deve scartare.</div>
-        <div class="revealed">${c.revealed.map((t) => (c.options.includes(t) ? cardHtml(t, 'small pick', `data-act="choose" data-v="${t}"`) : '')).join('')}</div>`;
+      return `<div class="revealed">${c.revealed.map((t) => cardHtml(t, 'small pick', `data-act="choose" data-v="${t}"`)).join('')}</div>`;
     }
-    return `<div class="hint">${c.kind === 'destroy' ? 'Tocca sul campo avversario la terra da distruggere.' : 'Tocca nel tuo cimitero la terra da recuperare.'}</div>`;
+    return hint(c.kind === 'destroy' ? 'Tocca la terra avversaria da distruggere.' : 'Tocca nel tuo cimitero la terra da recuperare.');
   }
   return '';
 }
@@ -477,33 +483,33 @@ function timerHtml() {
 
 function handHtml(task) {
   const g = G, hand = g.hand;
-  if (!hand.length) return '<div class="nohand">Nessuna carta in mano</div>';
+  if (!hand.length) return '';
   const plan = task === 'response' && ui.counter ? counterPlan() : null;
   return hand.map((t, i) => {
-    let cls = 'dim', attrs = `data-idx="${i}"`;
+    let cls = '', attrs = `data-idx="${i}"`, badge = '';
     if (task === 'main' && g.playable && t in g.playable) {
       cls = 'playable';
-      attrs += prefs.controls === 'drag' ? ` data-act="drag-hint"` : ` data-act="sel" data-v="${t}"`;
-      if (ui.sel && ui.sel.idx === i) cls += ' selected';
-    }
+      attrs += ` data-act="card" data-v="${t}"`;
+      if (ui.sel && ui.sel.idx === i) cls += ' lift';
+      if (ui.staged && ui.staged.idx === i) cls += ' away';
+    } else if (task === 'main' || !task) cls = 'idle';
     if (plan) {
-      if (i === plan.islandIdx) cls = 'marked';
-      else if (ui.pick && ui.pick.idx === i) cls = 'marked';
+      if (i === plan.islandIdx || (ui.pick && ui.pick.idx === i)) { cls = 'lift marked'; badge = '<div class="badge">✕</div>'; }
       else if (plan.eligible[i] && !ui.pick) { cls = 'pick'; attrs += ` data-act="pick" data-v="${t}"`; }
+      else cls = 'idle';
     }
-    if (task === 'response' && !ui.counter) cls = '';
-    const badge = plan && (i === plan.islandIdx || (ui.pick && ui.pick.idx === i)) ? '<div class="badge">scarta</div>' : '';
-    return cardHtml(t, cls, attrs).replace('</div></div>', `</div>${badge}</div>`);
+    return cardHtml(t, cls, attrs, badge);
   }).join('');
 }
 
 function renderGame() {
   const g = G, me = g.you;
   const oppConnected = S.seats[g.opp.seat] && S.seats[g.opp.seat].connected;
-  const st = statusText();
+  const st = statusHtml();
   const task = myTask();
   const tg = boardTargets();
-  const keepScroll = $('.hand') ? $('.hand').scrollLeft : 0;
+  const centerDrop = task === 'main' && !ui.staged && (ui.sel || (drag && drag.active));
+  if (task === 'choice' && G.choice.kind === 'regrow') ui.gyOpen = 'me';
 
   app.innerHTML = `
   <div class="game ${ui.animating ? 'busy' : ''}">
@@ -515,30 +521,26 @@ function renderGame() {
 
     <section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
       <div class="zhead">
-        <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}</span>
-        ${progressHtml(g.opp)}
-      </div>
-      <div class="zrow">
-        <div class="backs" id="hand-opp">${'<div class="back"></div>'.repeat(Math.min(g.opp.handCount, 12))}${g.opp.handCount > 12 ? `<small>+${g.opp.handCount - 12}</small>` : ''}<small class="hc">✋${g.opp.handCount}</small></div>
+        <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">⚠️</span>' : ''}</span>
+        <div class="backs" id="hand-opp">${'<div class="back"></div>'.repeat(Math.min(g.opp.handCount, 10))}<small>${g.opp.handCount}</small></div>
         ${deckHtml(g.opp, 'opp')}
+        ${gyHtml(g.opp, 'opp')}
       </div>
       ${bfHtml(g.opp, 'opp', tg.opp)}
     </section>
-    ${gyHtml(g.opp, 'opp')}
 
-    <section class="center">
+    <section class="center ${centerDrop ? 'droppable' : ''}" id="center" ${task === 'main' && ui.sel && !ui.staged ? 'data-act="center"' : ''}>
       ${stackHtml()}
       <div class="status ${st.cls}" id="status">${st.text}</div>
       <div class="actions-area">${actionsHtml()}</div>
     </section>
 
-    ${gyHtml(g.me, 'me', tg.gyMe)}
     <section class="zone me ${g.active === me && g.phase === 'playing' ? 'active' : ''}">
       ${bfHtml(g.me, 'me', tg.me)}
       <div class="zhead">
-        <span class="pname"><span class="dot"></span>${esc(g.me.name)} (tu)</span>
-        ${progressHtml(g.me)}
+        <span class="pname"><span class="dot"></span>${esc(g.me.name)}${closeToWin(g.me.bf) ? ' <span class="near">⚠️</span>' : ''}</span>
         ${deckHtml(g.me, 'me')}
+        ${gyHtml(g.me, 'me', tg.gyMe)}
       </div>
     </section>
 
@@ -549,10 +551,49 @@ function renderGame() {
   ${ui.menu ? menuHtml() : ''}
   ${ui.log ? logHtml() : ''}
   ${ui.rules ? rulesHtml() : ''}`;
-  const h = $('.hand'); if (h) h.scrollLeft = keepScroll;
+  layoutHand();
   bindOverlays();
   tickTimer();
+  drawArrows();
+  maybeAutoAllow(task);
 }
+
+// Se non posso contrastare, la terra risolve da sola dopo una pausa casuale (così non si capisce cosa ho in mano)
+function maybeAutoAllow(task) {
+  if (task !== 'response' || counterPlan()) return;
+  const key = `${G.turn}|${G.pending.counters}|${G.pending.land}`;
+  if (autoAllowKey === key) return;
+  autoAllowKey = key;
+  setTimeout(() => {
+    if (myTask() === 'response' && `${G.turn}|${G.pending.counters}|${G.pending.land}` === key) act({ type: 'allow' });
+  }, 900 + Math.random() * 1300);
+}
+
+// ---------- Mano a ventaglio: tutte le carte sempre visibili ----------
+function layoutHand() {
+  const hand = $('#hand-me');
+  if (!hand) return;
+  // la carta posata al centro non occupa posto nel ventaglio
+  const cards = $$('.card', hand).filter((c) => !c.classList.contains('away'));
+  const n = cards.length;
+  if (!n) return;
+  const W = hand.clientWidth;
+  const cw = cards[0].offsetWidth || 66;
+  const pad = 6 + cw * 0.08; // margine per la rotazione delle carte esterne
+  const step = n > 1 ? Math.min(cw + 6, (W - cw - pad * 2) / (n - 1)) : 0;
+  const total = cw + step * (n - 1);
+  const start = Math.max(pad, (W - total) / 2);
+  const mid = (n - 1) / 2;
+  const ang = n > 1 ? Math.min(3, 15 / (n - 1)) : 0;
+  cards.forEach((c, i) => {
+    const off = i - mid;
+    c.style.left = `${start + i * step}px`;
+    c.style.setProperty('--rot', `${off * ang}deg`);
+    c.style.setProperty('--dy', `${Math.min(10, off * off * ang * 0.25)}px`);
+    c.style.zIndex = String(i + 1);
+  });
+}
+window.addEventListener('resize', () => { layoutHand(); drawArrows(); });
 
 function overHtml() {
   const g = G;
@@ -578,13 +619,12 @@ function menuHtml() {
       <p>Vuoi davvero uscire? ${S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
       <button class="btn danger" data-act="leave-now">Esci dalla partita</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
-    <div class="mrow col"><span>🎮 Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Seleziona']])}</div>
+    <div class="mrow col"><span>🎮 Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
     <div class="mrow col"><span>⚡ Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
+    <button class="mrow" data-act="toggle-info">💬 Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-sound">🔊 Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">📳 Vibrazione ${tog(prefs.vibe)}</button>
-    <button class="mrow" data-act="open-log">📜 Registro partita</button>
-    <button class="mrow" data-act="open-rules">📖 Regole</button>
-    <div class="mrow info">⏱ Tempo per turno: ${S.turnTime ? S.turnTime + 's' : 'illimitato'}</div>
+    <div class="mrow two"><button data-act="open-log">📜 Registro</button><button data-act="open-rules">📖 Regole</button></div>
     <button class="mrow danger" data-act="leave-ask">🚪 Esci dalla partita</button>
     <button class="btn" data-act="menu-close">Chiudi</button>`}
   </div>`;
@@ -610,9 +650,9 @@ function rulesHtml() {
       <li>${SYM.B} <b>Palude</b>: guardi la mano avversaria e scegli una terra da scartare.</li>
       <li>${SYM.R} <b>Montagna</b>: distruggi una terra avversaria in gioco.</li>
       <li>${SYM.G} <b>Foresta</b>: riprendi in mano una terra dal tuo cimitero.</li></ul>
-    Il bersaglio di Montagna, Foresta e Pianura si dichiara prima del contrasto; la Palude sceglie alla risoluzione. Senza bersagli la terra si gioca comunque, senza effetto.
-    <h4>Comandi</h4>Con il trascinamento tieni premuta una carta e lasciala sul tuo campo, oppure sul bersaglio (terra avversaria per la Montagna, tua terra per la Pianura, carta nel cimitero per la Foresta). Puoi passare ai comandi a selezione dal menu.
-    <h4>Tempo</h4>Se il tempo del turno scade passi il turno; se scade durante una risposta la terra avversaria risolve.
+    Senza bersagli la terra si gioca comunque, senza effetto.
+    <h4>Comandi</h4>Porta la carta al centro della plancia (trascinandola, o toccandola e poi toccando il centro). Se ha un bersaglio, tocca poi la carta da colpire: terra avversaria per la Montagna, tua terra per la Pianura, carta nel tuo cimitero per la Foresta. Il cimitero si apre toccando 🪦.
+    <h4>Tempo</h4>Se il tempo scade passi il turno; se scade durante una risposta la terra avversaria risolve.
     <h4>Carte finite</h4>Se un mazzo è vuoto non si pesca. Quando entrambi i mazzi sono vuoti e nessuno può o vuole più giocare, vince chi ha più tipi di terra diversi in gioco; in parità vince chi ha giocato l'ultima terra.
     <div style="text-align:center;margin-top:12px"><button class="btn primary" id="rules-close">Chiudi</button></div>
   </div></div>`;
@@ -622,32 +662,57 @@ function bindOverlays() {
   const c = $('#rules-close'); if (c) c.onclick = () => { ui.rules = false; render(); };
 }
 
+// ---------- Giocare una carta ----------
+// Porta la carta al centro: se serve un bersaglio resta lì in attesa, altrimenti viene giocata subito.
+function stageCard(card, idx, rect) {
+  if (myTask() !== 'main') return;
+  if (needsTarget(card)) {
+    ui.staged = { card, idx }; ui.sel = null;
+    if (card === 'G') ui.gyOpen = 'me';
+    Sound.play('play'); vibrate(15);
+    render();
+    const el = $('#stack .card');
+    if (rect && el) fly(rect, el, card, { dur: 220 });
+  } else {
+    lastPlay = { card, idx, rect };
+    act({ type: 'play', card });
+  }
+}
+
 // ---------- Click (delegati) ----------
 app.addEventListener('click', (e) => {
   if (dragJustEnded) return;
   const el = e.target.closest('[data-act]');
+  // chiude il cimitero aperto toccando altrove (non mentre serve sceglierci un bersaglio)
+  const gyLocked = (ui.staged && ui.staged.card === 'G') || (myTask() === 'choice' && G.choice.kind === 'regrow');
+  if (ui.gyOpen && !e.target.closest('.gywrap') && !gyLocked) {
+    ui.gyOpen = null; render();
+    if (!el) return;
+  }
   if (!el || !app.contains(el)) return;
   const a = el.dataset.act, v = el.dataset.v;
   const idx = el.dataset.idx != null ? Number(el.dataset.idx) : -1;
   switch (a) {
-    case 'sel': ui.sel = ui.sel && ui.sel.idx === idx ? null : { card: v, idx }; Sound.play('click'); return render();
-    case 'drag-hint': {
-      el.classList.remove('wiggle'); void el.offsetWidth; el.classList.add('wiggle');
-      return toast('Tieni premuta la carta e trascinala sul campo', true);
+    case 'card': {
+      if (prefs.controls === 'drag') { el.classList.remove('wiggle'); void el.offsetWidth; el.classList.add('wiggle'); return; }
+      if (ui.staged) return;
+      if (ui.sel && ui.sel.idx === idx) return stageCard(v, idx, el.getBoundingClientRect());
+      ui.sel = { card: v, idx }; Sound.play('click'); return render();
     }
-    case 'cancel': ui.sel = null; return render();
+    case 'center': if (ui.sel) { const c = $(`#hand-me .card[data-idx="${ui.sel.idx}"]`); stageCard(ui.sel.card, ui.sel.idx, rectOf(c)); } return;
+    case 'unstage': ui.staged = null; ui.gyOpen = null; clearArrows('aim'); Sound.play('click'); return render();
     case 'pass': return act({ type: 'pass' });
-    case 'play':
-      if (!ui.sel) return;
-      lastPlay = { card: ui.sel.card, idx: ui.sel.idx };
-      return act({ type: 'play', card: ui.sel.card });
     case 'target':
-      if (myTask() === 'main' && ui.sel) { lastPlay = { card: ui.sel.card, idx: ui.sel.idx }; return act({ type: 'play', card: ui.sel.card, target: v }); }
+      if (myTask() === 'main' && ui.staged) {
+        lastPlay = { card: ui.staged.card, idx: ui.staged.idx, rect: rectOf($('#stack .card')) };
+        return act({ type: 'play', card: ui.staged.card, target: v });
+      }
       if (myTask() === 'choice') return act({ type: 'choose', choice: v });
       return;
+    case 'gy': if (gyLocked) return; ui.gyOpen = ui.gyOpen === v ? null : v; Sound.play('click'); return render();
     case 'counter-start': ui.counter = true; ui.pick = null; Sound.play('click'); return render();
     case 'counter-cancel': ui.counter = false; ui.pick = null; return render();
-    case 'pick': ui.pick = { card: v, idx }; Sound.play('click'); return render();
+    case 'pick': ui.pick = { card: v, idx }; Sound.play('click'); vibrate(10); return render();
     case 'counter-confirm': {
       if (!ui.pick) return;
       const plan = counterPlan();
@@ -660,8 +725,9 @@ app.addEventListener('click', (e) => {
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-speed': prefs.speed = v; send({ t: 'prefs', speed: SPEEDS[v] }); Sound.play('click'); return render();
+    case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
-    case 'toggle-vibe': prefs.vibe = !prefs.vibe; vibrate(30); return render();
+    case 'toggle-vibe': prefs.vibe = !prefs.vibe; vibrate(40); return render();
     case 'open-log': ui.menu = false; ui.log = true; return render();
     case 'close-log': ui.log = false; return render();
     case 'open-rules': ui.menu = false; ui.rules = true; return render();
@@ -671,32 +737,17 @@ app.addEventListener('click', (e) => {
     case 'rematch': return send({ t: 'rematch' });
   }
 });
-app.addEventListener('contextmenu', (e) => { if (e.target.closest('.hand')) e.preventDefault(); });
+app.addEventListener('contextmenu', (e) => { if (e.target.closest('.game')) e.preventDefault(); });
 
 // =====================================================================
-//  Trascinamento (pressione prolungata)
+//  Trascinamento: parte subito (al primo movimento o dopo un attimo)
 // =====================================================================
-const HOLD_MS = 230, SLOP = 9;
-let drag = null;          // { idx, card, el, x0, y0, timer, active, ghost, dx, dy, over, drops }
+const HOLD_MS = 90, SLOP = 4;
+let drag = null;
 let dragJustEnded = false;
 
-function dropZonesFor(card) {
-  // Elementi su cui si può rilasciare la carta, con il bersaglio associato
-  const t = G.playable[card];
-  const zones = [];
-  if (t && t.length) {
-    for (const x of t) {
-      const el = card === 'R' ? $(`#slot-opp-${x}`) : card === 'W' ? $(`#slot-me-${x}`) : $(`#gy-me-${x}`);
-      if (el) zones.push({ el, target: x });
-    }
-  } else {
-    for (const sel of ['#bf-me', '#stack', '.center']) { const el = $(sel); if (el) zones.push({ el, target: null }); }
-  }
-  return zones;
-}
-
 app.addEventListener('pointerdown', (e) => {
-  if (prefs.controls !== 'drag' || myTask() !== 'main' || drag) return;
+  if (prefs.controls !== 'drag' || myTask() !== 'main' || drag || ui.staged) return;
   const el = e.target.closest('.hand .card.playable');
   if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return;
   drag = { idx: Number(el.dataset.idx), card: el.dataset.card, el, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, active: false, pid: e.pointerId };
@@ -712,102 +763,174 @@ function startDrag() {
   drag.dx = drag.x0 - r.left; drag.dy = drag.y0 - r.top;
   const ghost = document.createElement('div');
   ghost.className = 'drag-ghost';
-  ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
+  ghost.style.width = el.offsetWidth + 'px'; ghost.style.height = el.offsetHeight + 'px';
   ghost.innerHTML = cardHtml(drag.card, 'floating');
   document.body.appendChild(ghost);
   drag.ghost = ghost;
   el.classList.remove('pressing'); el.classList.add('ghosted');
-  drag.drops = dropZonesFor(drag.card);
-  drag.drops.forEach((z) => z.el.classList.add('droppable'));
+  const center = $('#center');
+  if (center) center.classList.add('droppable');
   document.body.classList.add('dragging');
   moveGhost(drag.x, drag.y);
-  Sound.play('grab'); vibrate(25);
-  const t = G.playable[drag.card];
-  setHint(t && t.length
-    ? (drag.card === 'R' ? 'Rilascia su una terra avversaria da distruggere' : drag.card === 'W' ? 'Rilascia su una tua terra da riattivare' : 'Rilascia su una carta del tuo cimitero')
-    : 'Rilascia sul tuo campo per giocarla');
+  Sound.play('grab'); vibrate(15);
 }
-
-function setHint(text) { const h = $('.actions-area .hint'); if (h) h.innerHTML = text; }
 
 function moveGhost(x, y) {
   if (!drag || !drag.ghost) return;
-  // la carta sta un po' sopra il dito, per restare visibile
-  drag.ghost.style.transform = `translate(${x - drag.dx}px, ${y - drag.dy - 26}px)`;
-  const hit = document.elementFromPoint(x, y - 26);
-  let over = null;
-  if (hit) for (const z of drag.drops) if (z.el === hit || z.el.contains(hit)) { over = z; if (z.target) break; }
+  drag.ghost.style.transform = `translate(${x - drag.dx}px, ${y - drag.dy - 20}px)`;
+  const center = $('#center');
+  const r = rectOf(center);
+  const over = !!(r && x >= r.left && x <= r.right && y - 20 >= r.top && y - 20 <= r.bottom);
   if (over !== drag.over) {
-    if (drag.over) drag.over.el.classList.remove('dropover');
-    if (over) { over.el.classList.add('dropover'); vibrate(10); }
+    if (center) center.classList.toggle('dropover', over);
+    if (over) vibrate(8);
     drag.over = over;
   }
 }
 
 window.addEventListener('pointermove', (e) => {
-  if (!drag || e.pointerId !== drag.pid) return;
-  drag.x = e.clientX; drag.y = e.clientY;
-  if (!drag.active) {
-    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > SLOP) cancelDrag(true); // era uno scorrimento
+  if (drag && e.pointerId === drag.pid) {
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (!drag.active) {
+      if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > SLOP) startDrag();
+      else return;
+    }
+    e.preventDefault();
+    moveGhost(e.clientX, e.clientY);
     return;
   }
-  e.preventDefault();
-  moveGhost(e.clientX, e.clientY);
+  if (ui.staged) aimArrow(e.clientX, e.clientY);
 }, { passive: false });
 
 document.addEventListener('touchmove', (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
 
 window.addEventListener('pointerup', (e) => {
   if (!drag || e.pointerId !== drag.pid) return;
-  if (!drag.active) { cancelDrag(true); return; } // tocco breve: lo gestisce il click
+  if (!drag.active) { finishDrag(); return; } // tocco veloce: lo gestisce il click
   const d = drag;
-  dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 50);
+  dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 60);
   if (d.over && myTask() === 'main') {
     const rect = d.ghost.firstElementChild.getBoundingClientRect();
-    lastPlay = { card: d.card, idx: d.idx, rect };
     const handCard = d.el;
-    finishDrag();
-    handCard.style.visibility = 'hidden'; // resta nascosta finché parte l'animazione
-    Sound.play('click');
-    send({ t: 'action', a: { type: 'play', card: d.card, target: d.over.target || undefined } });
+    finishDrag(true);
+    handCard.style.visibility = 'hidden';
+    stageCard(d.card, d.idx, rect);
   } else {
     Sound.play('deny');
-    const t = G.playable[d.card];
-    toast(t && t.length
-      ? (d.card === 'R' ? 'Trascina la Montagna su una terra avversaria' : d.card === 'W' ? 'Trascina la Pianura su una tua terra' : 'Trascina la Foresta su una carta del tuo cimitero')
-      : 'Rilascia la carta sul tuo campo', true);
     cancelDrag(false);
   }
 });
 window.addEventListener('pointercancel', (e) => { if (drag && e.pointerId === drag.pid) cancelDrag(false); });
 
-function finishDrag() {
+function finishDrag(skipRender) {
   if (!drag) return;
   clearTimeout(drag.timer);
-  if (drag.drops) drag.drops.forEach((z) => z.el.classList.remove('droppable', 'dropover'));
+  const center = $('#center');
+  if (center) center.classList.remove('droppable', 'dropover');
   if (drag.ghost) drag.ghost.remove();
   if (drag.el) drag.el.classList.remove('pressing', 'ghosted');
   document.body.classList.remove('dragging');
   drag = null;
-  if (needRender) render();
+  if (needRender && !skipRender) render();
 }
 
 // Annulla il trascinamento: la carta torna in mano con un'animazione
 function cancelDrag(instant) {
   if (!drag) return;
   const d = drag;
-  if (!d.active || instant || !d.ghost) { finishDrag(); if (d.active) render(); return; }
+  if (!d.active || instant || !d.ghost) { finishDrag(); return; }
   const from = d.ghost.firstElementChild.getBoundingClientRect();
   const to = d.el.getBoundingClientRect();
   const ghost = d.ghost;
   d.ghost = null;
-  finishDrag();
+  const el = d.el;
+  el.style.visibility = 'hidden';
+  finishDrag(true);
   ghost.firstElementChild.classList.remove('floating');
   ghost.animate([
     { transform: `translate(${from.left}px, ${from.top}px)` },
     { transform: `translate(${to.left}px, ${to.top}px)` },
-  ], { duration: 220, easing: 'ease-out', fill: 'forwards' }).finished.then(() => ghost.remove(), () => ghost.remove());
-  render();
+  ], { duration: 200, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {})
+    .then(() => { ghost.remove(); el.style.visibility = ''; if (needRender) render(); });
+}
+
+// =====================================================================
+//  Frecce: chi colpisce cosa
+// =====================================================================
+const ARROW_COLOR = { R: '#ff5a4a', W: '#ffe58a', G: '#5fd38a', B: '#c39bff', U: '#6cb6ff' };
+function clearArrows(cls) {
+  const svg = $('#arrows'); if (!svg) return;
+  $$(cls ? `g.${cls}` : 'g.arrow', svg).forEach((n) => n.remove());
+}
+function centerOf(el) { const r = rectOf(el); return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2, r } : null; }
+
+// Disegna una freccia curva da a → b. Ritorna il gruppo SVG.
+function arrow(a, b, color, cls = 'pending', animate = true) {
+  const svg = $('#arrows'); if (!svg || !a || !b) return null;
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+  if (len < 20) return null;
+  const shrink = b.r ? Math.min(b.r.width, b.r.height) * 0.42 : 0; // la punta si ferma sul bordo
+  const ex = b.x - (dx / len) * shrink, ey = b.y - (dy / len) * shrink;
+  const nx = -dy / len, ny = dx / len, bend = Math.min(60, len * 0.25) * (dx >= 0 ? -1 : 1);
+  const cx = (a.x + ex) / 2 + nx * bend, cy = (a.y + ey) / 2 + ny * bend;
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('class', `arrow ${cls}`);
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', `M${a.x},${a.y} Q${cx},${cy} ${ex},${ey}`);
+  path.setAttribute('stroke', color);
+  path.setAttribute('class', 'shaft');
+  const ang = Math.atan2(ey - cy, ex - cx), s = 14;
+  const head = document.createElementNS(ns, 'path');
+  head.setAttribute('d', `M${ex},${ey} L${ex - s * Math.cos(ang - 0.45)},${ey - s * Math.sin(ang - 0.45)} L${ex - s * Math.cos(ang + 0.45)},${ey - s * Math.sin(ang + 0.45)} Z`);
+  head.setAttribute('fill', color);
+  head.setAttribute('class', 'head');
+  g.appendChild(path); g.appendChild(head);
+  svg.appendChild(g);
+  if (animate) {
+    const L = path.getTotalLength();
+    path.style.strokeDasharray = `${L}`;
+    path.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: D(350), easing: 'ease-out', fill: 'forwards' })
+      .finished.catch(() => {}).then(() => { path.style.strokeDasharray = ''; });
+    head.animate([{ opacity: 0 }, { opacity: 0, offset: 0.8 }, { opacity: 1 }], { duration: D(350), fill: 'forwards' });
+  }
+  return g;
+}
+
+// Elemento colpito dalla terra in attesa
+function pendingTargetEl(p) {
+  if (!p || !p.target) return null;
+  const ownerW = who(p.owner), otherW = ownerW === 'me' ? 'opp' : 'me';
+  if (p.land === 'R') return slotEl(otherW, p.target);
+  if (p.land === 'W') return slotEl(ownerW, p.target);
+  if (p.land === 'G') return gyEl(ownerW, p.target);
+  return null;
+}
+
+let lastArrowKey = null;
+function drawArrows() {
+  clearArrows('pending');
+  if (!G || !G.pending || !G.pending.target || ui.staged) { lastArrowKey = null; return; }
+  const p = G.pending;
+  const key = `${G.turn}|${p.land}|${p.target}`;
+  arrow(centerOf($('#stack .card')), centerOf(pendingTargetEl(p)), ARROW_COLOR[p.land], 'pending', key !== lastArrowKey);
+  lastArrowKey = key;
+}
+
+// Mentre si sceglie il bersaglio, la freccia segue il dito/mouse e si aggancia ai bersagli validi
+function aimArrow(x, y) {
+  clearArrows('aim');
+  if (!ui.staged) return;
+  const hit = document.elementFromPoint(x, y);
+  const tg = hit && hit.closest('.target');
+  const to = tg ? centerOf(tg) : { x, y };
+  arrow(centerOf($('#stack .card')), to, ARROW_COLOR[ui.staged.card], 'aim' + (tg ? ' locked' : ''), false);
+}
+
+async function flashArrow(fromEl, toEl, color, ms = 500) {
+  const g = arrow(centerOf(fromEl), centerOf(toEl), color, 'flash', true);
+  await wait(ms);
+  if (g) g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: D(200), fill: 'forwards' }).finished.catch(() => {}).then(() => g.remove());
 }
 
 // ---------- Timer ----------
@@ -845,7 +968,7 @@ function handEl(w, card, idx) {
   return backs[backs.length - 1] || $('#hand-opp');
 }
 const slotEl = (w, t) => $(`#slot-${w}-${t}`);
-const gyEl = (w, t) => $(`#gy-${w}-${t}`) || $(`#gy-${w}`);
+const gyEl = (w, t) => (t && $(`#gy-${w}-${t}`)) || $(`#gy-${w}`);
 const deckEl = (w) => $(`#deck-${w} .pile`) || $(`#deck-${w}`);
 const stackCard = () => $('#stack .card') || $('#stack');
 
@@ -862,11 +985,11 @@ function makeFlyer(face, w, h) {
 function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0 } = {}) {
   const to = rectOf(toEl);
   if (!okRect(from) || !okRect(to)) return Promise.resolve();
-  const W = Math.max(48, Math.min(to.width, 74)), H = W * 1.4;
+  const W = Math.max(46, Math.min(to.width, 70)), H = W * 1.4;
   const f = makeFlyer(face, W, H);
   const sx = from.left + from.width / 2 - W / 2, sy = from.top + from.height / 2 - H / 2;
   const ex = to.left + to.width / 2 - W / 2, ey = to.top + to.height / 2 - H / 2;
-  const s0 = Math.max(0.35, Math.min(from.width / W, 1.2)), s1 = Math.max(0.35, Math.min(to.width / W, 1.2));
+  const s0 = Math.max(0.3, Math.min(from.width / W, 1.2)), s1 = Math.max(0.3, Math.min(to.width / W, 1.2));
   if (hideTarget && toEl) toEl.style.visibility = 'hidden';
   const anim = f.animate([
     { transform: `translate(${sx}px, ${sy}px) scale(${s0})`, opacity: 0.9 },
@@ -916,12 +1039,12 @@ async function animateStep(ev, next) {
   }
   const w = who(ev.player);
   const opp = G.opp.name;
-  // "Giochi Isola" per te, "Marco gioca Isola" per l'avversario
   const say = (p, mine, theirs) => (p === G.you ? mine.charAt(0).toUpperCase() + mine.slice(1) : `${opp} ${theirs}`);
+  const srcEl = () => (lastEnter ? slotEl(lastEnter.w, lastEnter.card) : stackCard());
 
   switch (ev.type) {
     case 'turn': {
-      G = next; ui.caption = ''; render(); // niente scritta finché c'è il banner
+      G = next; ui.caption = ''; render();
       const mine = ev.player === G.you;
       if (mine) { Sound.play('turn'); vibrate(30); }
       await banner(mine ? 'Il tuo turno' : `Turno di ${opp}`, mine);
@@ -930,10 +1053,8 @@ async function animateStep(ev, next) {
     case 'draw': {
       const from = rectOf(deckEl(w));
       G = next; render();
-      setCaption(ev.player === G.you ? `Peschi ${ev.card ? NAMES[ev.card] : 'una carta'}` : `${opp} pesca una carta`);
       Sound.play('draw');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
-      if (w === 'me' && to) to.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       await fly(from, to, w === 'me' ? ev.card : null, { dur: 380 });
       if (w === 'me') pulse(to, 'newcard', 700);
       return;
@@ -943,17 +1064,12 @@ async function animateStep(ev, next) {
       if (w === 'me' && lastPlay && lastPlay.card === ev.card) from = lastPlay.rect || rectOf(handEl('me', ev.card, lastPlay.idx));
       else from = rectOf(handEl(w, w === 'me' ? ev.card : null));
       lastPlay = null;
-      G = next; render();
-      let cap = say(ev.player, `giochi ${NAMES[ev.card]}`, `gioca ${NAMES[ev.card]}`);
-      if (ev.target) cap += ev.card === 'R' ? ` → ${NAMES[ev.target]}` : ev.card === 'G' ? ` (recupera ${NAMES[ev.target]})` : ` (riattiva ${NAMES[ev.target]})`;
-      setCaption(cap);
+      G = next; render(); clearArrows('pending');
+      if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
-      await fly(from, stackCard(), ev.card, { dur: 460 });
-      if (ev.target) {
-        const tw = ev.card === 'R' ? (ev.player === G.you ? 'opp' : 'me') : w;
-        const tEl = ev.card === 'G' ? gyEl(tw, ev.target) : slotEl(tw, ev.target);
-        await pulse(tEl, 'aimed', 500);
-      } else await wait(250);
+      await fly(from, stackCard(), ev.card, { dur: 420 });
+      if (ev.target) { lastArrowKey = null; drawArrows(); await pulse(pendingTargetEl(G.pending), 'aimed', 500); }
+      else await wait(250);
       return;
     }
     case 'counter': {
@@ -965,7 +1081,7 @@ async function animateStep(ev, next) {
       else { fromU = fromX = rectOf(handEl('opp')); }
       lastCounter = null;
       G = next; render();
-      setCaption(say(ev.player, `contrasti: scarti Isola + ${NAMES[ev.other]}`, `contrasta: scarta Isola + ${NAMES[ev.other]}`));
+      setCaption(say(ev.player, `contrasti (💧 + ${SYM[ev.other]})`, `contrasta (💧 + ${SYM[ev.other]})`));
       Sound.play('counter');
       if (ev.player !== G.you) vibrate(60);
       const st = $('#stack');
@@ -974,11 +1090,12 @@ async function animateStep(ev, next) {
         fly(fromU, gyEl(w, 'U'), 'U', { dur: 480 }),
         fly(fromX, gyEl(w, ev.other), ev.other, { dur: 480, delay: 120 }),
       ]);
-      await wait(350);
+      await flashArrow(gyEl(w), stackCard(), ARROW_COLOR.U, 450);
       return;
     }
     case 'countered': {
       const sc = stackCard();
+      clearArrows('pending');
       if (sc && sc.classList.contains('card')) {
         const stamp = document.createElement('div'); stamp.className = 'stamp'; stamp.textContent = 'ANNULLATA';
         sc.appendChild(stamp);
@@ -988,24 +1105,25 @@ async function animateStep(ev, next) {
       }
       const from = rectOf(sc);
       G = next; render();
-      setCaption(`🚫 ${NAMES[ev.card]} ${ev.player === G.you ? 'tua ' : ''}annullata`);
       Sound.play('fizzle');
       await fly(from, gyEl(w, ev.card), ev.card, { dur: 420 });
       return;
     }
     case 'enter': {
       const from = rectOf(stackCard());
+      clearArrows('pending');
       G = next; render();
-      setCaption(`${NAMES[ev.card]} entra in gioco${ev.player === G.you ? '' : ` per ${opp}`}`);
+      setCaption('');
       Sound.play('land');
       const to = slotEl(w, ev.card);
+      lastEnter = { w, card: ev.card };
       await fly(from, to, ev.card, { dur: 420 });
       await pulse(to, 'landed', 450);
       return;
     }
     case 'destroy': {
       const s = slotEl(w, ev.card);
-      setCaption(`${NAMES[ev.card]} ${ev.player === G.you ? 'tua' : `di ${opp}`} viene distrutta!`);
+      await flashArrow(srcEl(), s, ARROW_COLOR.R, 450);
       Sound.play('destroy');
       if (ev.player === G.you) vibrate(80);
       await pulse(s, 'boom', 450);
@@ -1015,9 +1133,9 @@ async function animateStep(ev, next) {
       return;
     }
     case 'regrow': {
+      await flashArrow(srcEl(), gyEl(w), ARROW_COLOR.G, 400);
       const from = rectOf(gyEl(w, ev.card));
       G = next; render();
-      setCaption(say(ev.player, `recuperi ${NAMES[ev.card]} dal cimitero`, `recupera ${NAMES[ev.card]} dal cimitero`));
       Sound.play('regrow');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
       await fly(from, to, ev.card, { dur: 450 });
@@ -1026,35 +1144,35 @@ async function animateStep(ev, next) {
     case 'discard': {
       const from = rectOf(w === 'me' ? handEl('me', ev.card) : handEl('opp'));
       G = next; render();
-      setCaption(ev.player === G.you ? `${opp} ti fa scartare ${NAMES[ev.card]}` : `${opp} scarta ${NAMES[ev.card]}`);
       Sound.play('discard');
       await fly(from, gyEl(w, ev.card), ev.card, { dur: 420 });
       return;
     }
     case 'look': {
+      const target = ev.player === G.you ? $('#hand-opp') : $('#hand-me');
+      await flashArrow(srcEl(), target, ARROW_COLOR.B, 450);
       G = next; render();
-      setCaption(ev.player === G.you ? `Guardi la mano di ${opp}` : `${opp} guarda la tua mano 👀`);
       Sound.play('look');
-      if (ev.player !== G.you) await pulse($('#hand-me'), 'peek', 700);
-      else await wait(300);
+      if (ev.player !== G.you) { setCaption('👀'); await pulse($('#hand-me'), 'peek', 700); }
       return;
     }
     case 'reuse': {
+      await flashArrow(srcEl(), slotEl(w, ev.card), ARROW_COLOR.W, 450);
       G = next; render();
-      setCaption(`La Pianura riattiva ${NAMES[ev.card]}`);
       Sound.play('reuse');
+      lastEnter = { w, card: ev.card }; // l'effetto riattivato parte da questa terra
       await pulse(slotEl(w, ev.card), 'shine', 650);
       return;
     }
     case 'pass': {
       G = next; render();
-      setCaption(ev.auto ? say(ev.player, 'non hai carte: turno passato', 'non ha carte: turno passato') : say(ev.player, 'passi il turno', 'passa il turno'));
+      setCaption(say(ev.player, 'passi', 'passa'));
       await wait(550);
       return;
     }
     case 'timeout': {
       G = next; render();
-      setCaption(`⏱ Tempo scaduto${ev.player === G.you ? '' : ` per ${opp}`}`);
+      setCaption('⏱ Tempo scaduto');
       Sound.play('timeout');
       if (ev.player === G.you) vibrate(150);
       await wait(700);

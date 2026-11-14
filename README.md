@@ -36,14 +36,17 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 - **Partita contro il computer** (difficoltà media): valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Stanze con codice di 4 caratteri e link di invito; rientro automatico se cade la connessione.
-- **Comandi a trascinamento** (predefiniti): tieni premuta una carta, fluttua, e la lasci sul tuo campo o sul bersaglio. In alternativa, comandi a selezione dal menu.
+- **Le carte si giocano sempre al centro della plancia**: si trascinano (la presa è immediata e la carta fluttua) oppure, con i comandi a tocco, si tocca la carta e poi il centro. Se la terra ha un bersaglio, dopo si tocca la carta da colpire; una freccia mostra chi colpisce cosa.
+- Mano a ventaglio: le carte si stringono quando sono tante, tutto resta sempre a schermo.
+- Cimitero compatto (🪦 con il totale) che si apre toccandolo.
 - Animazioni per ogni evento (distribuzione, pescata, giocata, contrasto, terra annullata, ingresso in gioco, distruzione, recupero, scarto, Pianura) con didascalia che spiega cosa succede.
 - Azioni nel pannello centrale e direttamente sul campo (i bersagli validi lampeggiano): la mano resta sempre visibile.
-- Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Per contrastare o scegliere ci sono 20 secondi. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
-- Indicatore di avanzamento (tipi diversi e terre uguali), con avviso quando qualcuno è a un passo dalla vittoria.
+- Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Lo stesso tempo vale per contrastare e per le scelte. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
+- ⚠️ accanto al nome quando un giocatore è a un passo dalla vittoria.
+- Plancia pulita: le spiegazioni testuali si attivano dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
 - Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
 - Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
-- Menu in partita: comandi, velocità animazioni (lenta/media/veloce, predefinita lenta), effetti sonori, vibrazione, registro, regole, esci.
+- Menu in partita: comandi (trascina/tocca), info nella plancia, velocità animazioni (lenta/media/veloce, predefinita lenta), effetti sonori, vibrazione, registro, regole, esci.
 
 ## Struttura
 

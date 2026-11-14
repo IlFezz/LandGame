@@ -127,7 +127,6 @@ server.on('upgrade', (req, socket) => {
 const rooms = new Map(); // code -> room
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TURN_TIMES = [0, 30, 45, 60, 90];
-const RESPONSE_TIME = 20; // secondi per contrastare o scegliere
 const ANIM_MS = 700;       // durata media di un'animazione a velocità "media" (il timer parte dopo)
 const TIME_SCALE = Number(process.env.TIME_SCALE || 1); // solo per i test
 const BOT_SEAT = 1;
@@ -188,7 +187,7 @@ function scheduleTimer(room, nEvents) {
   }
   if (room.timer && room.timer.key === key) return;
   if (room.timer) clearTimeout(room.timer.handle);
-  const total = g.step === 'main' ? room.turnTime : Math.min(RESPONSE_TIME, room.turnTime);
+  const total = room.turnTime; // stesso tempo per giocare, contrastare e scegliere
   const deadline = Date.now() + (animTime(room, nEvents) + total * 1000) * TIME_SCALE;
   const handle = setTimeout(() => {
     if (!room.game || room.game.actor() !== actor) return;
