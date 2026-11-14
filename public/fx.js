@@ -13,26 +13,33 @@ const FX = (() => {
   };
   const SMOKE = ['#4a3a5a', '#32263e', '#20182a', '#120c18'];
   const ROCK = ['#8a84a0', '#5a5470', '#3a3448', '#1e1a28'];
+  const COARSE = window.matchMedia && matchMedia('(pointer: coarse)').matches; // telefono o tablet
   let cv, ctx, S = 2, parts = [], objs = [], running = false, last = 0;
-  let quality = 1, ambient = false, ambientTint = 'N', ambT = 0;
-  const MAX = 900;
+  let quality = 1, userQ = 1, ambient = false, ambientTint = 'N', ambT = 0, skip = false;
+  let MAX = COARSE ? 380 : 900;
+  // misura dei tempi di frame per abbassare la qualità da solo se il dispositivo fatica
+  let perfT = 0, perfN = 0, perfSlow = 0, autoLevel = 0;
   const R = (a, b) => a + Math.random() * (b - a);
   const pick = (a) => a[(Math.random() * a.length) | 0];
 
   function init() {
     cv = document.getElementById('fx');
     if (!cv) return;
-    ctx = cv.getContext('2d');
+    ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
     resize();
     window.addEventListener('resize', resize);
   }
   function resize() {
     if (!cv) return;
     S = Math.min(innerWidth, innerHeight) > 620 ? 3 : 2;
+    if (COARSE) S = 3; // su telefono pixel più grossi: meno lavoro, stesso stile
     cv.width = Math.ceil(innerWidth / S); cv.height = Math.ceil(innerHeight / S);
     ctx.imageSmoothingEnabled = false;
   }
-  function kick() { if (!running && ctx && !document.hidden) { running = true; last = performance.now(); requestAnimationFrame(loop); } }
+  const ambientOn = () => ambient && quality >= 1 && !COARSE;
+  function kick() {
+    if (!running && ctx && !document.hidden) { running = true; last = performance.now(); cv.classList.add('on'); requestAnimationFrame(loop); }
+  }
 
   // p: x,y,vx,vy (px CSS e px/s), g gravità, drag, life, size, cols, add, shape
   function P(o) {
@@ -43,50 +50,76 @@ const FX = (() => {
   function many(n, fn) { n = Math.max(1, Math.round(n * quality)); for (let i = 0; i < n; i++) P(fn(i, n)); kick(); }
   function O(o) { o.age = 0; objs.push(o); kick(); }
 
+  // Se per circa 1,5 secondi di effetti i frame superano i 24 ms, riduce la qualità (al massimo due volte)
+  function watch(dt) {
+    if (parts.length < 40 || autoLevel >= 2) return;
+    perfT += dt; perfN++;
+    if (dt > 0.024) perfSlow++;
+    if (perfT < 1.5) return;
+    if (perfSlow / perfN > 0.35) {
+      autoLevel++;
+      quality = Math.max(0.3, quality * 0.55);
+      MAX = Math.round(MAX * 0.6);
+      document.body.classList.add('auto-low');
+    }
+    perfT = 0; perfN = 0; perfSlow = 0;
+  }
+
+  const stats = { frames: 0, ms: 0, max: 0 }; // misura del costo del motore (per i test)
   function loop(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (ambient && quality >= 1) {
+    const t0 = performance.now();
+    const dt = Math.min(0.05, (now - last) / 1000);
+    const busy = parts.length > 12 || objs.length > 0;
+    // con solo il pulviscolo d'ambiente basta disegnare un frame sì e uno no
+    if (!busy) { skip = !skip; if (skip) { requestAnimationFrame(loop); return; } }
+    last = now;
+    if (busy) watch(dt);
+    if (ambientOn()) {
       ambT += dt;
-      if (ambT > 0.35) {
+      if (ambT > 0.4) {
         ambT = 0;
         P({ x: R(0, innerWidth), y: R(innerHeight * 0.3, innerHeight), vx: R(-6, 6), vy: R(-22, -8), life: R(4, 7), size: S, cols: [PAL[ambientTint][2], PAL[ambientTint][3]], add: true, soft: 0.5, wob: R(0, 6) });
       }
     }
     ctx.clearRect(0, 0, cv.width, cv.height);
-    // oggetti (radici, anelli, fasci…)
     for (let i = objs.length - 1; i >= 0; i--) {
       const o = objs[i]; o.age += dt;
-      if (o.age >= o.life) { objs.splice(i, 1); continue; }
+      if (o.age >= o.life) { objs[i] = objs[objs.length - 1]; objs.pop(); continue; }
       ctx.globalCompositeOperation = o.add ? 'lighter' : 'source-over';
       o.draw(ctx, o.age / o.life, o.age);
     }
-    // particelle: prima le opache, poi le luminose
+    // aggiornamento (rimozione per scambio, senza splice)
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+      if (p.delay > 0) { p.delay -= dt; p.age -= dt; continue; }
+      p.vy += p.g * dt;
+      if (p.drag) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; }
+      p.x += p.vx * dt + (p.wob ? Math.sin(p.age * 3 + p.wob) * 0.4 : 0); p.y += p.vy * dt;
+    }
+    // disegno: prima le opache, poi le luminose; colore e trasparenza cambiano solo quando serve
+    let lastCol = '', lastA = -1;
     for (let pass = 0; pass < 2; pass++) {
       ctx.globalCompositeOperation = pass ? 'lighter' : 'source-over';
-      for (let i = parts.length - 1; i >= 0; i--) {
+      for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
-        if (pass === 0) {
-          p.age += dt;
-          if (p.age >= p.life) { parts.splice(i, 1); continue; }
-          if (p.delay > 0) { p.delay -= dt; p.age -= dt; continue; }
-          p.vy += p.g * dt;
-          if (p.drag) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; }
-          p.x += p.vx * dt + (p.wob ? Math.sin(p.age * 3 + p.wob) * 0.4 : 0); p.y += p.vy * dt;
-        }
         if (!!p.add !== !!pass || p.delay > 0) continue;
         const t = p.age / p.life;
-        ctx.globalAlpha = (t > 0.7 ? (1 - t) / 0.3 : 1) * (p.soft || 1);
-        ctx.fillStyle = p.cols[Math.min(p.cols.length - 1, (t * p.cols.length) | 0)];
+        const a = Math.round((t > 0.7 ? (1 - t) / 0.3 : 1) * (p.soft || 1) * 8) / 8; // 8 livelli
+        if (a !== lastA) { ctx.globalAlpha = a; lastA = a; }
+        const col = p.cols[Math.min(p.cols.length - 1, (t * p.cols.length) | 0)];
+        if (col !== lastCol) { ctx.fillStyle = col; lastCol = col; }
         const s = Math.max(1, Math.round((p.shrink ? p.size * (1 - t * 0.7) : p.size) / S));
         const x = Math.round(p.x / S), y = Math.round(p.y / S);
-        if (p.shape === 1) { // scintilla a croce
-          if ((p.age * 9 + (p.wob || 0)) % 2 < 1.3) { ctx.fillRect(x - s, y, s * 3, s); ctx.fillRect(x, y - s, s, s * 3); }
-          else ctx.fillRect(x, y, s, s);
-        } else ctx.fillRect(x, y, s, s);
+        if (p.shape === 1 && (p.age * 9 + (p.wob || 0)) % 2 < 1.3) { ctx.fillRect(x - s, y, s * 3, s); ctx.fillRect(x, y - s, s, s * 3); }
+        else ctx.fillRect(x, y, s, s);
       }
     }
     ctx.globalAlpha = 1;
-    if (parts.length || objs.length || (ambient && quality >= 1)) requestAnimationFrame(loop); else { running = false; ctx.clearRect(0, 0, cv.width, cv.height); }
+    const ms = performance.now() - t0; stats.frames++; stats.ms += ms; if (ms > stats.max) stats.max = ms;
+    if (parts.length || objs.length || ambientOn()) requestAnimationFrame(loop);
+    else { running = false; ctx.clearRect(0, 0, cv.width, cv.height); cv.classList.remove('on'); }
   }
 
   // ---------- mattoncini ----------
@@ -108,7 +141,7 @@ const FX = (() => {
     O({ life, add: true, draw(c, t) {
       const rad = (r0 + (r1 - r0) * (1 - (1 - t) * (1 - t))) / S;
       c.globalAlpha = 1 - t; c.fillStyle = cols[Math.min(cols.length - 1, (t * cols.length) | 0)];
-      const n = Math.max(12, Math.round(rad * 5));
+      const n = Math.max(12, Math.round(rad * 3));
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         c.fillRect(Math.round(x / S + Math.cos(a) * rad), Math.round(y / S + Math.sin(a) * rad * squash), thick, thick);
@@ -117,7 +150,7 @@ const FX = (() => {
   }
   function shake(power = 6, ms = 300) {
     const el = document.getElementById('app');
-    if (!el || quality < 1 || !el.animate) return;
+    if (!el || quality < 1 || COARSE || !el.animate) return; // sul telefono si usa la vibrazione
     const k = [];
     for (let i = 0; i < 7; i++) k.push({ transform: `translate(${Math.round(R(-power, power))}px, ${Math.round(R(-power, power))}px)` });
     k.push({ transform: 'none' });
@@ -143,19 +176,27 @@ const FX = (() => {
     };
     const bottomMid = (r.width + r.height + r.width / 2) / (2 * (r.width + r.height));
     paths.push(mk(1, bottomMid), mk(-1, bottomMid));
+    // le radici crescono soltanto: ogni punto si disegna una volta su un canvas a parte
+    const pad = 12;
+    const ox = Math.floor((r.left - pad) / S), oy = Math.floor((r.top - pad) / S);
+    const off = document.createElement('canvas');
+    off.width = Math.ceil((r.width + pad * 2) / S) + 4; off.height = Math.ceil((r.height + pad * 2) / S) + 4;
+    const oc = off.getContext('2d');
+    const done = paths.map(() => 0);
+    const order = paths.map((pts) => pts.slice().sort((p, q) => (p.tend ? p.at + 2 : p.i) - (q.tend ? q.at + 2 : q.i)));
     O({ life: 1.9, draw(c, t) {
-      const grow = Math.min(1, t / 0.45), fade = t > 0.75 ? (1 - t) / 0.25 : 1;
-      c.globalAlpha = fade;
-      for (const pts of paths) {
-        const lim = Math.floor(grow * 70);
-        for (const p of pts) {
-          if ((p.tend ? p.at + 2 : p.i) > lim) continue;
-          const x = Math.round(p.x / S), y = Math.round(p.y / S);
-          c.fillStyle = '#0c3a1e'; c.fillRect(x, y, 2, 2);
-          c.fillStyle = p.tend ? '#2f9a48' : '#1a6a32'; c.fillRect(x, y, 1, 1);
-          if (p.leaf) { c.fillStyle = '#7ad86a'; c.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 2, 2); c.fillStyle = '#d8ffb0'; c.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 1, 1); }
+      const lim = Math.floor(Math.min(1, t / 0.45) * 70);
+      order.forEach((pts, k) => {
+        while (done[k] < pts.length && (pts[done[k]].tend ? pts[done[k]].at + 2 : pts[done[k]].i) <= lim) {
+          const p = pts[done[k]++];
+          const x = Math.round(p.x / S) - ox, y = Math.round(p.y / S) - oy;
+          oc.fillStyle = '#0c3a1e'; oc.fillRect(x, y, 2, 2);
+          oc.fillStyle = p.tend ? '#2f9a48' : '#1a6a32'; oc.fillRect(x, y, 1, 1);
+          if (p.leaf) { oc.fillStyle = '#7ad86a'; oc.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 2, 2); oc.fillStyle = '#d8ffb0'; oc.fillRect(x + Math.round(p.nx * 2), y + Math.round(p.ny * 2), 1, 1); }
         }
-      }
+      });
+      c.globalAlpha = t > 0.75 ? (1 - t) / 0.25 : 1;
+      c.drawImage(off, ox, oy);
     } });
   }
   const ENTER = {
@@ -203,7 +244,9 @@ const FX = (() => {
 
   const api = {
     init, PAL,
-    setQuality(q) { quality = q; if (q < 1) { /* le particelle d'ambiente si spengono */ } kick(); },
+    // q: 1 = completi, <1 = ridotti. Sul telefono "completi" usa comunque un po' meno particelle.
+    setQuality(q) { userQ = q; quality = q * (COARSE ? 0.75 : 1) * (autoLevel ? 0.55 ** autoLevel : 1); kick(); },
+    stats, get quality() { return quality; }, get autoLevel() { return autoLevel; }, get count() { return parts.length; },
     setAmbient(on, tint) { ambient = on; if (tint) ambientTint = tint; if (on) kick(); },
     tint(t) { ambientTint = t || 'N'; },
     enter(type, r) { if (r && r.width && ENTER[type]) ENTER[type](r); },
@@ -270,16 +313,19 @@ const FX = (() => {
       many(n, () => ({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-20, 20), vy: R(-50, -10), life: R(0.4, 0.9), cols: PAL[type], add: true, shape: 1, wob: R(0, 6) }));
     },
     // scia colorata dietro a una carta in volo
-    trail(el, type, ms) {
-      if (quality < 1 || !el) return;
+    // scia dietro a una carta in volo: la posizione si calcola dal percorso, senza leggere il DOM
+    trail(path, type, ms) {
+      if (quality < 0.7 || !path) return;
       const cols = [PAL[type][1], PAL[type][2], PAL[type][3]];
       const t0 = performance.now();
       const iv = setInterval(() => {
-        const r = el.getBoundingClientRect();
-        if (!el.isConnected || performance.now() - t0 > ms || !r.width) return clearInterval(iv);
-        for (let i = 0; i < 3; i++) P({ x: R(r.left, r.right), y: R(r.top, r.bottom), vx: R(-14, 14), vy: R(-14, 14), life: R(0.25, 0.55), cols, add: true, size: S * pick([1, 1, 2]), shrink: true });
+        const k = (performance.now() - t0) / ms;
+        if (k >= 1) return clearInterval(iv);
+        const e = 1 - (1 - k) * (1 - k);
+        const x = path.sx + (path.ex - path.sx) * e, y = path.sy + (path.ey - path.sy) * e - Math.sin(k * Math.PI) * 30;
+        for (let i = 0; i < 2; i++) P({ x: x + R(-path.w / 2, path.w / 2), y: y + R(-path.h / 2, path.h / 2), vx: R(-14, 14), vy: R(-14, 14), life: R(0.25, 0.5), cols, add: true, size: S * pick([1, 1, 2]), shrink: true });
         kick();
-      }, 28);
+      }, 45);
     },
     // fontana di luce per la vittoria
     win(colors = 'WUBRG') {

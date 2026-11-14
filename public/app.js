@@ -127,14 +127,19 @@ const Music = {
     const c = Sound.ctx;
     this.master = c.createGain(); this.master.gain.value = 0;
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 950;
-    const rev = c.createConvolver();
-    const len = Math.floor(c.sampleRate * 3.5), buf = c.createBuffer(2, len, c.sampleRate);
-    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.5; }
-    rev.buffer = buf;
-    const dry = c.createGain(); dry.gain.value = 0.55;
-    const wet = c.createGain(); wet.gain.value = 0.7;
+    // Riverbero leggero: due eco con retroazione e filtro (una convoluzione lunga pesa troppo sui telefoni)
+    const dry = c.createGain(); dry.gain.value = 0.6;
+    const wet = c.createGain(); wet.gain.value = 0.55;
     lp.connect(dry).connect(this.master);
-    lp.connect(rev).connect(wet).connect(this.master);
+    for (const [time, fb, pan] of [[0.37, 0.55, -0.5], [0.53, 0.5, 0.5]]) {
+      const d = c.createDelay(1); d.delayTime.value = time;
+      const g = c.createGain(); g.gain.value = fb;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+      const p = c.createStereoPanner ? c.createStereoPanner() : null;
+      lp.connect(d); d.connect(f).connect(g).connect(d);
+      if (p) { p.pan.value = pan; f.connect(p).connect(wet); } else f.connect(wet);
+    }
+    wet.connect(this.master);
     this.master.connect(c.destination);
     this.bus = lp;
   },
@@ -243,6 +248,42 @@ let lastCounter = null;  // { islandIdx, pickIdx }
 let lastReuse = null;    // { w, card } terra riattivata dalla Pianura (origine delle frecce del suo effetto)
 let needRender = false;
 let runeTint = 'N';       // colore delle rune dell'altare (ultima terra giocata)
+
+// Cerchio runico dell'altare: un solo elemento fisso, mai ricreato dai render (così non va ridisegnato)
+const Altar = {
+  el: null, ang: 0,
+  place() {
+    const el = this.el || (this.el = $('#altar'));
+    const c = $('#center');
+    if (!el) return;
+    if (!c) { el.classList.remove('on'); return; }
+    const r = c.getBoundingClientRect();
+    const wide = innerWidth >= 900 && innerWidth / innerHeight >= 1.1;
+    const size = wide ? innerHeight * 0.66 : Math.min(r.height * 0.84, innerWidth * 0.84);
+    Object.assign(el.style, { left: `${r.left + r.width / 2 - size / 2}px`, top: `${r.top + r.height / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` });
+    el.classList.add('on');
+    this.state();
+  },
+  state() {
+    const el = this.el; if (!el) return;
+    const c = $('#center');
+    el.classList.remove('t-W', 't-U', 't-B', 't-R', 't-G', 't-X');
+    const drop = c && c.classList.contains('droppable');
+    if (drop) el.classList.add('t-X'); else if (runeTint !== 'N') el.classList.add('t-' + runeTint);
+    el.classList.toggle('drop', !!drop);
+    el.classList.toggle('over', !!(c && c.classList.contains('dropover')));
+  },
+  // giro breve quando si gioca una carta (invece di una rotazione continua)
+  cast(t) {
+    runeTint = t; FX.tint(t);
+    const el = this.el; if (!el) return;
+    el.style.setProperty('--ang0', `${this.ang}deg`);
+    this.ang += 72;
+    el.style.setProperty('--ang', `${this.ang}deg`);
+    el.classList.remove('cast'); void el.offsetWidth; el.classList.add('cast');
+    this.state();
+  },
+};
 let autoAllowKey = null;
 
 // ---------- Connessione ----------
@@ -346,7 +387,9 @@ function render() {
 }
 
 function renderLobby() {
+  delete app.dataset.game;
   clearArrows();
+  if ($('#altar')) $('#altar').classList.remove('on');
   const params = new URLSearchParams(location.search);
   const pre = (params.get('room') || '').toUpperCase();
   if (pre && !ui.mode) ui.mode = 'friend';
@@ -411,7 +454,9 @@ function renderLobby() {
 }
 
 function renderWaiting() {
+  delete app.dataset.game;
   clearArrows();
+  if ($('#altar')) $('#altar').classList.remove('on');
   const link = `${location.origin}${location.pathname}?room=${S.code}`;
   app.innerHTML = `
   <div class="lobby waiting">
@@ -626,6 +671,8 @@ function handHtml(task) {
   }).join('');
 }
 
+const PARTS = ['top', 'timer', 'opp', 'center', 'me', 'hand'];
+const partCache = {};
 function renderGame() {
   const g = G, me = g.you;
   const oppConnected = S.seats[g.opp.seat] && S.seats[g.opp.seat].connected;
@@ -635,15 +682,13 @@ function renderGame() {
   const centerDrop = task === 'main' && !ui.staged && (ui.sel || (drag && drag.active));
   if (task === 'choice' && G.choice.kind === 'regrow') ui.gyOpen = 'me';
 
-  app.innerHTML = `
-  <div class="game ${ui.animating ? 'busy' : ''}">
-    <div class="topbar">
+  const parts = {
+    top: `<div class="topbar">
       <span>${S.vsBot ? 'Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
       <button class="menubtn" data-act="menu" aria-label="Menu">☰</button>
-    </div>
-    ${timerHtml()}
-
-    <section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
+    </div>`,
+    timer: timerHtml(),
+    opp: `<section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
       <div class="zhead">
         <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">!</span>' : ''}</span>
         <div class="backs" id="hand-opp">${'<div class="back"></div>'.repeat(Math.min(g.opp.handCount, 10))}<small>${g.opp.handCount}</small></div>
@@ -651,32 +696,42 @@ function renderGame() {
         ${gyHtml(g.opp, 'opp')}
       </div>
       ${bfHtml(g.opp, 'opp', tg.opp)}
-    </section>
-
-    <section class="center rune-${runeTint} ${centerDrop ? 'droppable' : ''}" id="center" ${task === 'main' && ui.sel && !ui.staged ? 'data-act="center"' : ''}>
+    </section>`,
+    center: `<section class="center ${centerDrop ? 'droppable' : ''}" id="center" ${task === 'main' && ui.sel && !ui.staged ? 'data-act="center"' : ''}>
       ${stackHtml()}
       <div class="status ${st.cls}" id="status">${st.text}</div>
       <div class="actions-area">${actionsHtml()}</div>
-    </section>
-
-    <section class="zone me ${g.active === me && g.phase === 'playing' ? 'active' : ''}">
+    </section>`,
+    me: `<section class="zone me ${g.active === me && g.phase === 'playing' ? 'active' : ''}">
       ${bfHtml(g.me, 'me', tg.me)}
       <div class="zhead">
         <span class="pname"><span class="dot"></span>${esc(g.me.name)}${closeToWin(g.me.bf) ? ' <span class="near">!</span>' : ''}</span>
         ${deckHtml(g.me, 'me')}
         ${gyHtml(g.me, 'me', tg.gyMe)}
       </div>
-    </section>
-
-    <div class="hand ${task === 'response' && ui.counter ? 'counter-mode' : ''}" id="hand-me">${handHtml(task)}</div>
-  </div>
-  <div id="banner" class="banner hidden"></div>
-  ${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
-  ${g.phase === 'over' && !ui.animating ? overHtml() : ''}
-  ${ui.menu ? menuHtml() : ''}
-  ${ui.log ? logHtml() : ''}
-  ${ui.rules ? rulesHtml() : ''}`;
-  layoutHand();
+    </section>`,
+    hand: `<div class="hand ${task === 'response' && ui.counter ? 'counter-mode' : ''}" id="hand-me">${handHtml(task)}</div>`,
+    over: `${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
+      ${g.phase === 'over' && !ui.animating ? overHtml() : ''}
+      ${ui.menu ? menuHtml() : ''}${ui.log ? logHtml() : ''}${ui.rules ? rulesHtml() : ''}`,
+  };
+  // Si ridisegnano solo le parti dello schermo che sono cambiate
+  if (!app.dataset.game) {
+    app.innerHTML = `<div class="game">${PARTS.map((k) => `<div class="part" data-p="${k}"></div>`).join('')}</div>
+      <div id="banner" class="banner hidden"></div><div class="part" data-p="over"></div>`;
+    app.dataset.game = '1';
+    for (const k in partCache) delete partCache[k];
+  }
+  $('.game', app).classList.toggle('busy', ui.animating);
+  let handChanged = false;
+  for (const k of [...PARTS, 'over']) {
+    if (partCache[k] === parts[k]) continue;
+    $(`.part[data-p="${k}"]`, app).innerHTML = parts[k];
+    partCache[k] = parts[k];
+    if (k === 'hand') handChanged = true;
+  }
+  if (handChanged) layoutHand();
+  Altar.place();
   bindOverlays();
   tickTimer();
   drawArrows();
@@ -712,13 +767,13 @@ function layoutHand() {
   const ang = n > 1 ? Math.min(3, 15 / (n - 1)) : 0;
   cards.forEach((c, i) => {
     const off = i - mid;
-    c.style.left = `${start + i * step}px`;
+    c.style.setProperty('--x', `${Math.round(start + i * step)}px`);
     c.style.setProperty('--rot', `${off * ang}deg`);
     c.style.setProperty('--dy', `${Math.min(10, off * off * ang * 0.25)}px`);
     c.style.zIndex = String(i + 1);
   });
 }
-window.addEventListener('resize', () => { layoutHand(); drawArrows(); });
+window.addEventListener('resize', () => { layoutHand(); drawArrows(); Altar.place(); });
 
 // Palude: la mano avversaria a schermo intero, sfondo sfocato
 function revealHtml() {
@@ -807,7 +862,7 @@ function stageCard(card, idx, rect) {
     ui.staged = { card, idx }; ui.sel = null;
     if (card === 'G') ui.gyOpen = 'me';
     Sound.play('play'); vibrate(15);
-    runeTint = card; FX.tint(card);
+    Altar.cast(card);
     render();
     FX.cast(card, rectOf($('#stack .card')));
     const el = $('#stack .card');
@@ -911,13 +966,15 @@ function startDrag() {
   drag.dx = drag.x0 - r.left; drag.dy = drag.y0 - r.top;
   const ghost = document.createElement('div');
   ghost.className = 'drag-ghost';
-  ghost.style.width = el.offsetWidth + 'px'; ghost.style.height = el.offsetHeight + 'px';
+  ghost.style.width = el.offsetWidth + 'px'; ghost.style.height = el.offsetHeight + 'px'; ghost.style.setProperty('--gw', el.offsetWidth + 'px');
   ghost.innerHTML = cardHtml(drag.card, 'floating');
   document.body.appendChild(ghost);
   drag.ghost = ghost;
   el.classList.remove('pressing'); el.classList.add('ghosted');
   const center = $('#center');
   if (center) center.classList.add('droppable');
+  drag.centerRect = rectOf(center);
+  Altar.state();
   document.body.classList.add('dragging');
   moveGhost(drag.x, drag.y);
   Sound.play('grab'); vibrate(15);
@@ -928,10 +985,11 @@ function moveGhost(x, y) {
   if (!drag || !drag.ghost) return;
   drag.ghost.style.transform = `translate(${x - drag.dx}px, ${y - drag.dy - 20}px)`;
   const center = $('#center');
-  const r = rectOf(center);
+  const r = drag.centerRect;
   const over = !!(r && x >= r.left && x <= r.right && y - 20 >= r.top && y - 20 <= r.bottom);
   if (over !== drag.over) {
     if (center) center.classList.toggle('dropover', over);
+    Altar.state();
     if (over) vibrate(8);
     drag.over = over;
   }
@@ -945,11 +1003,18 @@ window.addEventListener('pointermove', (e) => {
       else return;
     }
     e.preventDefault();
-    moveGhost(e.clientX, e.clientY);
+    queueMove(() => moveGhost(drag.x, drag.y));
     return;
   }
-  if (ui.staged) aimArrow(e.clientX, e.clientY);
+  if (ui.staged) { const x = e.clientX, y = e.clientY; queueMove(() => aimArrow(x, y)); }
 }, { passive: false });
+
+// Il dito può muoversi più volte per frame: si aggiorna una volta sola, al frame successivo
+let moveJob = null;
+function queueMove(fn) {
+  if (!moveJob) requestAnimationFrame(() => { const f = moveJob; moveJob = null; if (f) f(); });
+  moveJob = fn;
+}
 
 document.addEventListener('touchmove', (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
 
@@ -976,6 +1041,7 @@ function finishDrag(skipRender) {
   clearTimeout(drag.timer);
   const center = $('#center');
   if (center) center.classList.remove('droppable', 'dropover');
+  Altar.state();
   if (drag.ghost) drag.ghost.remove();
   if (drag.el) drag.el.classList.remove('pressing', 'ghosted');
   document.body.classList.remove('dragging');
@@ -1010,7 +1076,9 @@ const ARROW_COLOR = { R: '#ff5a4a', W: '#ffe58a', G: '#5fd38a', B: '#c39bff', U:
 function clearArrows(cls) {
   const svg = $('#arrows'); if (!svg) return;
   $$(cls ? `g.${cls}` : 'g.arrow', svg).forEach((n) => n.remove());
+  syncArrows();
 }
+function syncArrows() { const svg = $('#arrows'); if (svg) svg.classList.toggle('on', svg.childElementCount > 0); }
 function centerOf(el) { const r = rectOf(el); return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2, r } : null; }
 
 // Disegna una freccia curva da a → b. Ritorna il gruppo SVG.
@@ -1041,13 +1109,17 @@ function arrow(a, b, color, cls = 'pending', animate = true) {
   head.setAttribute('d', `M${ex},${ey} L${ex - s * Math.cos(ang - 0.5)},${ey - s * Math.sin(ang - 0.5)} L${ex - s * Math.cos(ang + 0.5)},${ey - s * Math.sin(ang + 0.5)} Z`);
   head.setAttribute('fill', color);
   head.setAttribute('class', 'head');
-  g.appendChild(path); g.appendChild(head);
+  const under = path.cloneNode(); under.setAttribute('class', 'under'); under.removeAttribute('stroke');
+  g.appendChild(under); g.appendChild(path); g.appendChild(head);
   svg.appendChild(g);
+  svg.classList.add('on');
   if (animate) {
     const L = path.getTotalLength();
-    path.style.strokeDasharray = `${L}`;
-    path.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: D(350), easing: 'ease-out', fill: 'forwards' })
-      .finished.catch(() => {}).then(() => { path.style.strokeDasharray = ''; });
+    for (const el of [under, path]) {
+      el.style.strokeDasharray = `${L}`;
+      el.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: D(350), easing: 'ease-out', fill: 'forwards' })
+        .finished.catch(() => {}).then(() => { el.style.strokeDasharray = ''; });
+    }
     head.animate([{ opacity: 0 }, { opacity: 0, offset: 0.8 }, { opacity: 1 }], { duration: D(350), fill: 'forwards' });
   }
   return g;
@@ -1075,19 +1147,20 @@ function drawArrows() {
 }
 
 // Mentre si sceglie il bersaglio, la freccia segue il dito/mouse e si aggancia ai bersagli validi
+let aimCache = null; // bersagli e origine letti una volta per carta posata
 function aimArrow(x, y) {
   clearArrows('aim');
-  if (!ui.staged) return;
-  const hit = document.elementFromPoint(x, y);
-  const tg = hit && hit.closest('.target');
-  const to = tg ? centerOf(tg) : { x, y };
-  arrow(centerOf($('#stack .card')), to, ARROW_COLOR[ui.staged.card], 'aim' + (tg ? ' locked' : ''), false);
+  if (!ui.staged) { aimCache = null; return; }
+  const src = $('#stack .card');
+  if (!aimCache || aimCache.src !== src) aimCache = { src, from: centerOf(src), targets: $$('.target').map((el) => ({ el, c: centerOf(el) })) };
+  const tg = aimCache.targets.find((t) => t.c && Math.abs(t.c.x - x) < t.c.r.width / 2 + 6 && Math.abs(t.c.y - y) < t.c.r.height / 2 + 6);
+  arrow(aimCache.from, tg ? tg.c : { x, y }, ARROW_COLOR[ui.staged.card], 'aim' + (tg ? ' locked' : ''), false);
 }
 
 async function flashArrow(fromEl, toEl, color, ms = 500) {
   const g = arrow(centerOf(fromEl), centerOf(toEl), color, 'flash', true);
   await wait(ms);
-  if (g) g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: D(200), fill: 'forwards' }).finished.catch(() => {}).then(() => g.remove());
+  if (g) g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: D(200), fill: 'forwards' }).finished.catch(() => {}).then(() => { g.remove(); syncArrows(); });
 }
 
 // ---------- Timer ----------
@@ -1100,10 +1173,13 @@ function tickTimer() {
   const left = Math.max(0, S.timer.deadline - now);
   const shown = Math.min(left, total);
   const fill = $('.fill', el);
-  fill.style.width = `${(shown / total) * 100}%`;
+  // la barra avanza a scatti di 1/60: si ridisegna solo quando cambia davvero
+  const k = (Math.ceil((shown / total) * 60) / 60).toFixed(4);
+  if (fill.dataset.k !== k) { fill.dataset.k = k; fill.style.transform = `scaleX(${k})`; }
   const secs = Math.ceil(shown / 1000);
   const mine = S.timer.actor === G.you;
-  $('.tlabel', el).textContent = `${mine ? 'Tu' : G.opp.name} · ${secs}s`;
+  const label = `${mine ? 'Tu' : G.opp.name} · ${secs}s`;
+  const tl = $('.tlabel', el); if (tl.textContent !== label) tl.textContent = label;
   el.classList.toggle('low', secs <= 5);
   if (mine && secs <= 5 && secs > 0 && lastTick !== secs && !ui.animating) { lastTick = secs; Sound.play('tick'); if (secs === 3) vibrate(40); }
 }
@@ -1133,7 +1209,7 @@ function makeFlyer(face, w, h) {
   const f = document.createElement('div');
   if (face) { f.className = `flyer card k-${face}`; f.innerHTML = `<div class="nm">${NAMES[face]}</div>`; }
   else f.className = 'flyer cardback';
-  Object.assign(f.style, { width: w + 'px', height: h + 'px' });
+  Object.assign(f.style, { width: w + 'px', height: h + 'px' }); f.style.setProperty('--w', w + 'px');
   document.body.appendChild(f);
   return f;
 }
@@ -1153,7 +1229,7 @@ function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0 } = {})
     { transform: `translate(${(sx + ex) / 2}px, ${Math.min(sy, ey) - 30}px) scale(${Math.max(s0, s1) * 1.08})`, opacity: 1, offset: 0.5 },
     { transform: `translate(${ex}px, ${ey}px) scale(${s1})`, opacity: 1 },
   ], { duration: D(dur), delay: D(delay), easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' });
-  setTimeout(() => FX.trail(f, face || 'N', D(dur)), D(delay));
+  setTimeout(() => FX.trail({ sx: sx + W / 2, sy: sy + H / 2, ex: ex + W / 2, ey: ey + H / 2, w: W * 0.8, h: H * 0.8 }, face || 'N', D(dur)), D(delay));
   return anim.finished.catch(() => {}).then(() => {
     f.remove();
     if (hideTarget && toEl) toEl.style.visibility = '';
@@ -1172,6 +1248,7 @@ function banner(text, mine) {
   if (!b) return Promise.resolve();
   b.textContent = text;
   b.style.animationDuration = D(1000) + 'ms';
+  b.className = 'banner hidden'; void b.offsetWidth; // riavvia l'animazione (il banner ora resta nel DOM)
   b.className = `banner ${mine ? 'mine' : ''}`;
   return wait(1000).then(() => b.classList.add('hidden'));
 }
@@ -1228,8 +1305,7 @@ async function animateStep(ev, next) {
       G = next; render(); clearArrows('pending');
       if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
-      runeTint = ev.card; FX.tint(ev.card);
-      const cen = $('#center'); if (cen) cen.className = cen.className.replace(/rune-\w/, 'rune-' + ev.card);
+      Altar.cast(ev.card);
       await fly(from, stackCard(), ev.card, { dur: 420 });
       FX.cast(ev.card, rectOf(stackCard()));
       if (ev.target) { lastArrowKey = null; drawArrows(); await pulse(pendingTargetEl(G.pending), 'aimed', 500); }

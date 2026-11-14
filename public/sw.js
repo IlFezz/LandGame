@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e carica l'interfaccia anche con rete lenta.
-const CACHE = 'blg-v7';
-const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'fx.js', 'art/back.png', 'art/stone.png', 'art/runes.png', 'art/tomb.png', 'art/card-W.png', 'art/card-U.png', 'art/card-B.png', 'art/card-R.png', 'art/card-G.png', 'art/simple-W.png', 'art/simple-U.png', 'art/simple-B.png', 'art/simple-R.png', 'art/simple-G.png', 'art/ico-W.png', 'art/ico-U.png', 'art/ico-B.png', 'art/ico-R.png', 'art/ico-G.png', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'blg-v8';
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'fx.js', 'art/back.png', 'art/stone.png', 'art/runes.png', 'art/runes-W.png', 'art/runes-U.png', 'art/runes-B.png', 'art/runes-R.png', 'art/runes-G.png', 'art/runes-N.png', 'art/runes-X.png', 'art/tomb.png', 'art/card-W.png', 'art/card-U.png', 'art/card-B.png', 'art/card-R.png', 'art/card-G.png', 'art/simple-W.png', 'art/simple-U.png', 'art/simple-B.png', 'art/simple-R.png', 'art/simple-G.png', 'art/ico-W.png', 'art/ico-U.png', 'art/ico-B.png', 'art/ico-R.png', 'art/ico-G.png', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

@@ -578,6 +578,10 @@ if __name__ == '__main__':
     img, al = card_back(); save(img, 'back.png', al)
     save(stone_tile(), 'stone.png')
     rgb, al = rune_ring(); save(rgb, 'runes.png', al)
+    # cerchi runici già colorati (niente mask CSS, che è costosa da ridisegnare)
+    for k, col in {'W': '#ffe680', 'U': '#5ab0ff', 'B': '#b877ff', 'R': '#ff6a2a', 'G': '#5ae07a', 'N': '#7a6ac0', 'X': '#e6b84e'}.items():
+        c = np.zeros_like(rgb); c[:] = hexc(col)
+        save(c, f'runes-{k}.png', al)
     rgb, al = tomb(); save(rgb, 'tomb.png', al)
     icons = os.path.join(OUT, '..', 'icons')
     app_icon(192, 4).save(os.path.join(icons, 'icon-192.png'))
