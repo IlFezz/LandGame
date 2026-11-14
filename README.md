@@ -32,6 +32,15 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - **Android (Chrome):** apri il sito → menu ⋮ → *Installa app* / *Aggiungi a schermata Home*.
 - **iPhone (Safari):** tasto Condividi → *Aggiungi alla schermata Home*.
 
+## Funzioni
+
+- Stanze con codice di 4 caratteri e link di invito; rientro automatico se cade la connessione.
+- Animazioni per ogni evento (distribuzione, pescata, giocata, contrasto, terra annullata, ingresso in gioco, distruzione, recupero, scarto, Pianura) con didascalia che spiega cosa succede.
+- Azioni nel pannello centrale e direttamente sul campo (i bersagli validi lampeggiano): la mano resta sempre visibile.
+- Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Per contrastare o scegliere ci sono 20 secondi. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
+- Indicatore di avanzamento (tipi diversi e terre uguali), con avviso quando qualcuno è a un passo dalla vittoria.
+- Menu in partita: effetti sonori, vibrazione, registro, regole, esci.
+
 ## Struttura
 
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).

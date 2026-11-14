@@ -51,7 +51,7 @@ function myTurn(v) {
     await sleep(400);
     const a = client(), b = client();
     await Promise.all([a.open, b.open]);
-    a.send({ t: 'create', name: 'Anna' });
+    a.send({ t: 'create', name: 'Anna', turnTime: 0 });
     await until(() => a.joined);
     const code = a.joined.code;
     assert.match(code, /^[A-Z0-9]{4}$/);

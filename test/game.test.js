@@ -242,4 +242,40 @@ test('Partite casuali complete senza errori e con 100 carte conservate', () => {
   }
 });
 
+test('Eventi: giocata, contrasto e annullamento in ordine', () => {
+  const g = setup({ h0: ['R'], h1: ['U', 'G'], bf1: { W: 1 } });
+  g.takeEvents();
+  ok(g.act(0, { type: 'play', card: 'R', target: 'W' }));
+  ok(g.act(1, { type: 'counter', other: 'G' }));
+  const types = g.takeEvents().map((e) => e.ev.type);
+  assert.deepStrictEqual(types.slice(0, 3), ['play', 'counter', 'countered']);
+  assert.ok(types.includes('turn') && types.includes('draw'));
+});
+
+test('Eventi: ogni passo porta le viste di entrambi i giocatori', () => {
+  const g = setup({ h0: ['U'], deck0: ['B'] });
+  g.takeEvents();
+  ok(g.act(0, { type: 'play', card: 'U' }));
+  const ev = g.takeEvents();
+  const draw = ev.find((e) => e.ev.type === 'draw' && e.ev.player === 0);
+  assert.strictEqual(draw.ev.card, 'B');
+  assert.deepStrictEqual(draw.views[0].hand, ['B']);
+  assert.strictEqual(draw.views[1].opp.handCount, 1);
+});
+
+test('Tempo scaduto: passa il turno / lascia risolvere / sceglie a caso', () => {
+  const g = setup({ h0: ['B', 'R'], h1: ['U', 'G'] });
+  g.autoAct(); // P0 in main → passa
+  assert.strictEqual(g.active, 1);
+  ok(g.act(1, { type: 'play', card: 'G' }));
+  assert.strictEqual(g.step, 'response');
+  g.autoAct(); // P0 deve rispondere → lascia risolvere
+  assert.strictEqual(g.players[1].bf.G, 1);
+  ok(g.act(0, { type: 'play', card: 'B' }));
+  if (g.step === 'response') g.autoAct();
+  assert.strictEqual(g.step, 'choice');
+  g.autoAct();
+  assert.strictEqual(g.active, 1);
+});
+
 console.log(`\n${passed} test superati`);

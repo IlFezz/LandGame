@@ -46,15 +46,40 @@ class Game {
     this.winner = null;
     this.endReason = null;
     this.log = [];
+    this.events = []; // eventi animabili: { ev, views: [vista P0, vista P1] }
     this.firstPlayer = opts.firstPlayer != null ? opts.firstPlayer : (this.rng() < 0.5 ? 0 : 1);
 
     for (let p = 0; p < 2; p++) for (let i = 0; i < this.handSize; i++) this.draw(p, true);
+    this.emit({ type: 'deal', first: this.firstPlayer });
     this.addLog(`${this.players[this.firstPlayer].name} inizia la partita (salta la prima pescata).`);
     this.beginTurn(this.firstPlayer);
   }
 
   opp(p) { return 1 - p; }
   name(p) { return this.players[p].name; }
+  emit(ev) { this.events.push({ ev, views: [this.view(0), this.view(1)] }); }
+  takeEvents() { const e = this.events; this.events = []; return e; }
+
+  // Chi deve agire adesso (o null).
+  actor() {
+    if (this.phase !== 'playing') return null;
+    if (this.step === 'main') return this.active;
+    if (this.step === 'response') return this.pending.responder;
+    if (this.step === 'choice') return this.choice.player;
+    return null;
+  }
+
+  // Azione automatica quando scade il tempo.
+  autoAct() {
+    const p = this.actor();
+    if (p == null) return;
+    this.addLog(`⏱ Tempo scaduto per ${this.name(p)}.`);
+    this.emit({ type: 'timeout', player: p, step: this.step });
+    if (this.step === 'main') this.doPass(p);
+    else if (this.step === 'response') this.doAllow(p);
+    else this.doChoose(p, this.choice.options[Math.floor(this.rng() * this.choice.options.length)]);
+  }
+
   addLog(text) { this.log.push(text); if (this.log.length > 200) this.log.shift(); }
 
   draw(p, silent) {
@@ -63,8 +88,9 @@ class Game {
       if (!silent) this.addLog(`${pl.name} non ha più carte nel mazzo e non pesca.`);
       return false;
     }
-    pl.hand.push(pl.deck.pop());
-    if (!silent) this.addLog(`${pl.name} pesca una carta.`);
+    const card = pl.deck.pop();
+    pl.hand.push(card);
+    if (!silent) { this.addLog(`${pl.name} pesca una carta.`); this.emit({ type: 'draw', player: p, card }); }
     return true;
   }
 
@@ -75,12 +101,14 @@ class Game {
     this.pending = null;
     this.choice = null;
     this.step = 'main';
+    this.emit({ type: 'turn', player: p, turn: this.turn });
     const skipDraw = this.turn === 1; // chi inizia salta la prima pescata
     if (!skipDraw) this.draw(p);
     if (this.checkOutOfCards()) return;
     // Nessuna carta in mano: il turno passa da solo
     if (this.players[p].hand.length === 0) {
       this.addLog(`${this.name(p)} non ha carte in mano e passa.`);
+      this.emit({ type: 'pass', player: p, auto: true });
       this.countPass();
       if (this.checkOutOfCards()) return;
       this.beginTurn(this.opp(p));
@@ -126,6 +154,8 @@ class Game {
     this.choice = null;
     if (text) this.addLog(text);
     this.addLog(winner == null ? 'La partita finisce in parità.' : `🏆 ${this.name(winner)} vince!`);
+    this.endText = text || '';
+    this.emit({ type: 'end', winner, reason });
   }
 
   // Bersagli validi da dichiarare quando si gioca una terra.
@@ -174,6 +204,7 @@ class Game {
     if (card === 'W' && tgt) msg += ` per riattivare ${NAMES[tgt]}`;
     if (valid && !valid.length) msg += ' (nessun bersaglio)';
     this.addLog(msg + '.');
+    this.emit({ type: 'play', player: p, card, target: tgt });
     this.openResponse(this.opp(p));
     return null;
   }
@@ -191,6 +222,7 @@ class Game {
     if (this.step !== 'main' || this.active !== p) return 'Non è il tuo momento.';
     if (this.landPlayed) return 'Turno già concluso.';
     this.addLog(`${this.name(p)} passa il turno senza giocare terre.`);
+    this.emit({ type: 'pass', player: p });
     this.countPass();
     if (this.checkOutOfCards()) return null;
     this.beginTurn(this.opp(p));
@@ -211,6 +243,7 @@ class Game {
     this.pending.counters++;
     const what = this.pending.counters === 1 ? NAMES[this.pending.land] : 'il contrasto';
     this.addLog(`${this.name(p)} scarta Isola + ${NAMES[other]} e contrasta ${what}!`);
+    this.emit({ type: 'counter', player: p, other, n: this.pending.counters, land: this.pending.land, owner: this.pending.owner });
     this.openResponse(this.opp(p));
     return null;
   }
@@ -223,16 +256,20 @@ class Game {
 
   resolvePending() {
     const { owner, land, target, counters } = this.pending;
+    this.pending = null;
+    this.step = 'resolving';
     const me = this.players[owner];
     if (counters % 2 === 1) {
       me.gy[land]++;
       this.addLog(`${NAMES[land]} di ${me.name} viene contrastata e finisce nel cimitero.`);
+      this.emit({ type: 'countered', player: owner, card: land });
       this.endTurn();
       return;
     }
     me.bf[land]++;
     this.lastLandPlayer = owner;
     this.addLog(`${NAMES[land]} entra in gioco per ${me.name}.`);
+    this.emit({ type: 'enter', player: owner, card: land });
     if (this.hasWon(owner)) {
       const five = TYPES.find((t) => me.bf[t] >= 5);
       this.endGame(owner, 'combo', five ? `${me.name} ha 5 ${NAMES[five]} in gioco!` : `${me.name} ha una terra di ogni tipo in gioco!`);
@@ -253,6 +290,7 @@ class Game {
           this.step = 'choice';
           this.choice = { player: p, kind: 'discard', options: TYPES.filter((t) => op.hand.includes(t)) };
           this.addLog(`${me.name} guarda la mano di ${op.name}.`);
+          this.emit({ type: 'look', player: p });
           return;
         }
         this.addLog(`${op.name} non ha carte in mano: la Palude non ha effetto.`);
@@ -280,6 +318,7 @@ class Game {
       case 'W':
         if (target && me.bf[target] > 0) {
           this.addLog(`La Pianura riattiva l'effetto di ${NAMES[target]}.`);
+          this.emit({ type: 'reuse', player: p, card: target });
           this.applyEffect(p, target, null, true);
           return;
         }
@@ -292,12 +331,14 @@ class Game {
     const op = this.players[this.opp(p)];
     op.bf[t]--; op.gy[t]++;
     this.addLog(`${NAMES[t]} di ${op.name} viene distrutta.`);
+    this.emit({ type: 'destroy', player: this.opp(p), by: p, card: t });
   }
 
   regrow(p, t) {
     const me = this.players[p];
     me.gy[t]--; me.hand.push(t);
     this.addLog(`${me.name} riprende in mano ${NAMES[t]} dal cimitero.`);
+    this.emit({ type: 'regrow', player: p, card: t });
   }
 
   doChoose(p, c) {
@@ -307,6 +348,7 @@ class Game {
     if (this.choice.kind === 'discard') {
       removeOne(op.hand, c); op.gy[c]++;
       this.addLog(`${this.name(p)} fa scartare ${NAMES[c]} a ${op.name}.`);
+      this.emit({ type: 'discard', player: this.opp(p), by: p, card: c });
     } else if (this.choice.kind === 'destroy') {
       this.destroy(p, c);
     } else if (this.choice.kind === 'regrow') {
@@ -338,7 +380,8 @@ class Game {
       landPlayed: this.landPlayed,
       pending: this.pending ? { ...this.pending } : null,
       choice: null,
-      winner: this.winner, endReason: this.endReason,
+      winner: this.winner, endReason: this.endReason, endText: this.endText || '',
+      firstPlayer: this.firstPlayer,
       log: this.log.slice(-60),
     };
     if (this.choice) {

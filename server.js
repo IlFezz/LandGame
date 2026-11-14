@@ -119,6 +119,10 @@ server.on('upgrade', (req, socket) => {
 // ---------- Stanze ----------
 const rooms = new Map(); // code -> room
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TURN_TIMES = [0, 30, 45, 60, 90];
+const RESPONSE_TIME = 20; // secondi per contrastare o scegliere
+const ANIM_MS = 650;
+const TIME_SCALE = Number(process.env.TIME_SCALE || 1); // solo per i test      // tempo stimato di animazione per evento (il timer parte dopo)
 
 function newCode() {
   let code;
@@ -128,23 +132,62 @@ function newCode() {
 const newToken = () => crypto.randomBytes(16).toString('hex');
 const cleanName = (n) => (String(n || '').trim().slice(0, 20) || 'Giocatore');
 
-function broadcast(room) {
+// Le pescate dell'avversario non rivelano la carta.
+function eventFor(ev, seat) {
+  if (ev.type === 'draw' && ev.player !== seat) return { ...ev, card: null };
+  return ev;
+}
+
+// Invia lo stato a entrambi. `events` (opzionale) sono i passaggi da animare.
+function broadcast(room, events) {
   room.touched = Date.now();
+  if (events && events.length) scheduleTimer(room, events.length);
+  else scheduleTimer(room, 0);
   room.seats.forEach((s, i) => {
     if (!s || !s.conn) return;
-    const base = {
-      t: 'state', code: room.code, seat: i,
-      seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn } : null)),
-      rematch: room.rematch.slice(),
-    };
-    base.game = room.game ? room.game.view(i) : null;
-    s.conn.send(base);
+    s.conn.send(stateMsg(room, i, events));
   });
+}
+
+function stateMsg(room, i, events) {
+  const msg = {
+    t: 'state', code: room.code, seat: i, now: Date.now(),
+    seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn } : null)),
+    rematch: room.rematch.slice(), turnTime: room.turnTime,
+    timer: room.timer ? { deadline: room.timer.deadline, total: room.timer.total, actor: room.timer.actor } : null,
+    game: room.game ? room.game.view(i) : null,
+  };
+  if (events && events.length) msg.steps = events.map((e) => ({ ev: eventFor(e.ev, i), game: e.views[i] }));
+  return msg;
+}
+
+// Timer del turno: si riavvia solo quando cambia la decisione in corso.
+function scheduleTimer(room, nEvents) {
+  const g = room.game;
+  const actor = g ? g.actor() : null;
+  const key = g && actor != null ? `${g.turn}|${g.step}|${actor}|${g.pending ? g.pending.counters : ''}` : null;
+  if (!room.turnTime || key == null) {
+    if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
+    return;
+  }
+  if (room.timer && room.timer.key === key) return;
+  if (room.timer) clearTimeout(room.timer.handle);
+  const total = g.step === 'main' ? room.turnTime : Math.min(RESPONSE_TIME, room.turnTime);
+  const deadline = Date.now() + (Math.min(nEvents * ANIM_MS, 5000) + total * 1000) * TIME_SCALE;
+  const handle = setTimeout(() => {
+    if (!room.game || room.game.actor() !== actor) return;
+    room.timer = null;
+    if (!room.seats.some((x) => x && x.conn)) return; // nessuno collegato: il timer riparte al rientro
+    room.game.autoAct();
+    broadcast(room, room.game.takeEvents());
+  }, deadline - Date.now());
+  room.timer = { key, deadline, total, actor, handle };
 }
 
 function startGame(room) {
   room.game = new Game([room.seats[0].name, room.seats[1].name]);
   room.rematch = [false, false];
+  if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
 }
 
 function attach(conn, room, seat) {
@@ -153,7 +196,6 @@ function attach(conn, room, seat) {
   s.conn = conn;
   conn.room = room; conn.seat = seat;
   conn.send({ t: 'joined', code: room.code, seat, token: s.token });
-  broadcast(room);
 }
 
 function handleConnection(conn) {
@@ -163,21 +205,28 @@ function handleConnection(conn) {
 
     if (m.t === 'create') {
       const code = newCode();
-      const room = { code, seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, null], game: null, rematch: [false, false], touched: Date.now() };
+      const tt = Number(m.turnTime);
+      const room = {
+        code, seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, null], game: null,
+        rematch: [false, false], touched: Date.now(), timer: null,
+        turnTime: TURN_TIMES.includes(tt) ? tt : 60,
+      };
       rooms.set(code, room);
-      return attach(conn, room, 0);
+      attach(conn, room, 0);
+      return broadcast(room);
     }
     if (m.t === 'join') {
       const room = rooms.get(String(m.code || '').toUpperCase().trim());
       if (!room) return err('Stanza non trovata. Controlla il codice.');
       if (m.token) { // rientro con il proprio token
         const seat = room.seats.findIndex((s) => s && s.token === m.token);
-        if (seat !== -1) return attach(conn, room, seat);
+        if (seat !== -1) { attach(conn, room, seat); return broadcast(room); }
       }
       if (room.seats[1]) return err('La stanza è già piena.');
       room.seats[1] = { name: cleanName(m.name), token: newToken(), conn: null };
+      attach(conn, room, 1);
       startGame(room);
-      return attach(conn, room, 1);
+      return broadcast(room, room.game.takeEvents());
     }
 
     const room = conn.room;
@@ -185,20 +234,20 @@ function handleConnection(conn) {
     if (m.t === 'action') {
       if (!room.game) return err('La partita non è ancora iniziata.');
       const e = room.game.act(conn.seat, m.a);
-      if (e) err(e);
-      return broadcast(room);
+      if (e) { err(e); return conn.send(stateMsg(room, conn.seat)); }
+      return broadcast(room, room.game.takeEvents());
     }
     if (m.t === 'rematch') {
       if (!room.game || room.game.phase !== 'over') return;
       room.rematch[conn.seat] = true;
-      if (room.rematch.every(Boolean)) startGame(room);
+      if (room.rematch.every(Boolean)) { startGame(room); return broadcast(room, room.game.takeEvents()); }
       return broadcast(room);
     }
     if (m.t === 'leave') {
       const seat = conn.seat;
       room.seats[seat].conn = null;
       conn.room = null;
-      if (!room.game) { rooms.delete(room.code); }
+      if (!room.game) { rooms.delete(room.code); if (room.timer) clearTimeout(room.timer.handle); }
       else broadcast(room);
       return;
     }
@@ -216,7 +265,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms) {
     const anyone = room.seats.some((s) => s && s.conn);
-    if (!anyone && now - room.touched > 2 * 3600 * 1000) rooms.delete(code);
+    if (!anyone && now - room.touched > 2 * 3600 * 1000) { if (room.timer) clearTimeout(room.timer.handle); rooms.delete(code); }
     for (const s of room.seats) if (s && s.conn) s.conn.ping();
   }
 }, 25000).unref();
