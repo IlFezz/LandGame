@@ -240,7 +240,7 @@ function applyPrefs() {
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
   if (gfxCapable == null) gfxCapable = Live.capable();
-  Live.set(prefs.gfx === 'adv' || (prefs.gfx === 'auto' && gfxCapable));
+  Live.set(prefs.gfx === 'adv'); // per ora solo se scelta: la versione attuale rallenta il trascinamento
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -1040,7 +1040,7 @@ function menuHtml() {
       <button class="btn" data-act="leave-no">Annulla</button>` : `
     <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Live.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata']])}</div>
+    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Live.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata (prova)']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>

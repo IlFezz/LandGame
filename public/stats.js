@@ -5,15 +5,26 @@
 // =====================================================================
 const Stats = {
   cur: null, // la partita in corso
-  blank: () => ({ played: 0, won: 0, lost: 0, draw: 0, streak: 0, best: 0, fastest: 0, counters: 0, destroyed: 0,
-    lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, winBy: { domain: 0, five: 0, cards: 0 },
-    modes: { easy: { p: 0, w: 0 }, normal: { p: 0, w: 0 }, friend: { p: 0, w: 0 } }, tutorial: false, since: Date.now() }),
+  // Due gruppi di statistiche separati: contro il computer ('cpu') e contro altri giocatori ('pvp').
+  bucket: () => ({ played: 0, won: 0, lost: 0, draw: 0, streak: 0, best: 0, fastest: 0, counters: 0, destroyed: 0,
+    lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, winBy: { domain: 0, five: 0, cards: 0 }, modes: { easy: { p: 0, w: 0 }, normal: { p: 0, w: 0 } } }),
+  blank() { return { tutorial: false, since: Date.now(), cpu: this.bucket(), pvp: this.bucket() }; },
   keyOf: (name) => String(name || '').trim().toLowerCase() || 'giocatore',
   all() { return ls.get('stats', {}); },
   save(all) { ls.set('stats', all); },
+  // i salvataggi di prima avevano un solo gruppo: va tutto nel computer, tranne le partite con amici
+  migrate(o) {
+    if (!o || o.cpu) return { ...this.blank(), ...o, cpu: { ...this.bucket(), ...(o && o.cpu) }, pvp: { ...this.bucket(), ...(o && o.pvp) } };
+    const f = (o.modes && o.modes.friend) || { p: 0, w: 0 };
+    const cpu = { ...this.bucket(), ...o, played: (o.played || 0) - f.p, won: (o.won || 0) - f.w, lost: Math.max(0, (o.lost || 0) - (f.p - f.w)),
+      modes: { easy: (o.modes && o.modes.easy) || { p: 0, w: 0 }, normal: (o.modes && o.modes.normal) || { p: 0, w: 0 } } };
+    delete cpu.tutorial; delete cpu.since;
+    const pvp = { ...this.bucket(), played: f.p, won: f.w, lost: f.p - f.w };
+    return { tutorial: !!o.tutorial, since: o.since || Date.now(), cpu, pvp };
+  },
   load(name) {
     const p = this.all()[this.keyOf(name)];
-    return p ? { ...this.blank(), ...p.s, name: p.n } : { ...this.blank(), name: name || 'Giocatore' };
+    return { ...this.migrate(p ? p.s : null), name: p ? p.n : name || 'Giocatore' };
   },
   store(name, s) {
     const all = this.all();
@@ -38,21 +49,22 @@ const Stats = {
     else if (ev.type === 'play' || ev.type === 'counter' || ev.type === 'destroy') ls.set('statsCur', c);
   },
   finish(ev, game) {
-    const c = this.cur, name = game.me.name, s = this.load(name);
-    if (c.tutorial) { s.tutorial = true; return this.store(name, s); }
+    const c = this.cur, name = game.me.name, all = this.load(name);
+    if (c.tutorial) { all.tutorial = true; return this.store(name, all); }
+    const s = c.mode === 'friend' ? all.pvp : all.cpu;
     const won = ev.winner === game.you, draw = ev.winner == null;
     s.played++;
-    s.modes[c.mode].p++;
+    if (s.modes[c.mode]) s.modes[c.mode].p++;
     if (draw) { s.draw++; s.streak = 0; }
     else if (won) {
-      s.won++; s.modes[c.mode].w++; s.streak++; s.best = Math.max(s.best, s.streak);
+      s.won++; if (s.modes[c.mode]) s.modes[c.mode].w++; s.streak++; s.best = Math.max(s.best, s.streak);
       const how = game.endReason === 'cards' ? 'cards' : Object.values(game.me.bf).some((n) => n >= 5) ? 'five' : 'domain';
       s.winBy[how]++;
       if (!s.fastest || game.turn < s.fastest) s.fastest = game.turn;
     } else { s.lost++; s.streak = 0; }
     for (const t in c.lands) s.lands[t] += c.lands[t];
     s.counters += c.counters; s.destroyed += c.destroyed;
-    this.store(name, s);
+    this.store(name, all);
   },
 
   // ---------- trasferimento ----------
@@ -65,33 +77,37 @@ const Stats = {
     const pre = ['ATLAS1-', 'BLG1-'].find((x) => raw.startsWith(x));
     if (!pre) throw new Error('Codice non valido');
     const d = JSON.parse(decodeURIComponent(escape(atob(raw.slice(pre.length)))));
-    if (!d || !d.n || !d.s || typeof d.s.played !== 'number') throw new Error('Codice non valido');
-    this.store(d.n, { ...this.blank(), ...d.s });
+    if (!d || !d.n || !d.s || (typeof d.s.played !== 'number' && !d.s.cpu)) throw new Error('Codice non valido');
+    this.store(d.n, this.migrate(d.s));
     return d.n;
   },
 
   // ---------- la pagina Profilo (anche dentro la finestra del menu in partita) ----------
   // Ha sempre la stessa struttura, piena o vuota, così la pagina non cambia altezza.
   panel(name) {
-    const s = this.load(name || prefs.name || 'Giocatore');
+    const all = this.load(name || prefs.name || 'Giocatore'), side = ui.statsSide === 'pvp' ? 'pvp' : 'cpu', s = all[side];
     const pct = s.played ? Math.round((s.won / s.played) * 100) : 0;
     const maxLand = Math.max(1, ...TYPES.map((t) => s.lands[t]));
     const C = 2 * Math.PI * 34, dash = (C * pct) / 100;
-    const mode = (k, label) => `<li><span>${label}</span><b>${s.modes[k].w}<small> / ${s.modes[k].p}</small></b></li>`;
-    const initial = esc((s.name || '?').trim().charAt(0).toUpperCase() || '?');
+    const total = all.cpu.played + all.pvp.played;
+    const initial = esc((all.name || '?').trim().charAt(0).toUpperCase() || '?');
+    const results = side === 'cpu'
+      ? `<h4>Vittorie</h4><ul class="srows"><li><span>Facile</span><b>${s.modes.easy.w}<small> / ${s.modes.easy.p}</small></b></li><li><span>Normale</span><b>${s.modes.normal.w}<small> / ${s.modes.normal.p}</small></b></li><li><span>Sconfitte</span><b>${s.lost}</b></li></ul>`
+      : `<h4>Risultati</h4><ul class="srows"><li><span>Vinte</span><b>${s.won}</b></li><li><span>Perse</span><b>${s.lost}</b></li><li><span>Pari</span><b>${s.draw}</b></li></ul>`;
     return `<div class="prof">
-      <div class="prof-head"><div class="avatar">${initial}</div><div class="who2"><h2>${esc(s.name)}</h2>
-        <small>${s.played ? `${s.played} ${s.played === 1 ? 'partita giocata' : 'partite giocate'}${s.tutorial ? ' · tutorial completato' : ''}` : 'Ancora nessuna partita: le statistiche si riempiono giocando.'}</small></div></div>
+      <div class="prof-head"><div class="avatar">${initial}</div><div class="who2"><h2>${esc(all.name)}</h2>
+        <small>${total ? `${total} ${total === 1 ? 'partita giocata' : 'partite giocate'}${all.tutorial ? ' · tutorial completato' : ''}` : 'Ancora nessuna partita: le statistiche si riempiono giocando.'}</small></div></div>
+      <div class="seg small stats-side"><button data-side="cpu" class="${side === 'cpu' ? 'on' : ''}">Contro il computer</button><button data-side="pvp" class="${side === 'pvp' ? 'on' : ''}">Contro giocatori</button></div>
       <div class="prof-top">
         <svg class="ring" viewBox="0 0 80 80" aria-label="${pct}% di partite vinte"><circle cx="40" cy="40" r="34" class="ring-bg"/>
           ${pct ? `<circle cx="40" cy="40" r="34" class="ring-fg" stroke-dasharray="${dash.toFixed(1)} ${C.toFixed(1)}"/>` : ''}
           <text x="40" y="40" class="ring-n">${pct}%</text><text x="40" y="54" class="ring-l">vinte</text></svg>
-        <div class="kpis3"><div><b>${s.won}</b><span>vittorie</span></div><div><b>${s.best}</b><span>serie migliore</span></div><div><b>${s.fastest || '–'}</b><span>turni, vittoria più rapida</span></div></div>
+        <div class="kpis3"><div><b>${s.played}</b><span>partite</span></div><div><b>${s.best}</b><span>serie migliore</span></div><div><b>${s.fastest || '–'}</b><span>turni, vittoria più rapida</span></div></div>
       </div>
       <h4>Terre giocate</h4>
       <div class="lbars">${TYPES.map((t) => `<div class="lbar"><i class="ico ico-${t}"></i><span style="--k:${(s.lands[t] / maxLand).toFixed(3)}"></span><b>${s.lands[t]}</b></div>`).join('')}</div>
       <div class="prof-cols">
-        <div><h4>Vittorie</h4><ul class="srows">${mode('easy', 'Facile')}${mode('normal', 'Normale')}${mode('friend', 'Con amici')}</ul></div>
+        <div>${results}</div>
         <div><h4>Come vinci</h4><ul class="srows"><li><span>Cinque diverse</span><b>${s.winBy.domain}</b></li><li><span>Cinque uguali</span><b>${s.winBy.five}</b></li><li><span>Carte finite</span><b>${s.winBy.cards}</b></li></ul></div>
       </div>
       <div class="prof-more"><span>Contrasti fatti <b>${s.counters}</b></span><span>Terre distrutte <b>${s.destroyed}</b></span></div>
@@ -118,6 +134,10 @@ const Stats = {
     </div></div>`;
   },
   bind() {
+    $$('[data-side]').forEach((b) => { b.onclick = () => {
+      ui.statsSide = b.dataset.side; Sound.play('click');
+      const host = b.closest('.prof').parentElement; host.innerHTML = Stats.panel(prefs.name) + (host.classList.contains('stats') ? '<button class="btn primary" id="stats-close">Chiudi</button>' : ''); Stats.bind();
+    }; });
     $$('[data-stats="transfer"]').forEach((b) => { b.onclick = () => { ui.transfer = true; Sound.play('click'); render(); }; });
     const close = $('#stats-close');
     if (close) {

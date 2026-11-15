@@ -54,7 +54,7 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
   - **Collezione**: tavolo (Notte/Giorno) e dorso delle carte (Bussola, Meridiani, Correnti).
   - **Impara**: tutorial, promemoria delle cinque terre, regole complete.
   - Le schede scorrono di lato; il foglio ha sempre la stessa altezza, quindi niente salti. Entrare in partita e tornare alla home ha un passaggio animato.
-- **Statistiche** (scheda Profilo e menu in partita): partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
+- **Statistiche** (scheda Profilo e menu in partita), separate tra partite contro il computer e contro altri giocatori: partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
 - **Computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.
 - Musica ambient di sottofondo generata al momento, disattivabile dalla home e dal menu.
