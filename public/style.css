@@ -92,7 +92,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .linkbtn { padding: 6px; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; align-self: center; }
 .musicbtn { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); font-size: 19px; line-height: 1; z-index: 2; background: #fffaf0; }
 .musicbtn.off { opacity: .45; text-decoration: line-through; }
-.fsbtn { position: absolute; top: 12px; left: 12px; height: 40px; padding: 0 14px; border-radius: 999px; z-index: 2; background: var(--ink); color: var(--carta); font: 700 14px/1 var(--sans); box-shadow: 0 2px 0 #0006; }
+/* schermo intero: la prima cosa che si vede, in giallo segnale */
+.fsbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 46px; border-radius: 12px; background: var(--segnale); color: var(--ink);
+  font: 700 16px/1 var(--sans); box-shadow: 0 3px 0 var(--segnale2); flex: none; width: calc(100% - 58px); }
+.lobby .musicbtn { top: 22px; right: 22px; width: 46px; height: 46px; }
+.lobby.measuring .modebody, .lobby.measuring .chev { transition: none !important; }
+.lobby .links { margin-top: auto; }
 /* il nome è un dettaglio: una riga sola, come una firma; le modalità sono le scelte principali */
 .who { display: flex; align-items: baseline; justify-content: center; gap: 8px; font: italic 500 15px/1.3 var(--serif); margin: -2px 0 4px; }
 .who label { opacity: .75; }
@@ -116,6 +121,29 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .spinner { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); animation: blink 1s ease-in-out infinite; margin-right: 4px; }
 @keyframes blink { 50% { opacity: .15; } }
 
+/* le due colonne della home servono solo sul telefono in orizzontale; altrove non esistono */
+.lcol { display: contents; }
+@media (min-aspect-ratio: 11/10) and (max-height: 520px) {
+  .lobby { width: min(100% - 28px, 820px); flex-direction: row; align-items: stretch; gap: 26px; padding: 18px 22px; }
+  .lobby .fsbtn { position: absolute; top: 18px; left: 22px; width: calc(50% - 60px); height: 40px; font-size: 14px; }
+  .lobby .musicbtn { top: 18px; left: calc(50% - 32px); right: auto; width: 40px; height: 40px; }
+  .lcol { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-width: 0; }
+  .lcol-a { justify-content: center; padding-top: 50px; }
+  .lobby .fan { --fw: 52px; }
+  .lobby h1 { font-size: 40px; }
+  .lobby .sub { font-size: 14.5px; }
+}
+/* telefoni bassi in verticale: home più compatta invece che rimpicciolita */
+@media (max-height: 760px) and (max-aspect-ratio: 11/10) {
+  .lobby { gap: 9px; padding: 16px 18px 14px; }
+  .lobby .fan { --fw: 46px; }
+  .lobby h1 { font-size: 36px; }
+  .lobby .sub { font-size: 14.5px; line-height: 1.3; }
+  .btn.modebtn { padding: 11px 16px; } .mt b { font-size: 17px; } .mt small { font-size: 13px; }
+  .modeinner { gap: 9px; } .mode.open .modeinner { padding-bottom: 11px; }
+  .seg button { padding: 7px 2px; } .lobby .btn.primary { padding: 10px 16px; }
+  .fsbtn { height: 40px; font-size: 15px; } .lobby .musicbtn { top: 16px; right: 18px; width: 40px; height: 40px; }
+}
 /* ---------- Partita (telefono, verticale) ---------- */
 .game { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 760px; margin: 0 auto; padding: 4px 10px calc(4px + var(--safe-b)); gap: 6px; overflow: hidden;
   --sw: min(17vw, 10vh); --hw: min(17.5vw, 12vh); --cw: min(26vw, 13.5vh); }
@@ -300,7 +328,7 @@ body.dragging { cursor: grabbing; }
 .mrow.danger { color: var(--rosso); font-weight: 700; border: 0; padding: 6px 0; }
 /* uscire dalla partita: grande e rosso, impossibile non vederlo */
 .btn.exitbtn { background: var(--rosso); border-color: var(--rosso); color: #fff; font-size: 17px; padding: 15px 18px; box-shadow: 0 3px 0 #7d2416; }
-.btn.fullrow { background: var(--ink); border-color: var(--ink); color: var(--carta); font-size: 16px; }
+.btn.fullrow { background: var(--segnale); border-color: var(--segnale); color: var(--ink); font-size: 17px; padding: 14px 18px; box-shadow: 0 3px 0 var(--segnale2); }
 .tog { width: 44px; height: 26px; border-radius: 13px; border: 1.5px solid var(--ink); position: relative; flex: none; }
 .tog span { position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); opacity: .35; transition: left .15s; }
 .tog.on { background: var(--ink); } .tog.on span { left: 21px; background: var(--carta); opacity: 1; }
@@ -349,7 +377,7 @@ body.dragging { cursor: grabbing; }
 .links .linkbtn:first-child { font-weight: 700; }
 
 /* ---------- Tutorial: il consiglio del Maestro ---------- */
-.coach { position: fixed; z-index: 44; padding: 12px 14px; border-radius: 14px; color: var(--ink); background: var(--carta);
+.coach { position: fixed; z-index: 47; padding: 12px 14px; border-radius: 14px; color: var(--ink); background: var(--carta);
   box-shadow: 0 0 0 2px var(--segnale), 0 3px 0 2px var(--segnale2), 0 14px 30px var(--ombra); animation: coachin .25s cubic-bezier(.2, .9, .3, 1.1); }
 @keyframes coachin { from { opacity: 0; } }
 .coach p { margin: 0; font: italic 500 15px/1.4 var(--serif); }

@@ -279,10 +279,17 @@ let autoAllowKey = null;
 // ---------- Schermo intero ----------
 // Da app installata lo schermo intero arriva dal manifest; nel browser si chiede con un pulsante (dove è permesso).
 const Full = {
-  installed: () => matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true,
-  can: () => !Full.installed() && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
-  on: () => !!(document.fullscreenElement || document.webkitFullscreenElement),
+  appFull: () => matchMedia('(display-mode: fullscreen)').matches, // app installata già a schermo intero
+  api: () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
+  can: () => true, // il pulsante c'è sempre: dove non funziona spiega cosa fare
+  on: () => Full.appFull() || !!(document.fullscreenElement || document.webkitFullscreenElement),
   async toggle() {
+    if (Full.appFull()) return toast('Atlas è già a schermo intero', true);
+    if (!this.api()) {
+      return toast(/iP(hone|od)/.test(navigator.userAgent)
+        ? 'Su iPhone: tocca Condividi e poi «Aggiungi alla schermata Home», poi apri Atlas da lì'
+        : 'Questo browser non permette lo schermo intero: installa Atlas come app', true);
+    }
     try {
       if (this.on()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
       else {
@@ -299,7 +306,29 @@ function fitScreen() {
   if (app.dataset.game) { layoutHand(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
 }
 // la home e la stanza d'attesa si rimpiccioliscono se non ci stanno, invece di scorrere
-function fitLobby() { fitBox($('.lobby', app), 36); }
+// La home tiene lo spazio per la modalità più alta già aperta: aprendo e chiudendo le tendine
+// non si sposta né si rimpicciolisce nulla. Se non ci sta, si rimpicciolisce una volta sola.
+function fitLobby() {
+  const l = $('.lobby', app);
+  if (!l) return;
+  l.style.zoom = ''; l.style.minHeight = '';
+  const modes = $$('.mode', l);
+  let h = l.offsetHeight;
+  if (modes.length) {
+    l.classList.add('measuring');
+    const open = modes.map((m) => m.classList.contains('open'));
+    for (const m of modes) {
+      modes.forEach((x) => x.classList.toggle('open', x === m));
+      h = Math.max(h, l.offsetHeight);
+    }
+    modes.forEach((x, i) => x.classList.toggle('open', open[i]));
+    void l.offsetHeight;
+    l.classList.remove('measuring');
+    l.style.minHeight = `${h}px`;
+  }
+  const base = parseFloat(getComputedStyle(l).zoom) || 1, avail = innerHeight - 36;
+  if (h * base > avail) l.style.zoom = (avail / h).toFixed(3);
+}
 // rimpicciolisce un pannello (home, menu) finché non sta tutto nello schermo
 function fitBox(l, margin) {
   if (!l) return;
@@ -456,14 +485,16 @@ function renderLobby() {
   const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
   app.innerHTML = `
   <div class="lobby">
-    ${Full.can() ? `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci' : '⤢ Schermo intero'}</button>` : ''}
+    ${Full.appFull() ? '' : `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
     <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
+    <div class="lcol lcol-a">
     ${pips()}
     <h1>Atlas</h1>
     <p class="sub">Metti in gioco tutte e cinque le terre, oppure cinque uguali.</p>
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
     <div class="who"><label for="name">Giochi come</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="il tuo nome" autocomplete="nickname" size="12"></div>
+    </div><div class="lcol lcol-b">
     <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
       <button class="btn modebtn"><span class="mt"><b>Contro il computer</b><small>Anche senza connessione</small></span><span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
@@ -482,7 +513,7 @@ function renderLobby() {
         <div class="row"><input id="code" class="code-input" maxlength="4" value="${esc(pre)}" placeholder="CODICE" autocomplete="off" autocapitalize="characters"><button class="btn" id="join">Entra</button></div>
       </div></div>
     </div>
-    <div class="links"><button class="linkbtn" id="tutorial">Impara a giocare</button><button class="linkbtn" id="rules">Regole</button><button class="linkbtn" id="stats">Statistiche</button></div>`}
+    <div class="links"><button class="linkbtn" id="tutorial">Impara a giocare</button><button class="linkbtn" id="rules">Regole</button><button class="linkbtn" id="stats">Statistiche</button></div></div>`}
   </div>${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`;
   bindOverlays();
   $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
@@ -496,7 +527,6 @@ function renderLobby() {
       if (open) m.classList.add('open');
       ui.mode = open ? m.dataset.mode : null;
       Sound.play('click');
-      fitLobby(); setTimeout(fitLobby, 380);
     };
   });
   $$('[data-tt]').forEach((b) => { b.onclick = () => { prefs.turnTime = Number(b.dataset.tt); $$('[data-tt]').forEach((x) => x.classList.toggle('on', x.dataset.tt === b.dataset.tt)); }; });
@@ -892,7 +922,7 @@ function menuHtml() {
       <p>Vuoi davvero uscire? ${S.tutorial ? 'Potrai rifare il tutorial quando vuoi dalla home.' : S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
       <button class="btn exitbtn" data-act="leave-now">Esci dalla partita</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
-    ${Full.can() ? `<button class="btn fullrow" data-act="toggle-full">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>` : ''}
+    ${Full.appFull() ? '' : `<button class="btn fullrow" data-act="toggle-full">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
     <div class="mrow col"><span>Tema</span>${seg('set-theme', prefs.theme, [['notte', 'Notte'], ['giorno', 'Giorno']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
