@@ -281,31 +281,49 @@ let autoAllowKey = null;
 // ---------- Schermo intero ----------
 // Da app installata lo schermo intero arriva dal manifest; nel browser si chiede con un pulsante (dove è permesso).
 const Full = {
-  appFull: () => matchMedia('(display-mode: fullscreen)').matches, // app installata già a schermo intero
   api: () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
-  can: () => true, // il pulsante c'è sempre: dove non funziona spiega cosa fare
-  on: () => Full.appFull() || !!(document.fullscreenElement || document.webkitFullscreenElement),
+  on: () => !!(document.fullscreenElement || document.webkitFullscreenElement),
+  label() { return this.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'; },
   async toggle() {
-    if (Full.appFull()) return toast('Atlas è già a schermo intero', true);
     if (!this.api()) {
-      return toast(/iP(hone|od)/.test(navigator.userAgent)
+      return toast(/iP(hone|od|ad)/.test(navigator.userAgent)
         ? 'Su iPhone: tocca Condividi e poi «Aggiungi alla schermata Home», poi apri Atlas da lì'
-        : 'Questo browser non permette lo schermo intero: installa Atlas come app', true);
+        : 'Questo browser non permette lo schermo intero', true);
     }
     try {
-      if (this.on()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-      else {
-        const el = document.documentElement;
-        await (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
-      }
+      if (this.on()) { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); ls.set('full', false); }
+      else { const el = document.documentElement; await (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' }); ls.set('full', true); }
     } catch { toast('Il browser non permette lo schermo intero'); }
   },
+  // aggiorna le scritte dei pulsanti senza ridisegnare la pagina
+  sync() { $$('[data-full]').forEach((b) => { b.textContent = this.label(); }); },
 };
+// se l'ultima volta eri a schermo intero, ci si torna al primo tocco (il browser chiede un gesto)
+document.addEventListener('pointerdown', () => {
+  if (ls.get('full', false) && Full.api() && !Full.on()) (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement, { navigationUI: 'hide' }).catch(() => {});
+}, { capture: true, once: true });
 // L'altezza del gioco segue quella vera dello schermo: niente scorrimento, in nessun caso.
 let fitTimer = null;
 function fitScreen() {
   document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
-  if (app.dataset.game) { layoutHand(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
+  if (app.dataset.game) { layoutHand(); fitCenter(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
+  Full.sync();
+}
+// Se lo spazio al centro del tavolo non basta (schermi bassi, barre del browser visibili),
+// carta giocata, scritte e pulsanti si rimpiccioliscono insieme invece di finire sopra il tuo campo.
+function fitCenter() {
+  const c = $('#center');
+  if (!c) return;
+  const kids = [...c.children];
+  kids.forEach((k) => { k.style.zoom = ''; });
+  const avail = c.clientHeight;
+  if (avail < 40) return;
+  // gli spazi tra gli elementi non si rimpiccioliscono: si corregge in un paio di passaggi
+  let z = 1;
+  for (let i = 0; i < 4 && c.scrollHeight > avail + 1; i++) {
+    z = Math.max(0.45, z * (avail - 2) / c.scrollHeight - 0.02);
+    kids.forEach((k) => { k.style.zoom = z.toFixed(3); });
+  }
 }
 // la home e la stanza d'attesa si rimpiccioliscono se non ci stanno, invece di scorrere
 // La home tiene lo spazio per la modalità più alta già aperta: aprendo e chiudendo le tendine
@@ -328,7 +346,9 @@ function fitLobby() {
     l.classList.remove('measuring');
     l.style.minHeight = `${h}px`;
   }
-  const base = parseFloat(getComputedStyle(l).zoom) || 1, avail = innerHeight - 36;
+  // spazio vero: altezza dello schermo meno i margini (compresi quelli per la tacca della fotocamera)
+  const cs = getComputedStyle(app);
+  const base = parseFloat(getComputedStyle(l).zoom) || 1, avail = innerHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 10;
   if (h * base > avail) l.style.zoom = (avail / h).toFixed(3);
 }
 // rimpicciolisce un pannello (home, menu) finché non sta tutto nello schermo
@@ -339,7 +359,9 @@ function fitBox(l, margin) {
   const h = l.getBoundingClientRect().height, avail = innerHeight - margin;
   if (h > avail) l.style.zoom = (base * avail / h).toFixed(3);
 }
-function refit() { fitScreen(); clearTimeout(fitTimer); fitTimer = setTimeout(fitScreen, 350); } // alcuni browser cambiano misura in due tempi
+let fitTimer2 = null;
+function refit() { fitScreen(); clearTimeout(fitTimer); clearTimeout(fitTimer2); fitTimer = setTimeout(fitScreen, 250); fitTimer2 = setTimeout(fitScreen, 800); } // alcuni browser cambiano misura in più tempi
+if (window.ResizeObserver) new ResizeObserver(() => { if (Math.abs(innerHeight - parseFloat(document.documentElement.style.getPropertyValue('--app-h'))) > 1) refit(); }).observe(document.documentElement);
 ['fullscreenchange', 'webkitfullscreenchange', 'orientationchange'].forEach((e) => document.addEventListener(e, refit));
 window.addEventListener('resize', refit);
 
@@ -552,7 +574,7 @@ function renderLobby() {
   const pane = (id, i, html) => `<section class="pane pane-${id} ${id === tab ? 'on' : ''}" data-pane="${id}" style="--dx:${i < ti ? -22 : 22}px" ${id === tab ? '' : 'aria-hidden="true"'}>${html}</section>`;
   const play = `
     <div class="lcol lcol-a">
-      <div class="toprow">${Full.appFull() ? '' : `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
+      <div class="toprow"><button class="fsbtn" id="fullscreen" data-full>${Full.label()}</button>
         <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button></div>
       ${pips()}
       <h1>Atlas</h1>
@@ -919,6 +941,7 @@ function renderGame() {
   bindOverlays();
   if (ui.menu) fitBox($('.sheet', app), 16);
   tickTimer();
+  fitCenter();
   drawArrows();
   Tut.place();
   maybeAutoAllow(task);
@@ -1002,9 +1025,8 @@ function menuHtml() {
       <p>Vuoi davvero uscire? ${S.tutorial ? 'Potrai rifare il tutorial quando vuoi dalla home.' : S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
       <button class="btn exitbtn" data-act="leave-now">Esci dalla partita</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
-    ${Full.appFull() ? '' : `<button class="btn fullrow" data-act="toggle-full">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
+    <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>Tema</span>${seg('set-theme', prefs.theme, [['notte', 'Notte'], ['giorno', 'Giorno']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>

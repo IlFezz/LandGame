@@ -46,7 +46,7 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 - **Partita contro il computer nel browser**: gira tutta sul telefono con lo stesso codice del server, quindi funziona anche offline e senza aspettare che Render si svegli. Se chiudi l'app a metà, la partita riprende da dove era.
 - **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata di 13 turni contro il Maestro, con mazzi preparati. Spiega tavolo, mano, mazzo, cimitero, turno, l'effetto di ogni terra, il contrasto (serve un'Isola in mano, l'Isola si sceglie da sola, la seconda carta è libera) e il passaggio di turno. Il Maestro gioca solo dopo «Avanti»; «Indietro» rilegge i passaggi già visti; la carta da usare è sollevata con l'etichetta «Gioca questa» e le altre sono spente.
-- **Schermo intero**: installata come app, Atlas si apre a tutto schermo (manifest `display: fullscreen`). Altrimenti c'è il pulsante giallo in cima alla home e al menu; dove il browser non lo permette (iPhone) spiega come installare l'app.
+- **Schermo intero**: pulsante giallo sempre presente in cima alla home e al menu, per entrare e uscire. La scelta viene ricordata: se l'ultima volta eri a schermo intero, ci si torna al primo tocco. Su iPhone, dove il browser non lo permette, spiega come installare l'app.
 - **Home a schede** (barra in basso; sul telefono in orizzontale una colonna a sinistra):
   - **Gioca**: modalità contro il computer o con un amico, nome, schermo intero e musica.
   - **Profilo**: percentuale di vittorie, vittorie, serie migliore, vittoria più rapida, terre giocate, vittorie per modalità e per tipo, contrasti e terre distrutte; profili salvati e codice di trasferimento in una finestra a parte.
@@ -71,8 +71,8 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - Spiegazioni sulla plancia attive di default; si spengono dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
 - Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
 - Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
-- Menu in partita: schermo intero (in cima, dove il browser lo permette), comandi (trascina/tocca), tema (Notte/Giorno), effetti grafici (completi/ridotti, predefiniti completi), info nella plancia (attive di default), musica, effetti sonori, vibrazione, registro, regole, statistiche e il grande pulsante rosso «Esci dalla partita». Le animazioni hanno una sola velocità (lenta).
-- Nessuno scorrimento: il gioco segue l'altezza reale dello schermo (anche entrando o uscendo dallo schermo intero) e home e menu si rimpiccioliscono se non ci stanno.
+- Menu in partita: schermo intero (in cima), comandi (trascina/tocca), effetti grafici (completi/ridotti, predefiniti completi), info nella plancia (attive di default), musica, effetti sonori, vibrazione, registro, regole, statistiche e il grande pulsante rosso «Esci dalla partita». Le animazioni hanno una sola velocità (lenta).
+- Nessuno scorrimento e nessuna sovrapposizione: tutte le misure seguono l'altezza visibile vera (anche con le barre del browser visibili o entrando e uscendo dallo schermo intero); se al centro del tavolo lo spazio non basta, carta giocata, scritte e pulsanti si rimpiccioliscono insieme; home e menu si rimpiccioliscono se non ci stanno.
 
 ## Struttura
 
