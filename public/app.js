@@ -502,8 +502,14 @@ function gyHtml(pl, w, targets) {
       ${chips || '<div class="gyempty">Vuoto</div>'}</div>` : ''}</span>`;
 }
 
+// la mano avversaria: dorsi aperti a ventaglio, come tenuti in mano
+function oppFan(n) {
+  const k = Math.min(n, 10), mid = (k - 1) / 2, step = k > 6 ? 7 : 10;
+  return `<div class="fanbacks">${Array.from({ length: k }, (_, i) => `<div class="back" style="--r:${((i - mid) * step).toFixed(1)}deg"></div>`).join('')}</div>`;
+}
 function deckHtml(pl, w) {
-  return `<div class="deck" id="deck-${w}" title="Carte nel mazzo"><div class="pile ${pl.deckCount ? '' : 'emptypile'}"></div><b>${pl.deckCount}</b></div>`;
+  const h = pl.deckCount > 30 ? 3 : pl.deckCount > 12 ? 2 : pl.deckCount > 0 ? 1 : 0;
+  return `<div class="deck" id="deck-${w}" title="Carte nel mazzo"><div class="pile h${h} ${pl.deckCount ? '' : 'emptypile'}"></div><b>${pl.deckCount}</b></div>`;
 }
 
 // Cosa sta chiedendo il gioco al giocatore locale
@@ -683,7 +689,7 @@ function renderGame() {
     opp: `<section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
       <div class="zhead">
         <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">!</span>' : ''}</span>
-        <div class="backs" id="hand-opp">${'<div class="back"></div>'.repeat(Math.min(g.opp.handCount, 10))}<small>${g.opp.handCount}</small></div>
+        <div class="backs" id="hand-opp" title="Carte in mano all'avversario">${oppFan(g.opp.handCount)}<small>${g.opp.handCount}</small></div>
         ${deckHtml(g.opp, 'opp')}
         ${gyHtml(g.opp, 'opp')}
       </div>

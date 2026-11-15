@@ -128,10 +128,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .zone.active .dot { background: var(--segnale); box-shadow: 0 0 0 3px #f6c45340; }
 .near { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--rosso); color: #fff; font: 700 12px/1 var(--sans); animation: blink 1s ease-in-out infinite; }
 .deck, .backs { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--testo); font-size: 13px; }
-.pile, .back { width: 12px; height: 17px; border-radius: 2px; box-shadow: 0 0 0 1.5px var(--carta); }
+/* Mazzo: una pila spessa sdraiata sul tavolo, si vedono i bordi dei fogli (lo spessore cala man mano che si pesca) */
+.deck { --pw: 15px; gap: 7px; color: var(--muto); font-weight: 400; }
+.pile { width: var(--pw); height: calc(var(--pw) * 1.4); border-radius: 2px; position: relative; flex: none; margin: 0 4px 4px 0;
+  box-shadow: 0 0 0 1.5px var(--carta); }
+.pile.h1 { box-shadow: 0 0 0 1.5px var(--carta), 1.5px 1.5px 0 1.5px var(--carta2); }
+.pile.h2 { box-shadow: 0 0 0 1.5px var(--carta), 1.5px 1.5px 0 1.5px var(--carta2), 3px 3px 0 1.5px var(--carta), 4.5px 4.5px 0 1.5px var(--carta2); }
+.pile.h3 { box-shadow: 0 0 0 1.5px var(--carta), 1.5px 1.5px 0 1.5px var(--carta2), 3px 3px 0 1.5px var(--carta), 4.5px 4.5px 0 1.5px var(--carta2), 6px 6px 0 1.5px var(--carta), 7.5px 7.5px 0 1.5px var(--carta2); }
 .pile.emptypile { background: none; box-shadow: 0 0 0 1.5px var(--riga); }
-.back { margin-left: -7px; } .back:first-child { margin-left: 0; }
-.backs small { margin-left: 6px; font-size: 13px; }
+/* Mano avversaria: dorsi aperti a ventaglio, con il numero in un segnalino */
+.backs { gap: 2px; --bw: 13px; }
+.fanbacks { display: flex; align-items: flex-end; height: calc(var(--bw) * 1.75); padding: 0 calc(var(--bw) * .7) 0 calc(var(--bw) * .6); }
+.back { width: var(--bw); height: calc(var(--bw) * 1.4); border-radius: 2px; flex: none; margin-left: calc(var(--bw) * -.55); transform: rotate(var(--r, 0deg)); transform-origin: 50% 160%;
+  box-shadow: 0 0 0 1.5px var(--carta), 0 2px 3px var(--ombra); }
+.back:first-child { margin-left: 0; }
+.backs small { margin-left: 2px; min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--carta); color: var(--ink); font: 700 12.5px var(--sans); }
 
 .bf { display: flex; justify-content: center; gap: 1.8vw; }
 .slot { --w: var(--sw); width: var(--w); height: calc(var(--w) * 1.4); position: relative; flex: none; border-radius: calc(var(--w) * .055); }
@@ -323,7 +334,7 @@ body.dragging { cursor: grabbing; }
   .topbar { height: 44px; font-size: 15px; } .menubtn { width: 52px; height: 42px; font-size: 22px; }
   .timer { height: 18px; border-radius: 9px; } .tlabel { font-size: 12px; line-height: 18px; }
   .zhead { height: 46px; gap: 18px; font-size: 15px; } .pname { font-size: 20px; }
-  .deck, .backs, .backs small { font-size: 16px; } .pile, .back { width: 16px; height: 22px; }
+  .deck, .backs { font-size: 16px; } .deck { --pw: 18px; } .backs { --bw: 16px; } .backs small { font-size: 14px; height: 24px; min-width: 26px; }
   .gybadge { height: 42px; font-size: 17px; padding: 0 16px 0 7px; } .gybadge .ico { width: 28px; height: 28px; }
   .slot .count { min-width: 28px; height: 28px; font-size: 15px; top: -9px; right: -9px; }
   .status { font-size: 18px; } .hint { font-size: 17px; } .btn { font-size: 17px; padding: 14px 24px; }
@@ -344,7 +355,7 @@ body.dragging { cursor: grabbing; }
   .zone .bf { grid-column: 2; grid-row: 1; gap: 1.3vw; }
   .zhead { grid-column: 1; grid-row: 1; height: auto; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1.4vh; font-size: max(13px, 1.8vh); }
   .zhead .pname { margin: 0; font-size: max(17px, 2.8vh); max-width: 100%; }
-  .deck, .backs, .backs small { font-size: max(14px, 2vh); } .pile, .back { width: max(13px, 2vh); height: max(18px, 2.8vh); }
+  .deck, .backs { font-size: max(14px, 2vh); } .deck { --pw: max(15px, 2.2vh); } .backs { --bw: max(14px, 2.1vh); } .backs small { font-size: max(12.5px, 1.7vh); height: max(20px, 2.8vh); }
   .gybadge { height: max(34px, 4.6vh); font-size: max(15px, 2.1vh); } .gybadge .ico { width: max(24px, 3.2vh); height: max(24px, 3.2vh); }
   .gypop.opp, .gypop.me { left: calc(100% + 12px); right: auto; top: 50%; bottom: auto; transform: translateY(-50%); animation: none; min-width: 250px; }
   .slot .card.mini .art { height: 70.5%; } .slot .card.mini .gem { top: 67.5%; } .slot .card.mini .nm { display: block; top: 86%; font-size: .92em; }

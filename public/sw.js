@@ -1,5 +1,5 @@
 // Service worker: rende l'app installabile e carica l'interfaccia anche con rete lenta.
-const CACHE = 'blg-v9';
+const CACHE = 'blg-v10';
 const ASSETS = ['./', 'index.html', 'style.css', 'art.js', 'fx.js', 'app.js', 'fonts/adventor.woff', 'fonts/adventor-bold.woff', 'fonts/lora-italic.woff', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
