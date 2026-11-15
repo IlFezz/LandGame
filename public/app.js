@@ -47,6 +47,8 @@ const prefs = {
   get info() { return ls.get('info2', true); }, set info(v) { ls.set('info2', v); },
   get back() { const v = ls.get('back', 'bussola'); return ATL.BACKS.some((b) => b.id === v) ? v : 'bussola'; }, set back(v) { ls.set('back', v); },
   get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
+  // grafica: 'auto' sceglie da sola in base al dispositivo, 'lite' = Leggera, 'adv' = Avanzata
+  get gfx() { const v = ls.get('gfx', 'auto'); return v === 'adv' || v === 'lite' ? v : 'auto'; }, set gfx(v) { ls.set('gfx', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
   get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
@@ -224,11 +226,21 @@ function vibrate(pattern) {
 }
 
 // ---------- Aspetto ----------
+let gfxCapable = null;
+// se la grafica avanzata rallenta il dispositivo, si torna alla leggera (solo se non l'hai scelta tu)
+Live.onSlow = (why) => {
+  if (prefs.gfx === 'adv' && why === 'slow') return;
+  prefs.gfx = 'lite'; Live.set(false);
+  toast('Grafica leggera attivata per mantenere il gioco fluido', true);
+  if (ui.menu) render();
+};
 function applyPrefs() {
   document.documentElement.dataset.theme = prefs.theme;
   document.documentElement.style.setProperty('--bk', `var(--bk-${prefs.back})`);
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
+  if (gfxCapable == null) gfxCapable = Live.capable();
+  Live.set(prefs.gfx === 'adv' || (prefs.gfx === 'auto' && gfxCapable));
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -306,6 +318,7 @@ document.addEventListener('pointerdown', () => {
 let fitTimer = null;
 function fitScreen() {
   document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
+  Live.reset();
   if (app.dataset.game) { layoutHand(); fitCenter(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
   Full.sync();
 }
@@ -1027,6 +1040,7 @@ function menuHtml() {
       <button class="btn" data-act="leave-no">Annulla</button>` : `
     <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
+    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Live.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
@@ -1138,6 +1152,9 @@ app.addEventListener('click', (e) => {
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-theme': prefs.theme = v; applyPrefs(); Sound.play('click'); return render();
+    case 'set-gfx':
+      if (v === 'adv' && !Live.supported()) { toast('Questo dispositivo non supporta la grafica avanzata'); return; }
+      prefs.gfx = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
@@ -1440,11 +1457,21 @@ function makeFlyer(face, w, h) {
 }
 
 // Fa volare una carta da `from` (rettangolo) all'elemento `toEl`.
-function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0 } = {}) {
+// Con `flip` (solo grafica avanzata) la carta parte coperta e si gira in volo.
+function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0, flip = false } = {}) {
   const to = rectOf(toEl);
   if (!okRect(from) || !okRect(to)) return Promise.resolve();
   const W = Math.max(46, Math.min(Math.max(to.width, from.width * 0.8), 190)), H = W * 1.4;
-  const f = makeFlyer(face, W, H);
+  let f;
+  if (flip && face && Live.on) {
+    dur = Math.round(dur * 1.35);
+    f = document.createElement('div'); f.className = 'flyer flipwrap';
+    Object.assign(f.style, { width: W + 'px', height: H + 'px' }); f.style.setProperty('--w', W + 'px');
+    f.innerHTML = `<div class="flipper"><div class="card k-${face} ${W < 120 ? 'compact' : ''}">${cardFace(face, W >= 120)}</div><div class="cardback"></div></div>`;
+    document.body.appendChild(f);
+    f.firstChild.animate([{ transform: 'rotateY(180deg)' }, { transform: 'rotateY(180deg)', offset: 0.12 }, { transform: 'rotateY(0deg)', offset: 0.8 }, { transform: 'rotateY(0deg)' }],
+      { duration: D(dur), delay: D(delay), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'both' });
+  } else f = makeFlyer(face, W, H);
   const sx = from.left + from.width / 2 - W / 2, sy = from.top + from.height / 2 - H / 2;
   const ex = to.left + to.width / 2 - W / 2, ey = to.top + to.height / 2 - H / 2;
   const s0 = Math.max(0.15, Math.min(from.width / W, 1.2)), s1 = Math.max(0.15, Math.min(to.width / W, 1.2));
@@ -1519,7 +1546,7 @@ async function animateStep(ev, next) {
       G = next; render();
       Sound.play('draw');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
-      await fly(from, to, w === 'me' ? ev.card : null, { dur: 380 });
+      await fly(from, to, w === 'me' ? ev.card : null, { dur: 380, flip: true });
       if (w === 'me') { pulse(to, 'newcard', 700); FX.sparkle(rectOf(to), ev.card, 6); }
       return;
     }
@@ -1532,7 +1559,7 @@ async function animateStep(ev, next) {
       if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
       Altar.cast(ev.card);
-      await fly(from, stackCard(), ev.card, { dur: 420 });
+      await fly(from, stackCard(), ev.card, { dur: 420, flip: w !== 'me' });
       FX.cast(ev.card, rectOf(stackCard()));
       if (ev.target) { lastArrowKey = null; drawArrows(); await pulse(pendingTargetEl(G.pending), 'aimed', 500); }
       else await wait(250);

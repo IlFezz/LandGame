@@ -143,5 +143,7 @@ const ATL = (() => {
   for (const b of BACKS) root.setProperty('--bk-' + b.id, uri(b.svg(), '0 0 100 140', 'preserveAspectRatio="xMidYMid slice"'));
   root.setProperty('--bk', 'var(--bk-bussola)');
 
-  return { L, COL, ICO, PAPER, INK, blob, uri, rng, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
+  // la tavola come immagine a sé: la grafica avanzata la carica come texture e la anima
+  const mapSrc = (l) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92" width="500" height="460" preserveAspectRatio="none">${MAPS[l]()}</svg>`);
+  return { L, COL, ICO, PAPER, INK, blob, uri, rng, mapSrc, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
 })();
