@@ -1,4 +1,4 @@
-// Server del Basic Land Game: file statici + WebSocket (implementato a mano, zero dipendenze).
+// Server di Atlas (basato sul Basic Land Game): file statici + WebSocket (implementato a mano, zero dipendenze).
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -135,4 +135,4 @@ function handleConnection(conn) {
 // Keep-alive e pulizia stanze inattive (2 ore)
 setInterval(() => hub.sweep(), 25000).unref();
 
-server.listen(PORT, () => console.log(`Basic Land Game in ascolto su http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Atlas in ascolto su http://localhost:${PORT}`));

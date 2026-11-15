@@ -31,7 +31,8 @@ function eventFor(ev, seat) {
 
 // ---------- Tutorial: mazzi preparati e mosse del computer già scritte ----------
 // Ordine di pescata (la prima carta dell'elenco è la prima pescata). Il resto del mazzo viene dopo.
-const TUT_ME = ['U', 'G', 'R', 'W', 'B', /* pescate: */ 'G', 'R', 'G', 'R', 'U', 'G', 'W'];
+// Le pescate danno doppioni di Pianura e Palude: per il contrasto si può scartare qualsiasi seconda terra.
+const TUT_ME = ['U', 'G', 'R', 'W', 'B', /* pescate: */ 'G', 'W', 'B', 'R', 'U', 'G', 'W'];
 const TUT_BOT = ['R', 'B', 'R', 'W', 'G', /* pescate: */ 'G', 'W', 'R', 'B', 'W', 'R'];
 function tutorialDeck(order) {
   const left = { W: 10, U: 10, B: 10, R: 10, G: 10 };
@@ -94,6 +95,7 @@ class Hub {
       t: 'state', code: room.code, seat: i, now: Date.now(),
       seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn || !!x.bot, bot: !!x.bot } : null)),
       vsBot: !!room.bot, botLevel: room.botLevel || null, local: this.local, tutorial: !!room.tutorial,
+      tutWait: !!(room.tutorial && room.tutWait && room.tutWait !== room.tutGo), // il Maestro aspetta «Avanti»
       rematch: room.rematch.slice(), turnTime: room.turnTime,
       timer: room.timer ? { deadline: room.timer.deadline, total: room.timer.total, actor: room.timer.actor } : null,
       game: room.game ? room.game.view(i) : null,
@@ -135,7 +137,10 @@ class Hub {
     const key = `${g.turn}|${g.step}|${g.pending ? g.pending.counters : ''}`;
     if (room.botTimer && room.botTimer.key === key) return;
     if (room.botTimer) clearTimeout(room.botTimer.handle);
-    const think = g.step === 'main' ? 900 + Math.random() * 900 : 700 + Math.random() * 700;
+    // Nel tutorial il Maestro gioca e sceglie solo dopo che il giocatore ha letto e premuto «Avanti»;
+    // quando deve solo lasciar risolvere una terra lo fa subito.
+    if (room.tutorial && g.step !== 'response' && room.tutGo !== key) { room.tutWait = key; return; }
+    const think = room.tutorial ? 300 : g.step === 'main' ? 900 + Math.random() * 900 : 700 + Math.random() * 700;
     const handle = setTimeout(() => {
       room.botTimer = null;
       if (!room.game || room.game !== g || g.actor() !== BOT_SEAT) return;
@@ -253,6 +258,11 @@ class Hub {
       room.rematch[conn.seat] = true;
       if (room.bot) { room.rematch[BOT_SEAT] = true; room.tutorial = false; } // dopo il tutorial, una partita vera
       if (room.rematch.every(Boolean)) { this.startGame(room); return this.broadcast(room, room.game.takeEvents()); }
+      return this.broadcast(room);
+    }
+    if (m.t === 'tut-go') {
+      if (!room.tutorial || !room.tutWait) return;
+      room.tutGo = room.tutWait; room.tutWait = null;
       return this.broadcast(room);
     }
     if (m.t === 'prefs') {

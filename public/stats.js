@@ -58,12 +58,13 @@ const Stats = {
   // ---------- trasferimento ----------
   exportCode(name) {
     const s = this.load(name);
-    return 'BLG1-' + btoa(unescape(encodeURIComponent(JSON.stringify({ n: s.name, s }))));
+    return 'ATLAS1-' + btoa(unescape(encodeURIComponent(JSON.stringify({ n: s.name, s }))));
   },
   importCode(code) {
     const raw = String(code || '').trim().replace(/\s+/g, '');
-    if (!raw.startsWith('BLG1-')) throw new Error('Codice non valido');
-    const d = JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));
+    const pre = ['ATLAS1-', 'BLG1-'].find((x) => raw.startsWith(x));
+    if (!pre) throw new Error('Codice non valido');
+    const d = JSON.parse(decodeURIComponent(escape(atob(raw.slice(pre.length)))));
     if (!d || !d.n || !d.s || typeof d.s.played !== 'number') throw new Error('Codice non valido');
     this.store(d.n, { ...this.blank(), ...d.s });
     return d.n;

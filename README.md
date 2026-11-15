@@ -1,6 +1,6 @@
-# Basic Land Game online
+# Atlas
 
-Il Basic Land Game di Magic giocabile da browser, in due, con stanze e codice d'invito.
+Atlas è il Basic Land Game di Magic giocabile da browser, in due, con stanze e codice d'invito.
 Installabile come app su telefono (PWA). Nessuna dipendenza: serve solo Node.js 18 o più recente.
 
 ## Provarlo sul tuo computer
@@ -45,7 +45,8 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 ## Funzioni
 
 - **Partita contro il computer nel browser**: gira tutta sul telefono con lo stesso codice del server, quindi funziona anche offline e senza aspettare che Render si svegli. Se chiudi l'app a metà, la partita riprende da dove era.
-- **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata contro il Maestro, con mazzi preparati, che mostra tutte e cinque le terre e il contrasto.
+- **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata contro il Maestro, con mazzi preparati, che mostra tutte e cinque le terre e il contrasto. Il Maestro gioca solo dopo che hai premuto «Avanti»; la carta da usare è sollevata con l'etichetta «Gioca questa» e le altre sono spente.
+- **Schermo intero**: installata come app, Atlas si apre a tutto schermo (manifest `display: fullscreen`). Nel browser c'è il pulsante nella home e la voce nel menu, dove il browser lo permette.
 - **Statistiche** (home e menu): partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
 - **Computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.

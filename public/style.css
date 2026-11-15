@@ -28,7 +28,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .warn { color: var(--rosso); }
 .yes { color: #2f9e6a; font-style: normal; font-weight: 700; } .no { color: var(--rosso); font-style: normal; font-weight: 700; }
 
-#app { position: relative; z-index: 1; height: 100dvh; overflow: auto; display: flex; flex-direction: column; padding-top: var(--safe-t); }
+#app { position: relative; z-index: 1; height: 100dvh; overflow: auto; display: flex; flex-direction: column; padding-top: var(--safe-t);
+  padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 #app:not([data-game]) { padding-bottom: 14px; padding-top: calc(14px + var(--safe-t)); }
 #altar { position: fixed; z-index: 0; pointer-events: none; display: none; opacity: .7; background: var(--rosa) center / contain no-repeat; transform: rotate(var(--ang, 0deg)); }
 #altar.on { display: block; }
@@ -72,7 +73,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 /* ---------- Home: un foglio sul tavolo ---------- */
 .lobby { position: relative; width: min(100% - 28px, 430px); margin: auto; padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 13px; flex: none; color: var(--ink); border-radius: 16px;
   background: var(--topo-d) 30% 20% / 260% auto, var(--carta); box-shadow: 0 2px 0 var(--carta2), 0 22px 44px var(--ombra); }
-.lobby h1 { margin: 0; text-align: center; font: 700 34px/1.02 var(--sans); letter-spacing: -.02em; }
+.lobby h1 { margin: 0; text-align: center; font: 700 46px/1 var(--sans); letter-spacing: .04em; text-indent: .04em; }
 .lobby .sub { text-align: center; margin: 0; font: italic 500 16px/1.4 var(--serif); opacity: .82; }
 .lobby .sub b { font: 700 15px var(--sans); letter-spacing: .1em; }
 .fan { display: flex; justify-content: center; height: calc(var(--fw) * 1.78); padding-top: calc(var(--fw) * .16); --fw: 62px; }
@@ -91,9 +92,20 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .linkbtn { padding: 6px; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; align-self: center; }
 .musicbtn { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); font-size: 19px; line-height: 1; z-index: 2; background: #fffaf0; }
 .musicbtn.off { opacity: .45; text-decoration: line-through; }
-.mode { border: 1.5px solid var(--ink); border-radius: 12px; background: #fffaf099; transition: background-color .2s; }
+.fsbtn { position: absolute; top: 12px; left: 12px; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); font-size: 18px; line-height: 1; z-index: 2; background: #fffaf0; color: var(--ink); }
+/* il nome è un dettaglio: una riga sola, come una firma; le modalità sono le scelte principali */
+.who { display: flex; align-items: baseline; justify-content: center; gap: 8px; font: italic 500 15px/1.3 var(--serif); margin: -2px 0 4px; }
+.who label { opacity: .75; }
+.who input { width: auto; min-width: 7em; max-width: 60%; padding: 2px 4px; border: 0; border-bottom: 1.5px dashed #17262d80; border-radius: 0; background: none; color: var(--ink);
+  font: 700 16px/1.3 var(--sans); text-align: center; outline: none; }
+.who input:focus { border-bottom: 1.5px solid var(--ink); }
+.who input::placeholder { color: #17262d80; font-weight: 400; }
+.mode { border: 2px solid var(--ink); border-radius: 14px; background: #fffaf0; box-shadow: 0 3px 0 var(--ink); transition: background-color .2s; }
 .mode.open { background: #fffaf0; }
-.btn.modebtn { width: 100%; display: flex; justify-content: space-between; align-items: center; border: 0; padding: 14px 16px; font-size: 16px; }
+.btn.modebtn { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 0; padding: 15px 18px; text-align: left; }
+.mt { display: flex; flex-direction: column; gap: 3px; }
+.mt b { font: 700 19px/1.15 var(--sans); }
+.mt small { font: italic 500 14px/1.3 var(--serif); opacity: .72; }
 .chev { transition: transform .3s; opacity: .6; } .mode.open .chev { transform: rotate(180deg); }
 .modebody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s cubic-bezier(.2, .8, .2, 1); }
 .mode.open .modebody { grid-template-rows: 1fr; }
@@ -342,6 +354,11 @@ body.dragging { cursor: grabbing; }
 .coach .linkbtn { color: var(--ink); }
 .coach-acts { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
 .coach-hl { position: relative; z-index: 41 !important; }
+/* la carta che il tutorial chiede di giocare: sollevata, con etichetta; le altre restano giocabili ma spente */
+.hand .card.coach-hl { transform: translate(var(--x, 0), calc(var(--dy, 0px) - 14px)) rotate(0deg) scale(1.06); }
+.hand .card.coach-dim { opacity: .45; }
+.coach-tag { position: absolute; left: 50%; top: calc(var(--w) * -.24); transform: translateX(-50%); z-index: 4; white-space: nowrap; pointer-events: none;
+  padding: 3px 9px; border-radius: 999px; background: var(--segnale); color: var(--ink); font: 700 max(11px, calc(var(--w) * .12))/1.2 var(--sans); box-shadow: 0 2px 0 var(--segnale2); }
 .coach-hl::before { content: ""; position: absolute; inset: -8px; border-radius: 14px; border: 4px solid var(--segnale); box-shadow: 0 0 0 3px #17262d99, 0 0 22px #f6c453; pointer-events: none; animation: coachhl 1s ease-in-out infinite; z-index: 3; }
 @keyframes coachhl { 50% { opacity: .35; } }
 @media (min-height: 521px) and (min-aspect-ratio: 11/10) { .coach { padding: 1.8vh 2vh; } .coach p { font-size: max(15px, 2vh); } .coach p b { font-size: max(14px, 1.85vh); } .coach .btn { font-size: max(14px, 1.8vh); } }

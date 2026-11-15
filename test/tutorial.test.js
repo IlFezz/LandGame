@@ -10,7 +10,7 @@ const PLAN = {
   3: { main: { type: 'play', card: 'G', target: 'U' } },
   4: { response: { type: 'allow' } },
   5: { main: { type: 'play', card: 'R', target: 'B' } },
-  6: { response: { type: 'counter', other: 'R' } },
+  6: { response: { type: 'counter', other: process.env.OTHER || 'W' } },
   7: { main: { type: 'play', card: 'W', target: 'R' }, choice: 'first' },
   8: { response: { type: 'allow' } },
   9: { main: { type: 'play', card: 'U' } },
@@ -28,6 +28,7 @@ const done = new Promise((resolve, reject) => {
     const g = last && last.game;
     if (!g) return;
     if (g.phase === 'over') { clearInterval(tick); return resolve(g); }
+    if (last.tutWait) { const k = 'go' + g.turn + g.step; if (tick.go !== k) { tick.go = k; hub.message(conn, { t: 'tut-go' }); } return; }
 
     const step = PLAN[g.turn] || {};
     let a = null;

@@ -1,7 +1,7 @@
 {
-  "name": "basic-land-game",
+  "name": "atlas",
   "version": "1.0.0",
-  "description": "Il Basic Land Game di Magic: The Gathering, online per due giocatori con stanze e codice.",
+  "description": "Atlas: il Basic Land Game di Magic: The Gathering, online per due giocatori con stanze e codice.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

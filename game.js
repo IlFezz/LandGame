@@ -1,4 +1,4 @@
-// Motore di gioco "The Basic Land Game" – logica pura, nessuna dipendenza.
+// Motore di gioco di Atlas (regole del "Basic Land Game") – logica pura, nessuna dipendenza.
 // Gira sia sul server (Node) sia nel browser (partite contro il computer, anche offline).
 'use strict';
 {

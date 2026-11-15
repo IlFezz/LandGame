@@ -1,7 +1,7 @@
 'use strict';
 
 // =====================================================================
-//  Basic Land Game – client
+//  Atlas – client
 // =====================================================================
 const TYPES = ['W', 'U', 'B', 'R', 'G'];
 const NAMES = { W: 'Pianura', U: 'Isola', B: 'Palude', R: 'Montagna', G: 'Foresta' };
@@ -276,6 +276,25 @@ const Altar = {
 };
 let autoAllowKey = null;
 
+// ---------- Schermo intero ----------
+// Da app installata lo schermo intero arriva dal manifest; nel browser si chiede con un pulsante (dove è permesso).
+const Full = {
+  installed: () => matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true,
+  can: () => !Full.installed() && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
+  on: () => !!(document.fullscreenElement || document.webkitFullscreenElement),
+  async toggle() {
+    try {
+      if (this.on()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const el = document.documentElement;
+        await (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+      }
+    } catch { toast('Il browser non permette lo schermo intero'); }
+  },
+};
+document.addEventListener('fullscreenchange', () => render());
+document.addEventListener('webkitfullscreenchange', () => render());
+
 // ---------- Connessione ----------
 let ws = null, wsReady = false, queue = [], retry = 0;
 function connect() {
@@ -420,15 +439,16 @@ function renderLobby() {
   const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
   app.innerHTML = `
   <div class="lobby">
+    ${Full.can() ? `<button class="fsbtn" id="fullscreen" aria-label="Schermo intero">${Full.on() ? '⤡' : '⤢'}</button>` : ''}
     <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
     ${pips()}
-    <h1>Basic Land Game</h1>
+    <h1>Atlas</h1>
     <p class="sub">Metti in gioco tutte e cinque le terre, oppure cinque uguali.</p>
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
-    <div class="field"><label>Il tuo nome</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="Come ti chiami?" autocomplete="nickname"></div>
+    <div class="who"><label for="name">Giochi come</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="il tuo nome" autocomplete="nickname" size="12"></div>
     <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
-      <button class="btn modebtn">Contro il computer<span class="chev">▾</span></button>
+      <button class="btn modebtn"><span class="mt"><b>Contro il computer</b><small>Anche senza connessione</small></span><span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
         <div class="field"><label>Difficoltà</label>
           <div class="seg" data-group="lvl"><button data-lvl="easy" class="${prefs.level === 'easy' ? 'on' : ''}">Facile</button><button data-lvl="normal" class="${prefs.level !== 'easy' ? 'on' : ''}">Normale</button></div></div>
@@ -437,7 +457,7 @@ function renderLobby() {
       </div></div>
     </div>
     <div class="mode ${ui.mode === 'friend' ? 'open' : ''}" data-mode="friend">
-      <button class="btn modebtn">Con un amico<span class="chev">▾</span></button>
+      <button class="btn modebtn"><span class="mt"><b>Con un amico</b><small>Crea una stanza o entra con un codice</small></span><span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
         <div class="field"><label>Tempo per turno</label>${ttSeg}</div>
         <button class="btn primary" id="create">Crea stanza</button>
@@ -449,6 +469,7 @@ function renderLobby() {
   </div>${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`;
   bindOverlays();
   $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
+  if ($('#fullscreen')) $('#fullscreen').onclick = () => Full.toggle();
   if (reconnecting) { $('#forget').onclick = () => { prefs.session = null; render(); }; return; }
   // le scelte aggiornano la pagina senza ridisegnarla, così le animazioni restano fluide
   $$('.mode').forEach((m) => {
@@ -493,8 +514,8 @@ function renderWaiting() {
     <button class="linkbtn" id="leave">Esci dalla stanza</button>
   </div>`;
   $('#share').onclick = async () => {
-    const text = `Giochiamo a Basic Land Game! Codice stanza: ${S.code}`;
-    if (navigator.share) { try { await navigator.share({ title: 'Basic Land Game', text, url: link }); } catch {} }
+    const text = `Giochiamo ad Atlas! Codice stanza: ${S.code}`;
+    if (navigator.share) { try { await navigator.share({ title: 'Atlas', text, url: link }); } catch {} }
     else { try { await navigator.clipboard.writeText(link); toast('Link copiato!', true); } catch { toast(link, true); } }
   };
   $('#leave').onclick = leave;
@@ -647,13 +668,15 @@ function actionsHtml() {
       return hint(c === 'R' ? 'Tocca la terra avversaria da distruggere.' : c === 'G' ? 'Tocca nel tuo cimitero la terra da recuperare.' : 'Tocca la tua terra da riattivare.');
     }
     const how = prefs.controls === 'drag' ? 'Trascina una carta al centro per giocarla.' : 'Tocca una carta e poi il centro per giocarla.';
+    if (S.tutorial) return ''; // nel tutorial si gioca sempre la carta indicata
     return `${hint(how)}<button class="btn passbtn" data-act="pass">Passa il turno</button>`;
   }
   if (task === 'response') {
     const p = g.pending;
     const plan = counterPlan();
     const allowLabel = p.owner === g.you ? 'Accetta' : 'Lascia risolvere';
-    if (!plan) return hint(consequenceText(p)); // nessun contrasto possibile: si risolve da solo
+    // nessun contrasto possibile: si risolve da solo (nel tutorial invece si aspetta il pulsante)
+    if (!plan) return S.tutorial ? `<div class="acts"><button class="btn primary" data-act="allow">${allowLabel}</button></div>` : hint(consequenceText(p));
     if (!ui.counter) {
       return `${hint(consequenceText(p))}
         <div class="acts"><button class="btn counterbtn" data-act="counter-start">${SYM.U} Contrasta</button>
@@ -772,7 +795,7 @@ function renderGame() {
 
 // Se non posso contrastare, la terra risolve da sola dopo una pausa casuale (così non si capisce cosa ho in mano)
 function maybeAutoAllow(task) {
-  if (task !== 'response' || counterPlan()) return;
+  if (task !== 'response' || counterPlan() || S.tutorial) return;
   const key = `${G.turn}|${G.pending.counters}|${G.pending.land}`;
   if (autoAllowKey === key) return;
   autoAllowKey = key;
@@ -856,6 +879,7 @@ function menuHtml() {
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
     <button class="mrow" data-act="toggle-sound">Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">Vibrazione ${tog(prefs.vibe)}</button>
+    ${Full.can() ? `<button class="mrow" data-act="toggle-full">Schermo intero ${tog(Full.on())}</button>` : ''}
     <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button><button data-act="open-stats">Statistiche</button></div>
     <button class="mrow danger" data-act="leave-ask">Esci dalla partita</button>
     <button class="btn" data-act="menu-close">Chiudi</button>`}
@@ -932,6 +956,7 @@ app.addEventListener('click', (e) => {
     case 'card': {
       if (prefs.controls === 'drag') { el.classList.remove('wiggle'); void el.offsetWidth; el.classList.add('wiggle'); return; }
       if (ui.staged) return;
+      if (myTask() === 'main' && !Tut.allows({ type: 'play', card: v, staging: true })) return;
       if (ui.sel && ui.sel.idx === idx) return stageCard(v, idx, el.getBoundingClientRect());
       ui.sel = { card: v, idx }; Sound.play('click'); return render();
     }
@@ -981,6 +1006,8 @@ app.addEventListener('click', (e) => {
     case 'leave-now': return leave();
     case 'open-stats': ui.menu = false; ui.stats = true; return render();
     case 'tut-next': Tut.next(); return render();
+    case 'toggle-full': return Full.toggle();
+    case 'tut-go': Sound.play('click'); return send({ t: 'tut-go' });
     case 'tut-skip': return leave();
     case 'rematch': return send({ t: 'rematch' });
   }
@@ -998,6 +1025,8 @@ app.addEventListener('pointerdown', (e) => {
   if (prefs.controls !== 'drag' || myTask() !== 'main' || drag || ui.staged) return;
   const el = e.target.closest('.hand .card.playable');
   if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  // tutorial: la carta sbagliata non si stacca nemmeno dalla mano
+  if (!Tut.allows({ type: 'play', card: el.dataset.card, staging: true })) { el.classList.remove('wiggle'); void el.offsetWidth; el.classList.add('wiggle'); return; }
   drag = { idx: Number(el.dataset.idx), card: el.dataset.card, el, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, active: false, pid: e.pointerId };
   el.classList.add('pressing');
   drag.timer = setTimeout(startDrag, HOLD_MS);
