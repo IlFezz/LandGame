@@ -284,17 +284,23 @@ function connect() {
   ws.onopen = () => {
     wsReady = true; retry = 0;
     const sess = prefs.session;
-    if (sess && sess.code && !queue.some((m) => m.t === 'create' || m.t === 'join' || m.t === 'bot')) {
+    if (sess && sess.code && !sess.local && !queue.some((m) => m.t === 'create' || m.t === 'join')) {
       ws.send(JSON.stringify({ t: 'join', code: sess.code, token: sess.token, name: prefs.name }));
     }
     queue.forEach((m) => ws.send(JSON.stringify(m)));
     queue = [];
     render();
   };
-  ws.onmessage = (ev) => {
-    const m = JSON.parse(ev.data);
+  ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
+  ws.onclose = () => {
+    wsReady = false;
+    render();
+    setTimeout(connect, Math.min(1000 * 2 ** retry++, 8000));
+  };
+}
+function onMessage(m) {
     if (m.t === 'joined') {
-      prefs.session = { code: m.code, token: m.token };
+      prefs.session = { code: m.code, token: m.token, local: !!m.local };
       history.replaceState(null, '', location.pathname);
       send({ t: 'prefs', speed: SPEEDS[prefs.speed] });
     } else if (m.t === 'state') {
@@ -303,15 +309,38 @@ function connect() {
       toast(m.msg);
       if (/non trovata/.test(m.msg) || (/piena/.test(m.msg) && !S)) { prefs.session = null; S = null; G = null; render(); }
     }
-  };
-  ws.onclose = () => {
-    wsReady = false;
-    render();
-    setTimeout(connect, Math.min(1000 * 2 ** retry++, 8000));
-  };
 }
-function send(m) { if (wsReady) ws.send(JSON.stringify(m)); else { queue.push(m); connect(); } }
+
+// Le partite contro il computer e il tutorial girano qui nel browser, con lo stesso codice del server:
+// si gioca anche offline e senza aspettare che il server si svegli.
+const Local = {
+  hub: null, active: false,
+  conn: { send: (m) => { const c = JSON.parse(JSON.stringify(m)); setTimeout(() => onMessage(c), 0); }, close() {} },
+  get() {
+    if (!this.hub) this.hub = new BLGHub.Hub({ local: true, onChange: (room) => ls.set('localGame', this.hub.snapshot(room)) });
+    return this.hub;
+  },
+  send(m) {
+    this.get().message(this.conn, m);
+    if (m.t === 'leave') { this.active = false; ls.set('localGame', null); }
+  },
+  // dopo una chiusura dell'app la partita riprende da dove era
+  resume() {
+    const sess = prefs.session;
+    if (!sess || !sess.local) return;
+    const saved = ls.get('localGame', null);
+    if (!saved || !saved.room || saved.room.code !== sess.code || !saved.game) { prefs.session = null; return; }
+    try { this.active = true; this.get().restore(saved, this.conn); } catch (e) { console.error(e); this.active = false; prefs.session = null; ls.set('localGame', null); }
+  },
+};
+const isLocal = () => Local.active;
+function send(m) {
+  if (m.t === 'bot' || m.t === 'tutorial') Local.active = true;
+  if (Local.active) return Local.send(m);
+  if (wsReady) ws.send(JSON.stringify(m)); else { queue.push(m); connect(); }
+}
 function act(a) {
+  if (!Tut.allows(a)) return;
   ui.sel = null; ui.staged = null; ui.counter = false; ui.pick = null; ui.gyOpen = null;
   clearArrows('aim');
   Sound.play('click');
@@ -330,6 +359,7 @@ async function pump() {
     const { game, steps, ...meta } = m;
     S = meta;
     if (steps && steps.length && drag) cancelDrag(true);
+    if (steps) for (const st of steps) Stats.track(st.ev, st.game);
     const animate = steps && steps.length && !document.hidden && inbox.length < 3 && !reduceMotion;
     if (animate) {
       ui.animating = true;
@@ -415,8 +445,8 @@ function renderLobby() {
         <div class="row"><input id="code" class="code-input" maxlength="4" value="${esc(pre)}" placeholder="CODICE" autocomplete="off" autocapitalize="characters"><button class="btn" id="join">Entra</button></div>
       </div></div>
     </div>
-    <button class="linkbtn" id="rules">Regole del gioco</button>`}
-  </div>${ui.rules ? rulesHtml() : ''}`;
+    <div class="links"><button class="linkbtn" id="tutorial">Impara a giocare</button><button class="linkbtn" id="rules">Regole</button><button class="linkbtn" id="stats">Statistiche</button></div>`}
+  </div>${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`;
   bindOverlays();
   $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
   if (reconnecting) { $('#forget').onclick = () => { prefs.session = null; render(); }; return; }
@@ -434,6 +464,8 @@ function renderLobby() {
   $$('[data-lvl]').forEach((b) => { b.onclick = () => { prefs.level = b.dataset.lvl; $$('[data-lvl]').forEach((x) => x.classList.toggle('on', x === b)); }; });
   const getName = () => { const n = $('#name').value.trim(); if (!n) { toast('Scrivi il tuo nome'); $('#name').focus(); return null; } prefs.name = n; return n; };
   const speed = SPEEDS[prefs.speed];
+  $('#tutorial').onclick = () => { const n = $('#name').value.trim() || 'Tu'; Tut.reset(); send({ t: 'tutorial', name: n, speed }); };
+  $('#stats').onclick = () => { prefs.name = $('#name').value.trim() || prefs.name; ui.stats = true; render(); };
   $('#bot').onclick = () => { const n = getName(); if (n) send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed, level: prefs.level }); };
   $('#create').onclick = () => { const n = getName(); if (n) send({ t: 'create', name: n, turnTime: prefs.turnTime, speed }); };
   $('#join').onclick = () => {
@@ -682,7 +714,7 @@ function renderGame() {
 
   const parts = {
     top: `<div class="topbar">
-      <span>${S.vsBot ? 'Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
+      <span>${S.tutorial ? 'Tutorial' : S.vsBot ? 'Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady || S.local ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
       <button class="menubtn" data-act="menu" aria-label="Menu">☰</button>
     </div>`,
     timer: timerHtml(),
@@ -711,7 +743,8 @@ function renderGame() {
     hand: `<div class="hand ${task === 'response' && ui.counter ? 'counter-mode' : ''}" id="hand-me">${handHtml(task)}</div>`,
     over: `${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
       ${g.phase === 'over' && !ui.animating ? overHtml() : ''}
-      ${ui.menu ? menuHtml() : ''}${ui.log ? logHtml() : ''}${ui.rules ? rulesHtml() : ''}`,
+      ${S.tutorial && g.phase === 'playing' ? Tut.html() : ''}
+      ${ui.menu ? menuHtml() : ''}${ui.log ? logHtml() : ''}${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`,
   };
   // Si ridisegnano solo le parti dello schermo che sono cambiate
   if (!app.dataset.game) {
@@ -733,6 +766,7 @@ function renderGame() {
   bindOverlays();
   tickTimer();
   drawArrows();
+  Tut.place();
   maybeAutoAllow(task);
 }
 
@@ -789,6 +823,12 @@ function overHtml() {
   const won = g.winner === g.you;
   const title = g.winner == null ? 'Pareggio' : won ? 'Hai vinto!' : `Ha vinto ${esc(g.opp.name)}`;
   const iAsked = S.rematch[g.you], oppAsked = S.rematch[g.opp.seat];
+  if (S.tutorial) return `<div class="overlay"><div class="box endbox won">
+    <h2>Tutorial completato</h2>
+    <p>Hai visto all'opera tutte e cinque le terre e anche il contrasto. Ora prova una partita vera.</p>
+    <button class="btn primary" data-act="rematch">Gioca contro il computer</button>
+    <button class="btn" data-act="leave-now">Torna alla home</button>
+  </div></div>`;
   return `<div class="overlay"><div class="box endbox ${g.winner == null ? '' : won ? 'won' : 'lost'}">
     <h2>${title}</h2>
     <p class="muted">${esc(g.endText || '')}</p>
@@ -816,7 +856,7 @@ function menuHtml() {
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
     <button class="mrow" data-act="toggle-sound">Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">Vibrazione ${tog(prefs.vibe)}</button>
-    <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button></div>
+    <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button><button data-act="open-stats">Statistiche</button></div>
     <button class="mrow danger" data-act="leave-ask">Esci dalla partita</button>
     <button class="btn" data-act="menu-close">Chiudi</button>`}
   </div>`;
@@ -851,6 +891,7 @@ function rulesHtml() {
 }
 function bindOverlays() {
   const b = $('#rules'); if (b) b.onclick = () => { ui.rules = true; render(); };
+  Stats.bind();
   const c = $('#rules-close'); if (c) c.onclick = () => { ui.rules = false; render(); };
 }
 
@@ -858,6 +899,7 @@ function bindOverlays() {
 // Porta la carta al centro: se serve un bersaglio resta lì in attesa, altrimenti viene giocata subito.
 function stageCard(card, idx, rect) {
   if (myTask() !== 'main') return;
+  if (!Tut.allows({ type: 'play', card, staging: true })) return;
   if (needsTarget(card)) {
     ui.staged = { card, idx }; ui.sel = null;
     if (card === 'G') ui.gyOpen = 'me';
@@ -937,6 +979,9 @@ app.addEventListener('click', (e) => {
     case 'leave-ask': ui.confirmLeave = true; return render();
     case 'leave-no': ui.confirmLeave = false; return render();
     case 'leave-now': return leave();
+    case 'open-stats': ui.menu = false; ui.stats = true; return render();
+    case 'tut-next': Tut.next(); return render();
+    case 'tut-skip': return leave();
     case 'rematch': return send({ t: 'rematch' });
   }
 });
@@ -1474,5 +1519,6 @@ document.addEventListener('keydown', (e) => {
 });
 FX.init();
 applyPrefs();
+Local.resume();
 render();
 connect();

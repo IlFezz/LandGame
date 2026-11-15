@@ -1,5 +1,7 @@
 // Motore di gioco "The Basic Land Game" – logica pura, nessuna dipendenza.
+// Gira sia sul server (Node) sia nel browser (partite contro il computer, anche offline).
 'use strict';
+{
 
 const TYPES = ['W', 'U', 'B', 'R', 'G'];
 const NAMES = { W: 'Pianura', U: 'Isola', B: 'Palude', R: 'Montagna', G: 'Foresta' };
@@ -29,9 +31,11 @@ class Game {
     this.rng = opts.rng || Math.random;
     this.copies = opts.copies || 10;
     this.handSize = opts.handSize || 5;
-    this.players = names.map((name) => {
+    // opts.decks (facoltativo): mazzi già in ordine, l'ultima carta è la prima pescata (serve al tutorial)
+    this.players = names.map((name, i) => {
+      if (opts.decks && opts.decks[i]) return { name, deck: opts.decks[i].slice(), hand: [], bf: emptyCount(), gy: emptyCount() };
       const deck = [];
-      for (const t of TYPES) for (let i = 0; i < this.copies; i++) deck.push(t);
+      for (const t of TYPES) for (let k = 0; k < this.copies; k++) deck.push(t);
       return { name, deck: shuffle(deck, this.rng), hand: [], bf: emptyCount(), gy: emptyCount() };
     });
     this.phase = 'playing';
@@ -422,4 +426,6 @@ class Game {
   }
 }
 
-module.exports = { Game, TYPES, NAMES };
+if (typeof module !== 'undefined' && module.exports) module.exports = { Game, TYPES, NAMES };
+else globalThis.BLGGame = { Game, TYPES, NAMES };
+}

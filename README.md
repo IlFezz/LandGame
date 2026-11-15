@@ -44,7 +44,10 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 ## Funzioni
 
-- **Partita contro il computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
+- **Partita contro il computer nel browser**: gira tutta sul telefono con lo stesso codice del server, quindi funziona anche offline e senza aspettare che Render si svegli. Se chiudi l'app a metà, la partita riprende da dove era.
+- **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata contro il Maestro, con mazzi preparati, che mostra tutte e cinque le terre e il contrasto.
+- **Statistiche** (home e menu): partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
+- **Computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
 - Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.
 - Musica ambient di sottofondo generata al momento, disattivabile dalla home e dal menu.
 - Su PC e tablet il gioco usa tutto lo schermo: carte e campo più grandi, scorciatoie da tastiera (P passa, Esc annulla, M menu).
@@ -67,11 +70,12 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).
 - `bot.js` – giocatore computer.
-- `server.js` – server HTTP + WebSocket, gestione stanze e riconnessione.
-- `public/` – client (HTML/CSS/JS), disegni (`art.js`), effetti (`fx.js`), caratteri (`fonts/`), manifest e service worker.
+- `hub.js` – stanze, timer e mosse del computer; lo usano sia il server sia il browser (partite contro il computer e tutorial, con i mazzi preparati del tutorial).
+- `server.js` – server HTTP + WebSocket; serve anche `game.js`, `bot.js` e `hub.js` al browser.
+- `public/` – client (HTML/CSS/JS), tutorial (`tutorial.js`), statistiche (`stats.js`), disegni (`art.js`), effetti (`fx.js`), caratteri (`fonts/`), manifest e service worker.
 - `tools/make_fonts.py`, `tools/make_icons.py` – riducono i caratteri e generano le icone.
 - `preview-stili/` – le anteprime grafiche usate per scegliere lo stile (non fanno parte del gioco).
-- `test/` – test delle regole e test end-to-end con due client.
+- `test/` – test delle regole, test end-to-end con due client, timer, computer e tutorial.
 
 ## Regole implementate
 

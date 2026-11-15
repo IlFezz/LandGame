@@ -2,7 +2,8 @@
 // Usa solo informazioni legittime: la propria mano, il campo e i cimiteri (pubblici),
 // il numero di carte avversarie e la mano avversaria solo quando una Palude la rivela.
 'use strict';
-const { TYPES } = require('./game');
+{
+const { TYPES } = typeof module !== 'undefined' && module.exports ? require('./game') : globalThis.BLGGame;
 
 // Valore di una posizione sul campo: premia l'avvicinarsi a dominio o cinque uguali.
 const STEP = [0, 3, 9, 20, 45, 1000];
@@ -162,4 +163,6 @@ class Bot {
   }
 }
 
-module.exports = { Bot, score, need, wins };
+if (typeof module !== 'undefined' && module.exports) module.exports = { Bot, score, need, wins };
+else globalThis.BLGBot = { Bot, score, need, wins };
+}

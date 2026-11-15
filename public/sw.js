@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e carica l'interfaccia anche con rete lenta.
-const CACHE = 'blg-v10';
-const ASSETS = ['./', 'index.html', 'style.css', 'art.js', 'fx.js', 'app.js', 'fonts/adventor.woff', 'fonts/adventor-bold.woff', 'fonts/lora-italic.woff', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'blg-v11';
+const ASSETS = ['./', 'index.html', 'style.css', 'art.js', 'fx.js', 'game.js', 'bot.js', 'hub.js', 'stats.js', 'tutorial.js', 'app.js', 'fonts/adventor.woff', 'fonts/adventor-bold.woff', 'fonts/lora-italic.woff', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
