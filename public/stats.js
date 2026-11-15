@@ -70,49 +70,73 @@ const Stats = {
     return d.n;
   },
 
-  // ---------- finestra ----------
-  html() {
-    const name = prefs.name || 'Giocatore', s = this.load(name);
-    const profiles = Object.values(this.all()).map((p) => p.n).filter((n) => this.keyOf(n) !== this.keyOf(name));
+  // ---------- la pagina Profilo (anche dentro la finestra del menu in partita) ----------
+  // Ha sempre la stessa struttura, piena o vuota, così la pagina non cambia altezza.
+  panel(name) {
+    const s = this.load(name || prefs.name || 'Giocatore');
     const pct = s.played ? Math.round((s.won / s.played) * 100) : 0;
     const maxLand = Math.max(1, ...TYPES.map((t) => s.lands[t]));
-    const mode = (k, label) => (s.modes[k].p ? `<li><span>${label}</span><b>${s.modes[k].w} su ${s.modes[k].p}</b></li>` : '');
-    const body = s.played ? `
-      <div class="kpis"><div><b>${s.played}</b><span>partite</span></div><div><b>${pct}%</b><span>vinte</span></div><div><b>${s.best}</b><span>serie migliore</span></div></div>
-      <h4>Vittorie per modalità</h4>
-      <ul class="srows">${mode('easy', 'Computer facile')}${mode('normal', 'Computer normale')}${mode('friend', 'Contro amici')}</ul>
-      <h4>Come vinci</h4>
-      <ul class="srows"><li><span>Cinque terre diverse</span><b>${s.winBy.domain}</b></li><li><span>Cinque terre uguali</span><b>${s.winBy.five}</b></li><li><span>A carte finite</span><b>${s.winBy.cards}</b></li></ul>
+    const C = 2 * Math.PI * 34, dash = (C * pct) / 100;
+    const mode = (k, label) => `<li><span>${label}</span><b>${s.modes[k].w}<small> / ${s.modes[k].p}</small></b></li>`;
+    const initial = esc((s.name || '?').trim().charAt(0).toUpperCase() || '?');
+    return `<div class="prof">
+      <div class="prof-head"><div class="avatar">${initial}</div><div class="who2"><h2>${esc(s.name)}</h2>
+        <small>${s.played ? `${s.played} ${s.played === 1 ? 'partita giocata' : 'partite giocate'}${s.tutorial ? ' · tutorial completato' : ''}` : 'Ancora nessuna partita: le statistiche si riempiono giocando.'}</small></div></div>
+      <div class="prof-top">
+        <svg class="ring" viewBox="0 0 80 80" aria-label="${pct}% di partite vinte"><circle cx="40" cy="40" r="34" class="ring-bg"/>
+          ${pct ? `<circle cx="40" cy="40" r="34" class="ring-fg" stroke-dasharray="${dash.toFixed(1)} ${C.toFixed(1)}"/>` : ''}
+          <text x="40" y="40" class="ring-n">${pct}%</text><text x="40" y="54" class="ring-l">vinte</text></svg>
+        <div class="kpis3"><div><b>${s.won}</b><span>vittorie</span></div><div><b>${s.best}</b><span>serie migliore</span></div><div><b>${s.fastest || '–'}</b><span>turni, vittoria più rapida</span></div></div>
+      </div>
       <h4>Terre giocate</h4>
       <div class="lbars">${TYPES.map((t) => `<div class="lbar"><i class="ico ico-${t}"></i><span style="--k:${(s.lands[t] / maxLand).toFixed(3)}"></span><b>${s.lands[t]}</b></div>`).join('')}</div>
-      <ul class="srows"><li><span>Contrasti fatti</span><b>${s.counters}</b></li><li><span>Terre avversarie distrutte</span><b>${s.destroyed}</b></li>
-        ${s.fastest ? `<li><span>Vittoria più rapida</span><b>${s.fastest} turni</b></li>` : ''}${s.streak > 1 ? `<li><span>Serie attuale</span><b>${s.streak} vittorie</b></li>` : ''}</ul>`
-      : `<p class="muted">Ancora nessuna partita con il nome <b>${esc(s.name)}</b>. Gioca contro il computer o con un amico: i risultati compariranno qui.</p>`;
-    return `<div class="overlay" data-act="close-stats"><div class="box rules stats" onclick="event.stopPropagation()">
-      <h2>Statistiche</h2>
-      <p class="muted">Profilo <b>${esc(s.name)}</b>, salvato su questo dispositivo. Le statistiche seguono il nome con cui giochi.</p>
-      ${profiles.length ? `<div class="chips">${profiles.map((n) => `<button class="chip" data-profile="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
-      ${body}
+      <div class="prof-cols">
+        <div><h4>Vittorie</h4><ul class="srows">${mode('easy', 'Facile')}${mode('normal', 'Normale')}${mode('friend', 'Con amici')}</ul></div>
+        <div><h4>Come vinci</h4><ul class="srows"><li><span>Cinque diverse</span><b>${s.winBy.domain}</b></li><li><span>Cinque uguali</span><b>${s.winBy.five}</b></li><li><span>Carte finite</span><b>${s.winBy.cards}</b></li></ul></div>
+      </div>
+      <div class="prof-more"><span>Contrasti fatti <b>${s.counters}</b></span><span>Terre distrutte <b>${s.destroyed}</b></span></div>
+      <button class="btn small prof-transfer" data-stats="transfer">Profili e trasferimento</button>
+    </div>`;
+  },
+  // finestra del menu in partita
+  html() {
+    return `<div class="overlay" data-act="close-stats"><div class="box stats" onclick="event.stopPropagation()">
+      ${this.panel(prefs.name)}<button class="btn primary" id="stats-close">Chiudi</button></div></div>`;
+  },
+  // profili salvati e codice di trasferimento: una finestra piccola, per non allungare la pagina
+  transferHtml() {
+    const name = prefs.name || 'Giocatore';
+    const profiles = Object.values(this.all()).map((p) => p.n).filter((n) => this.keyOf(n) !== this.keyOf(name));
+    return `<div class="overlay" id="transfer-ov"><div class="box rules transfer" onclick="event.stopPropagation()">
+      <h2>Profili e trasferimento</h2>
+      <p class="muted">Le statistiche seguono il nome con cui giochi e restano su questo dispositivo.</p>
+      ${profiles.length ? `<h4>Altri profili su questo dispositivo</h4><div class="chips">${profiles.map((n) => `<button class="chip" data-profile="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
       <h4>Su un altro dispositivo</h4>
-      <p class="muted">Copia il codice qui e incollalo nelle statistiche dell'altro telefono o computer.</p>
+      <p class="muted">Copia il codice qui e incollalo nel Profilo dell'altro telefono o computer.</p>
       <div class="row"><button class="btn small" id="stats-copy">Copia codice</button><input id="stats-code" class="code-input small" placeholder="Incolla un codice"><button class="btn small" id="stats-import">Importa</button></div>
-      <button class="btn primary" id="stats-close">Chiudi</button>
+      <button class="btn primary" id="transfer-close">Chiudi</button>
     </div></div>`;
   },
   bind() {
-    const close = () => { ui.stats = false; render(); };
-    const box = $('.box.stats');
-    if (!box) return;
-    $('#stats-close').onclick = close;
-    box.parentElement.onclick = (e) => { if (e.target === box.parentElement) close(); };
-    $$('[data-profile]').forEach((b) => { b.onclick = () => { prefs.name = b.dataset.profile; render(); }; });
+    $$('[data-stats="transfer"]').forEach((b) => { b.onclick = () => { ui.transfer = true; Sound.play('click'); render(); }; });
+    const close = $('#stats-close');
+    if (close) {
+      close.onclick = () => { ui.stats = false; render(); };
+      close.closest('.overlay').onclick = (e) => { if (e.target === e.currentTarget) { ui.stats = false; render(); } };
+    }
+    const ov = $('#transfer-ov');
+    if (!ov) return;
+    const shut = () => { ui.transfer = false; render(); };
+    ov.onclick = (e) => { if (e.target === ov) shut(); };
+    $('#transfer-close').onclick = shut;
+    $$('[data-profile]').forEach((b) => { b.onclick = () => { prefs.name = b.dataset.profile; ui.transfer = false; toast(`Profilo: ${b.dataset.profile}`, true); render(); }; });
     $('#stats-copy').onclick = async () => {
       const code = this.exportCode(prefs.name);
       try { await navigator.clipboard.writeText(code); toast('Codice copiato', true); }
       catch { $('#stats-code').value = code; $('#stats-code').select(); toast('Copia il codice dal campo', true); }
     };
     $('#stats-import').onclick = () => {
-      try { const n = this.importCode($('#stats-code').value); prefs.name = n; toast(`Statistiche di ${n} importate`, true); render(); }
+      try { const n = this.importCode($('#stats-code').value); prefs.name = n; ui.transfer = false; toast(`Statistiche di ${n} importate`, true); render(); }
       catch { toast('Codice non valido'); }
     };
   },

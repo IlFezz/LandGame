@@ -117,14 +117,31 @@ const ATL = (() => {
     for (const [x, y, R, sd, n] of [[60, 120, 150, 71, 7], [340, 520, 190, 72, 8], [80, 700, 120, 73, 5], [380, 90, 110, 74, 5]]) for (let i = 0; i < n; i++) s += `<path d="${blob(x, y, R * (1 - i / (n + 0.6)), sd, 0.18)}"/>`;
     return s + '</g>';
   }
-  const back = () => { let s = `<rect width="100" height="140" fill="#0d2a33"/><g fill="none" stroke="#d6e8e0" stroke-width=".5" opacity=".28">`; for (let i = 0; i < 7; i++) s += `<path d="${blob(20, 30, 70 * (1 - i / 7.6), 81, 0.2)}"/><path d="${blob(84, 118, 60 * (1 - i / 7.6), 82, 0.2)}"/>`; return s + `</g><g transform="translate(22 42) scale(.28)">${rose('#f4eddd')}</g>`; };
+  // ---------- dorsi delle carte (si scelgono nella Collezione) ----------
+  const BACKS = [
+    { id: 'bussola', name: 'Bussola', svg() { let s = `<rect width="100" height="140" fill="#0d2a33"/><g fill="none" stroke="#d6e8e0" stroke-width=".5" opacity=".28">`; for (let i = 0; i < 7; i++) s += `<path d="${blob(20, 30, 70 * (1 - i / 7.6), 81, 0.2)}"/><path d="${blob(84, 118, 60 * (1 - i / 7.6), 82, 0.2)}"/>`; return s + `</g><g transform="translate(22 42) scale(.28)">${rose('#f4eddd')}</g>`; } },
+    // un globo a meridiani e paralleli, con la stella polare al centro
+    { id: 'meridiani', name: 'Meridiani', svg() {
+      let s = `<rect width="100" height="140" fill="#1b2340"/><g fill="none" stroke="#e9dcb8" stroke-width=".55" opacity=".5"><circle cx="50" cy="70" r="38"/>`;
+      for (let i = 1; i < 6; i++) s += `<ellipse cx="50" cy="70" rx="${38 * Math.cos((i * Math.PI) / 12)}" ry="38"/>`;
+      for (let i = -3; i <= 3; i++) { const y = 70 + i * 11, w = Math.sqrt(Math.max(0, 38 * 38 - (i * 11) ** 2)); s += `<path d="M${50 - w} ${y}h${2 * w}"/>`; }
+      s += `</g><g fill="none" stroke="#e9dcb8" stroke-width=".35" opacity=".22">`;
+      for (let x = 6; x < 100; x += 8) s += `<path d="M${x} 4v132"/>`;
+      return s + `</g><path d="M50 58l3 9 9 3-9 3-3 9-3-9-9-3 9-3z" fill="#f6c453"/><circle cx="50" cy="70" r="1.6" fill="#1b2340"/>`; } },
+    // linee di livello parallele, come la sponda di un fiume vista dall'alto
+    { id: 'correnti', name: 'Correnti', svg() {
+      let s = `<rect width="100" height="140" fill="#123a35"/><g fill="none" stroke="#bfe3d2" stroke-width=".6" stroke-linecap="round">`;
+      for (let i = 0; i < 17; i++) { const y = 6 + i * 8; let d = `M-4 ${y}`; for (let x = -4; x <= 104; x += 6) d += `L${x} ${(y + Math.sin(x / 13 + i * 0.55) * 3.2).toFixed(2)}`; s += `<path d="${d}" opacity="${(0.18 + 0.3 * Math.abs(Math.sin(i * 0.7))).toFixed(2)}"/>`; }
+      return s + `</g><circle cx="50" cy="70" r="15" fill="#123a35" stroke="#f4eddd" stroke-width=".8"/><g transform="translate(36.5 56.5) scale(.135)">${rose('#f4eddd')}</g>`; } },
+  ];
 
   const root = document.documentElement.style, ICO = {};
   for (const l of L) root.setProperty('--art-' + l, uri(MAPS[l](), '0 0 100 92', 'preserveAspectRatio="xMidYMid slice"'));
   for (const l of [...L, 'T']) { ICO[l] = uri(icon(l), '0 0 24 24'); root.setProperty('--ico-' + l, ICO[l]); }
   root.setProperty('--rose-n', uri(rose('#e3efe8'), '0 0 200 200')); root.setProperty('--rose-d', uri(rose('#17262d'), '0 0 200 200'));
   root.setProperty('--topo-n', uri(topo('#d6e8e0', 0.07), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"')); root.setProperty('--topo-d', uri(topo('#17262d', 0.07), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"'));
-  root.setProperty('--bk', uri(back(), '0 0 100 140', 'preserveAspectRatio="xMidYMid slice"'));
+  for (const b of BACKS) root.setProperty('--bk-' + b.id, uri(b.svg(), '0 0 100 140', 'preserveAspectRatio="xMidYMid slice"'));
+  root.setProperty('--bk', 'var(--bk-bussola)');
 
-  return { L, COL, ICO, PAPER, INK, blob, uri, rng };
+  return { L, COL, ICO, PAPER, INK, blob, uri, rng, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
 })();

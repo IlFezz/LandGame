@@ -94,8 +94,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .musicbtn.off { opacity: .45; text-decoration: line-through; }
 /* schermo intero: la prima cosa che si vede, in giallo segnale */
 .fsbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 46px; border-radius: 12px; background: var(--segnale); color: var(--ink);
-  font: 700 16px/1 var(--sans); box-shadow: 0 3px 0 var(--segnale2); flex: none; width: calc(100% - 58px); }
-.lobby .musicbtn { top: 22px; right: 22px; width: 46px; height: 46px; }
+  font: 700 16px/1 var(--sans); box-shadow: 0 3px 0 var(--segnale2); flex: none; }
 .lobby.measuring .modebody, .lobby.measuring .chev { transition: none !important; }
 .lobby .links { margin-top: auto; }
 /* il nome è un dettaglio: una riga sola, come una firma; le modalità sono le scelte principali */
@@ -121,28 +120,136 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .spinner { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); animation: blink 1s ease-in-out infinite; margin-right: 4px; }
 @keyframes blink { 50% { opacity: .15; } }
 
-/* le due colonne della home servono solo sul telefono in orizzontale; altrove non esistono */
+/* ---------- Home a schede: Gioca, Profilo, Collezione, Impara ---------- */
+.lobby.tabbed { padding-bottom: 0; overflow: hidden; }
+/* le schede stanno nella stessa cella: il foglio è alto quanto la più alta, quindi non cambia mai misura */
+.panes { display: grid; flex: 1 1 auto; min-height: 0; }
+.pane { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 13px; min-width: 0;
+  opacity: 0; visibility: hidden; transform: translateX(var(--dx, 22px)); pointer-events: none;
+  transition: opacity .2s ease, transform .3s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .3s; }
+.pane.on { opacity: 1; visibility: visible; transform: none; pointer-events: auto;
+  transition: opacity .26s ease .06s, transform .34s cubic-bezier(.2, .8, .2, 1), visibility 0s; }
 .lcol { display: contents; }
+.toprow { display: flex; align-items: center; gap: 12px; }
+.toprow .fsbtn { flex: 1; width: auto; }
+.lobby .toprow .musicbtn { position: static; width: 46px; height: 46px; flex: none; }
+
+.tabs { display: flex; flex: none; margin: 14px -22px 0; border-top: 1.5px solid #17262d1f; background: #e9dfc8a6; }
+.tab { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px 11px; color: #17262d8c; font: 700 12px/1 var(--sans); transition: color .2s; }
+.tab svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s cubic-bezier(.2, .8, .2, 1); }
+.tab.on { color: var(--ink); }
+.tab.on svg { transform: translateY(-1px) scale(1.08); }
+.tab::before { content: ""; position: absolute; top: -1.5px; left: 24%; right: 24%; height: 3px; border-radius: 0 0 3px 3px; background: var(--ink); transform: scaleX(0); transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.tab.on::before { transform: scaleX(1); }
+
+.pane-title { margin: 2px 0 0; font: 700 28px/1.1 var(--sans); letter-spacing: -.01em; }
+.pane-sub { margin: -6px 0 0; font: italic 500 15px/1.35 var(--serif); opacity: .75; }
+.pane h4 { margin: 4px 0 -4px; font: 700 13px/1.2 var(--sans); letter-spacing: .02em; opacity: .65; }
+.pane-note { margin: auto 0 4px; font: italic 500 13.5px var(--serif); opacity: .6; text-align: center; }
+
+/* Collezione */
+.tiles { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 8px 8px 9px; border-radius: 12px; border: 2px solid transparent; color: var(--ink); font: 700 13.5px var(--sans);
+  background: #fffaf0; box-shadow: inset 0 0 0 1.5px #17262d1f; transition: transform .15s; }
+.tile:active { transform: scale(.97); }
+.tile.on { border-color: var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.tt-prev { width: 100%; aspect-ratio: 1.45; border-radius: 8px; position: relative; overflow: hidden; }
+.tt-notte .tt-prev { background: var(--topo-n) center / cover, radial-gradient(120% 90% at 50% 38%, #12363f, #0a232b); }
+.tt-giorno .tt-prev { background: var(--topo-d) center / cover, radial-gradient(120% 90% at 50% 38%, #e3ebe7, #cbd8d4); box-shadow: inset 0 0 0 1px #17262d26; }
+.tt-prev i { position: absolute; inset: 10%; background: center / contain no-repeat; opacity: .85; }
+.tt-notte .tt-prev i { background-image: var(--rose-n); } .tt-giorno .tt-prev i { background-image: var(--rose-d); }
+.bk-prev { width: 62%; aspect-ratio: 1 / 1.4; border-radius: 6px; background: center / cover no-repeat; box-shadow: inset 0 0 0 3px var(--carta), 0 4px 9px #17262d40; }
+
+/* Profilo */
+.prof { display: flex; flex-direction: column; gap: 12px; }
+.prof-head { display: flex; align-items: center; gap: 12px; }
+.avatar { width: 54px; height: 54px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--carta); font: 700 25px/1 var(--sans); box-shadow: 0 0 0 3px var(--carta), 0 0 0 5px var(--segnale); }
+.who2 { min-width: 0; }
+.who2 h2 { margin: 0; font: 700 24px/1.1 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who2 small { display: block; margin-top: 2px; font: italic 500 13.5px/1.3 var(--serif); opacity: .72; }
+.prof-top { display: flex; align-items: center; gap: 12px; }
+.ring { width: 96px; height: 96px; flex: none; }
+.ring-bg { fill: none; stroke: #17262d1a; stroke-width: 8; }
+.ring-fg { fill: none; stroke: var(--ink); stroke-width: 8; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 40px 40px; }
+.ring-n { font: 700 19px var(--sans); text-anchor: middle; dominant-baseline: middle; fill: var(--ink); }
+.ring-l { font: 500 10px var(--sans); text-anchor: middle; fill: var(--ink); opacity: .6; }
+.kpis3 { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.kpis3 div { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px 3px; border-radius: 10px; background: #fffaf0; box-shadow: inset 0 0 0 1.5px #17262d1f; }
+.kpis3 b { font: 700 22px/1.1 var(--sans); }
+.kpis3 span { font-size: 11px; line-height: 1.15; opacity: .7; }
+.prof-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.prof .srows li { padding: 5px 0; font-size: 13.5px; white-space: nowrap; }
+.srows small { font-weight: 400; opacity: .5; }
+.prof-more { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+.prof-transfer { align-self: center; }
+.overlay .box.stats .prof { text-align: left; }
+.transfer h4 { margin: 12px 0 4px; }
+
+/* Impara */
+.learn-card { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 15px; border-radius: 14px; background: var(--ink); color: var(--carta); }
+.lc-text b { display: block; font: 700 17px/1.2 var(--sans); }
+.lc-text small { display: block; margin-top: 3px; font: italic 500 13.5px/1.3 var(--serif); opacity: .8; }
+.learn-card .done { font: 700 12px var(--sans); color: var(--ink); background: var(--segnale); padding: 5px 10px; border-radius: 999px; }
+.learn-card .btn.primary { --fill: var(--segnale); --on: var(--ink); grid-column: 1 / -1; box-shadow: 0 3px 0 var(--segnale2); }
+.lands-ref { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lands-ref li { display: grid; grid-template-columns: 26px 84px 1fr; gap: 8px; align-items: center; padding: 6px 0; border-top: 1.5px solid #17262d1a; font-size: 14px; }
+.lands-ref .ico { width: 24px; height: 24px; }
+.lands-ref span { font: italic 500 13.5px/1.25 var(--serif); opacity: .8; }
+.learn-win { margin: 0; text-align: center; font: italic 500 14px/1.35 var(--serif); opacity: .75; }
+
+/* numeri allineati e ben leggibili ovunque */
+.kpis3 b, .ring-n, .lbar b, .srows b, .count, .bigcode, .tlabel, .gybadge b, .deck b, .backs small { font-variant-numeric: tabular-nums; }
+
+/* passaggi tra le schermate: la home sale, il tavolo si posa */
+.lobby.enter { animation: lobbyin .5s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes lobbyin { from { opacity: 0; transform: translateY(26px) scale(.97); } }
+.game.enter { animation: gamein .6s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes gamein { from { opacity: 0; transform: scale(1.05); } }
+
+/* telefono in orizzontale: le schede diventano una colonna a sinistra, la scheda Gioca va su due colonne */
 @media (min-aspect-ratio: 11/10) and (max-height: 520px) {
-  .lobby { width: min(100% - 28px, 820px); flex-direction: row; align-items: stretch; gap: 26px; padding: 18px 22px; }
-  .lobby .fsbtn { position: absolute; top: 18px; left: 22px; width: calc(50% - 60px); height: 40px; font-size: 14px; }
-  .lobby .musicbtn { top: 18px; left: calc(50% - 32px); right: auto; width: 40px; height: 40px; }
+  .lobby.tabbed { width: min(100% - 28px, 880px); flex-direction: row; align-items: stretch; gap: 0; padding: 0; }
+  .lobby.tabbed .panes { padding: 16px 22px 16px 20px; }
+  .pane-play { flex-direction: row; gap: 26px; }
   .lcol { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-width: 0; }
-  .lcol-a { justify-content: center; padding-top: 50px; }
-  .lobby .fan { --fw: 52px; }
-  .lobby h1 { font-size: 40px; }
+  .lcol-a { justify-content: center; }
+  .lcol-b { justify-content: center; }
+  .toprow .fsbtn { height: 40px; font-size: 14px; } .lobby .toprow .musicbtn { width: 40px; height: 40px; }
+  .lobby .fan { --fw: 50px; }
+  .lobby h1 { font-size: 38px; }
   .lobby .sub { font-size: 14.5px; }
+  .tabs { order: -1; flex-direction: column; justify-content: center; margin: 0; width: 88px; border-top: 0; border-right: 1.5px solid #17262d1f; padding: 6px 0; }
+  .tab { flex: none; padding: 13px 2px; }
+  .tab::before { top: 24%; bottom: 24%; left: auto; right: -1.5px; width: 3px; height: auto; border-radius: 3px 0 0 3px; transform: scaleY(0); }
+  .tab.on::before { transform: scaleY(1); }
+  .prof { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; align-content: start; }
+  .prof-head, .prof-top { grid-column: 1; }
+  .prof > h4, .prof .lbars { grid-column: 2; }
+  .prof > h4 { grid-row: 1; align-self: end; } .prof .lbars { grid-row: 2 / 4; }
+  .prof-cols { grid-column: 1 / -1; } .prof-more { grid-column: 1; } .prof-transfer { grid-column: 2; justify-self: end; }
+  .pane-collection { display: grid; grid-template-columns: 1fr 1.25fr; gap: 10px 24px; align-content: start; }
+  .pane-collection > .pane-title, .pane-collection > .pane-sub { grid-column: 1 / -1; }
+  .pane-collection > h4:nth-of-type(1), .pane-collection > .tiles:nth-of-type(1) { grid-column: 1; }
+  .pane-collection > h4:nth-of-type(2) { grid-column: 2; grid-row: 3; } .pane-collection > .tiles:nth-of-type(2) { grid-column: 2; grid-row: 4; }
+  .pane-collection > .pane-note { grid-column: 1 / -1; margin-top: 4px; }
+  .tt-prev { aspect-ratio: 1.3; } .bk-prev { width: 58%; }
+  .pane-learn { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; align-content: start; }
+  .pane-learn > .pane-title, .pane-learn > .learn-card, .pane-learn > .learn-win, .pane-learn > #rules { grid-column: 1; }
+  .pane-learn > h4, .pane-learn > .lands-ref { grid-column: 2; } .pane-learn > h4 { grid-row: 1; align-self: end; } .pane-learn > .lands-ref { grid-row: 2 / 6; }
 }
 /* telefoni bassi in verticale: home più compatta invece che rimpicciolita */
 @media (max-height: 760px) and (max-aspect-ratio: 11/10) {
   .lobby { gap: 9px; padding: 16px 18px 14px; }
+  .pane { gap: 10px; }
   .lobby .fan { --fw: 46px; }
   .lobby h1 { font-size: 36px; }
   .lobby .sub { font-size: 14.5px; line-height: 1.3; }
   .btn.modebtn { padding: 11px 16px; } .mt b { font-size: 17px; } .mt small { font-size: 13px; }
   .modeinner { gap: 9px; } .mode.open .modeinner { padding-bottom: 11px; }
   .seg button { padding: 7px 2px; } .lobby .btn.primary { padding: 10px 16px; }
-  .fsbtn { height: 40px; font-size: 15px; } .lobby .musicbtn { top: 16px; right: 18px; width: 40px; height: 40px; }
+  .toprow .fsbtn { height: 40px; font-size: 15px; } .lobby .toprow .musicbtn { width: 40px; height: 40px; }
+  .tabs { margin: 10px -18px 0; } .tab { padding: 8px 2px 9px; }
+  .ring { width: 84px; height: 84px; } .kpis3 b { font-size: 19px; } .lands-ref li { padding: 4px 0; }
 }
 /* ---------- Partita (telefono, verticale) ---------- */
 .game { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 760px; margin: 0 auto; padding: 4px 10px calc(4px + var(--safe-b)); gap: 6px; overflow: hidden;

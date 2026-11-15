@@ -45,6 +45,7 @@ const prefs = {
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
   get info() { return ls.get('info2', true); }, set info(v) { ls.set('info2', v); },
+  get back() { const v = ls.get('back', 'bussola'); return ATL.BACKS.some((b) => b.id === v) ? v : 'bussola'; }, set back(v) { ls.set('back', v); },
   get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
@@ -225,6 +226,7 @@ function vibrate(pattern) {
 // ---------- Aspetto ----------
 function applyPrefs() {
   document.documentElement.dataset.theme = prefs.theme;
+  document.documentElement.style.setProperty('--bk', `var(--bk-${prefs.back})`);
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
@@ -468,9 +470,71 @@ const info = () => prefs.info && !(S && S.tutorial); // nel tutorial spiega il M
 function render() {
   if (drag && drag.active) { needRender = true; return; }
   needRender = false;
-  if (!S || !prefs.session) return renderLobby();
-  if (!G) return renderWaiting();
-  renderGame();
+  const view = !S || !prefs.session ? 'lobby' : !G ? 'waiting' : 'game';
+  if (view === 'lobby') renderLobby(); else if (view === 'waiting') renderWaiting(); else renderGame();
+  // passaggio animato quando si cambia schermata (home ↔ attesa ↔ tavolo)
+  if (ui.view && ui.view !== view) {
+    const root = $('.lobby, .game', app);
+    if (root) { root.classList.remove('enter'); void root.offsetWidth; root.classList.add('enter'); setTimeout(() => root.classList.remove('enter'), 700); }
+  }
+  ui.view = view;
+}
+
+// ---------- Home: quattro schede (Gioca, Profilo, Collezione, Impara) ----------
+const TABS = [['play', 'Gioca'], ['profile', 'Profilo'], ['collection', 'Collezione'], ['learn', 'Impara']];
+const TAB_ICON = {
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5"/>',
+  collection: '<rect x="8" y="3" width="11" height="15" rx="2"/><path d="M5 7v12a2 2 0 0 0 2 2h9"/>',
+  learn: '<path d="M3.5 5.5c3-1.5 5.8-1 8.5 1 2.7-2 5.5-2.5 8.5-1V19c-3-1.5-5.8-1-8.5 1-2.7-2-5.5-2.5-8.5-1z"/><path d="M12 6.5V20"/>',
+};
+const tabIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICON[id]}</svg>`;
+
+function collectionHtml() {
+  const theme = (id, label) => `<button class="tile table-tile tt-${id} ${prefs.theme === id ? 'on' : ''}" data-theme-pick="${id}"><span class="tt-prev"><i></i></span><b>${label}</b></button>`;
+  return `<h2 class="pane-title">Collezione</h2>
+    <p class="pane-sub">Scegli il tavolo e il dorso delle carte.</p>
+    <h4>Tavolo</h4>
+    <div class="tiles">${theme('notte', 'Notte')}${theme('giorno', 'Giorno')}</div>
+    <h4>Dorso delle carte</h4>
+    <div class="tiles">${ATL.BACKS.map((b) => `<button class="tile back-tile ${prefs.back === b.id ? 'on' : ''}" data-back="${b.id}"><span class="bk-prev" style="background-image:var(--bk-${b.id})"></span><b>${b.name}</b></button>`).join('')}</div>
+    <p class="pane-note">Altri tavoli e dorsi in arrivo.</p>`;
+}
+
+function learnHtml() {
+  const done = Stats.load(prefs.name).tutorial;
+  return `<h2 class="pane-title">Impara</h2>
+    <div class="learn-card"><div class="lc-text"><b>Tutorial con il Maestro</b><small>Una partita guidata, passo per passo: circa 5 minuti.</small></div>
+      ${done ? '<span class="done">Completato</span>' : ''}
+      <button class="btn primary" id="tutorial">${done ? 'Rifai il tutorial' : 'Inizia il tutorial'}</button></div>
+    <h4>Le cinque terre</h4>
+    <ul class="lands-ref">${TYPES.map((t) => `<li><i class="ico ico-${t}"></i><b>${NAMES[t]}</b><span>${FXTXT[t]}</span></li>`).join('')}</ul>
+    <p class="learn-win">Si vince con cinque terre diverse in gioco, oppure cinque uguali.</p>
+    <button class="btn" id="rules">Regole complete</button>`;
+}
+
+// Cambia scheda senza ridisegnare la home: le schede scorrono di lato e sfumano.
+function setTab(id) {
+  if (id === (ui.tab || 'play')) return;
+  const order = TABS.map((t) => t[0]), ti = order.indexOf(id);
+  ui.tab = id;
+  if (id === 'profile') { const n = $('#name') && $('#name').value.trim(); if (n) prefs.name = n; const pp = $('.pane-profile'); if (pp) { pp.innerHTML = Stats.panel(prefs.name); Stats.bind(); } }
+  if (id === 'learn') { const pl = $('.pane-learn'); if (pl) { pl.innerHTML = learnHtml(); bindLearn(); } }
+  $$('.pane', app).forEach((p) => {
+    const i = order.indexOf(p.dataset.pane), on = p.dataset.pane === id;
+    if (on) { p.style.transition = 'none'; p.style.setProperty('--dx', `${i < order.indexOf(ui.prevTab || 'play') ? -22 : 22}px`); void p.offsetWidth; p.style.transition = ''; }
+    else p.style.setProperty('--dx', `${i < ti ? -22 : 22}px`);
+    p.classList.toggle('on', on);
+    if (on) p.removeAttribute('aria-hidden'); else p.setAttribute('aria-hidden', 'true');
+  });
+  ui.prevTab = id;
+  $$('.tab', app).forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+  Sound.play('click');
+}
+function bindLearn() {
+  const t = $('#tutorial');
+  if (t) t.onclick = () => { const n = ($('#name') && $('#name').value.trim()) || prefs.name || 'Tu'; Tut.reset(); send({ t: 'tutorial', name: n, speed: SPEEDS[prefs.speed] }); };
+  const r = $('#rules'); if (r) r.onclick = () => { ui.rules = true; render(); };
 }
 
 function renderLobby() {
@@ -479,22 +543,25 @@ function renderLobby() {
   if ($('#altar')) $('#altar').classList.remove('on');
   const params = new URLSearchParams(location.search);
   const pre = (params.get('room') || '').toUpperCase();
-  if (pre && !ui.mode) ui.mode = 'friend';
+  if (pre && !ui.mode) { ui.mode = 'friend'; ui.tab = 'play'; }
   const reconnecting = prefs.session && !S;
+  const tab = reconnecting ? 'play' : ui.tab || 'play', ti = TABS.findIndex((t) => t[0] === tab);
+  ui.prevTab = tab;
   const tt = prefs.turnTime;
   const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
-  app.innerHTML = `
-  <div class="lobby">
-    ${Full.appFull() ? '' : `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
-    <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
+  const pane = (id, i, html) => `<section class="pane pane-${id} ${id === tab ? 'on' : ''}" data-pane="${id}" style="--dx:${i < ti ? -22 : 22}px" ${id === tab ? '' : 'aria-hidden="true"'}>${html}</section>`;
+  const play = `
     <div class="lcol lcol-a">
-    ${pips()}
-    <h1>Atlas</h1>
-    <p class="sub">Metti in gioco tutte e cinque le terre, oppure cinque uguali.</p>
+      <div class="toprow">${Full.appFull() ? '' : `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>`}
+        <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button></div>
+      ${pips()}
+      <h1>Atlas</h1>
+      <p class="sub">Metti in gioco tutte e cinque le terre, oppure cinque uguali.</p>
+      ${reconnecting ? '' : `<div class="who"><label for="name">Giochi come</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="il tuo nome" autocomplete="nickname" size="12"></div>`}
+    </div>
+    <div class="lcol lcol-b">
     ${reconnecting ? `<p class="sub">Riconnessione alla stanza <b>${esc(prefs.session.code)}</b>…</p>
       <button class="linkbtn" id="forget">Annulla</button>` : `
-    <div class="who"><label for="name">Giochi come</label><input id="name" maxlength="20" value="${esc(prefs.name)}" placeholder="il tuo nome" autocomplete="nickname" size="12"></div>
-    </div><div class="lcol lcol-b">
     <div class="mode ${ui.mode === 'bot' ? 'open' : ''}" data-mode="bot">
       <button class="btn modebtn"><span class="mt"><b>Contro il computer</b><small>Anche senza connessione</small></span><span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
@@ -512,14 +579,27 @@ function renderLobby() {
         <div class="or">oppure entra con un codice</div>
         <div class="row"><input id="code" class="code-input" maxlength="4" value="${esc(pre)}" placeholder="CODICE" autocomplete="off" autocapitalize="characters"><button class="btn" id="join">Entra</button></div>
       </div></div>
+    </div>`}
+    </div>`;
+  app.innerHTML = `
+  <div class="lobby tabbed">
+    <div class="panes">
+      ${pane('play', 0, play)}
+      ${reconnecting ? '' : pane('profile', 1, Stats.panel(prefs.name)) + pane('collection', 2, collectionHtml()) + pane('learn', 3, learnHtml())}
     </div>
-    <div class="links"><button class="linkbtn" id="tutorial">Impara a giocare</button><button class="linkbtn" id="rules">Regole</button><button class="linkbtn" id="stats">Statistiche</button></div></div>`}
-  </div>${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`;
+    ${reconnecting ? '' : `<nav class="tabs" aria-label="Sezioni">${TABS.map(([id, l]) => `<button class="tab ${id === tab ? 'on' : ''}" data-tab="${id}">${tabIcon(id)}<span>${l}</span></button>`).join('')}</nav>`}
+  </div>${ui.rules ? rulesHtml() : ''}${ui.transfer ? Stats.transferHtml() : ''}`;
   bindOverlays();
+  bindLearn();
   $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
   if ($('#fullscreen')) $('#fullscreen').onclick = () => Full.toggle();
-  if (reconnecting) { $('#forget').onclick = () => { prefs.session = null; render(); }; return; }
-  // le scelte aggiornano la pagina senza ridisegnarla, così le animazioni restano fluide
+  $$('[data-tab]').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
+  $$('[data-theme-pick]').forEach((b) => { b.onclick = () => { prefs.theme = b.dataset.themePick; applyPrefs(); Sound.play('click'); $$('[data-theme-pick]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  $$('[data-back]').forEach((b) => { b.onclick = () => { prefs.back = b.dataset.back; applyPrefs(); Sound.play('click'); $$('[data-back]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  if (reconnecting) {
+    $('#forget').onclick = () => { prefs.session = null; render(); };
+    return fitLobby();
+  }
   $$('.mode').forEach((m) => {
     $('.modebtn', m).onclick = () => {
       const open = !m.classList.contains('open');
@@ -533,8 +613,8 @@ function renderLobby() {
   $$('[data-lvl]').forEach((b) => { b.onclick = () => { prefs.level = b.dataset.lvl; $$('[data-lvl]').forEach((x) => x.classList.toggle('on', x === b)); }; });
   const getName = () => { const n = $('#name').value.trim(); if (!n) { toast('Scrivi il tuo nome'); $('#name').focus(); return null; } prefs.name = n; return n; };
   const speed = SPEEDS[prefs.speed];
-  $('#tutorial').onclick = () => { const n = $('#name').value.trim() || 'Tu'; Tut.reset(); send({ t: 'tutorial', name: n, speed }); };
-  $('#stats').onclick = () => { prefs.name = $('#name').value.trim() || prefs.name; ui.stats = true; render(); };
+  // il nome si salva mentre lo scrivi: Profilo e statistiche lo seguono
+  $('#name').addEventListener('input', () => { const n = $('#name').value.trim(); if (n) prefs.name = n; });
   $('#bot').onclick = () => { const n = getName(); if (n) send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed, level: prefs.level }); };
   $('#create').onclick = () => { const n = getName(); if (n) send({ t: 'create', name: n, turnTime: prefs.turnTime, speed }); };
   $('#join').onclick = () => {
@@ -817,7 +897,7 @@ function renderGame() {
     over: `${task === 'choice' && g.choice.kind === 'discard' ? revealHtml() : ''}
       ${g.phase === 'over' && !ui.animating ? overHtml() : ''}
       ${S.tutorial && g.phase === 'playing' ? Tut.html() : ''}
-      ${ui.menu ? menuHtml() : ''}${ui.log ? logHtml() : ''}${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}`,
+      ${ui.menu ? menuHtml() : ''}${ui.log ? logHtml() : ''}${ui.rules ? rulesHtml() : ''}${ui.stats ? Stats.html() : ''}${ui.transfer ? Stats.transferHtml() : ''}`,
   };
   // Si ridisegnano solo le parti dello schermo che sono cambiate
   if (!app.dataset.game) {
