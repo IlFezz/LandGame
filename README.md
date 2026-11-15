@@ -45,7 +45,7 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 ## Funzioni
 
 - **Partita contro il computer nel browser**: gira tutta sul telefono con lo stesso codice del server, quindi funziona anche offline e senza aspettare che Render si svegli. Se chiudi l'app a metà, la partita riprende da dove era.
-- **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata contro il Maestro, con mazzi preparati, che mostra tutte e cinque le terre e il contrasto. Il Maestro gioca solo dopo che hai premuto «Avanti»; la carta da usare è sollevata con l'etichetta «Gioca questa» e le altre sono spente.
+- **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata di 13 turni contro il Maestro, con mazzi preparati. Spiega tavolo, mano, mazzo, cimitero, turno, l'effetto di ogni terra, il contrasto (serve un'Isola in mano, l'Isola si sceglie da sola, la seconda carta è libera) e il passaggio di turno. Il Maestro gioca solo dopo «Avanti»; «Indietro» rilegge i passaggi già visti; la carta da usare è sollevata con l'etichetta «Gioca questa» e le altre sono spente.
 - **Schermo intero**: installata come app, Atlas si apre a tutto schermo (manifest `display: fullscreen`). Nel browser c'è il pulsante nella home e la voce nel menu, dove il browser lo permette.
 - **Statistiche** (home e menu): partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
 - **Computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
@@ -62,10 +62,11 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - Azioni nel pannello centrale e direttamente sul campo (i bersagli validi lampeggiano): la mano resta sempre visibile.
 - Timer per turno scelto da chi crea la stanza (30/45/60/90 secondi o illimitato). Lo stesso tempo vale per contrastare e per le scelte. Allo scadere: si passa il turno, la terra avversaria risolve, oppure la scelta viene fatta a caso.
 - Un segnale rosso accanto al nome quando un giocatore è a un passo dalla vittoria.
-- Plancia pulita: le spiegazioni testuali si attivano dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
+- Spiegazioni sulla plancia attive di default; si spengono dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
 - Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
 - Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
-- Menu in partita: comandi (trascina/tocca), velocità animazioni (lenta/media/veloce, predefinita lenta), tema (Notte/Giorno), effetti grafici (completi/ridotti), info nella plancia, musica, effetti sonori, vibrazione, registro, regole, esci.
+- Menu in partita: schermo intero (in cima, dove il browser lo permette), comandi (trascina/tocca), tema (Notte/Giorno), effetti grafici (completi/ridotti, predefiniti completi), info nella plancia (attive di default), musica, effetti sonori, vibrazione, registro, regole, statistiche e il grande pulsante rosso «Esci dalla partita». Le animazioni hanno una sola velocità (lenta).
+- Nessuno scorrimento: il gioco segue l'altezza reale dello schermo (anche entrando o uscendo dallo schermo intero) e home e menu si rimpiccioliscono se non ci stanno.
 
 ## Struttura
 

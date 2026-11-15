@@ -13,9 +13,11 @@ const PLAN = {
   6: { response: { type: 'counter', other: process.env.OTHER || 'W' } },
   7: { main: { type: 'play', card: 'W', target: 'R' }, choice: 'first' },
   8: { response: { type: 'allow' } },
-  9: { main: { type: 'play', card: 'U' } },
+  9: { main: { type: 'pass' } },
   10: { response: { type: 'allow' } },
-  11: { main: { type: 'play', card: 'B' } },
+  11: { main: { type: 'play', card: 'U' } },
+  12: { response: { type: 'allow' } },
+  13: { main: { type: 'play', card: 'B' } },
 };
 
 const hub = new Hub({ local: true, timeScale: 0.001 });
@@ -46,7 +48,7 @@ const done = new Promise((resolve, reject) => {
 done.then((g) => {
   assert.deepStrictEqual(errors, []);
   assert.strictEqual(g.winner, 0, 'deve vincere il giocatore');
-  assert.strictEqual(g.turn, 11);
+  assert.strictEqual(g.turn, 13);
   if (process.env.LOG) console.log(hub.rooms.values().next().value.game.log.join('\n'));
   console.log('ok   tutorial vinto al turno', g.turn, '–', g.endText);
   process.exit(0);

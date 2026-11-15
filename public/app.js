@@ -25,7 +25,6 @@ const LONG_FX = {
 };
 const TURN_OPTIONS = [30, 45, 60, 90, 0];
 const SPEEDS = { slow: 1.5, medium: 1, fast: 0.6 };
-const SPEED_LABEL = { slow: 'Lenta', medium: 'Media', fast: 'Veloce' };
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -45,12 +44,13 @@ const prefs = {
   get vibe() { return ls.get('vibe', true); }, set vibe(v) { ls.set('vibe', v); },
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
-  get info() { return ls.get('info', false); }, set info(v) { ls.set('info', v); },
+  get info() { return ls.get('info2', true); }, set info(v) { ls.set('info2', v); },
   get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
   get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
-  get speed() { const v = ls.get('speed', 'slow'); return SPEEDS[v] ? v : 'slow'; }, set speed(v) { ls.set('speed', v); },
+  // la velocità delle animazioni è fissa (lenta); 'speedDev' serve solo ai test automatici
+  get speed() { const v = ls.get('speedDev', 'slow'); return SPEEDS[v] ? v : 'slow'; },
 };
 // Durata scalata secondo la velocità scelta
 const D = (ms) => ms * SPEEDS[prefs.speed];
@@ -292,8 +292,25 @@ const Full = {
     } catch { toast('Il browser non permette lo schermo intero'); }
   },
 };
-document.addEventListener('fullscreenchange', () => render());
-document.addEventListener('webkitfullscreenchange', () => render());
+// L'altezza del gioco segue quella vera dello schermo: niente scorrimento, in nessun caso.
+let fitTimer = null;
+function fitScreen() {
+  document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
+  if (app.dataset.game) { layoutHand(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
+}
+// la home e la stanza d'attesa si rimpiccioliscono se non ci stanno, invece di scorrere
+function fitLobby() { fitBox($('.lobby', app), 36); }
+// rimpicciolisce un pannello (home, menu) finché non sta tutto nello schermo
+function fitBox(l, margin) {
+  if (!l) return;
+  l.style.zoom = '';
+  const base = parseFloat(getComputedStyle(l).zoom) || 1;
+  const h = l.getBoundingClientRect().height, avail = innerHeight - margin;
+  if (h > avail) l.style.zoom = (base * avail / h).toFixed(3);
+}
+function refit() { fitScreen(); clearTimeout(fitTimer); fitTimer = setTimeout(fitScreen, 350); } // alcuni browser cambiano misura in due tempi
+['fullscreenchange', 'webkitfullscreenchange', 'orientationchange'].forEach((e) => document.addEventListener(e, refit));
+window.addEventListener('resize', refit);
 
 // ---------- Connessione ----------
 let ws = null, wsReady = false, queue = [], retry = 0;
@@ -392,7 +409,7 @@ async function pump() {
     }
     G = game;
     lastPlay = null; lastCounter = null;
-    if (!G || G.step !== 'response' || G.pending.responder !== G.you) { ui.counter = false; ui.pick = null; }
+    if (!G || G.step !== 'response' || !G.pending || G.pending.responder !== G.you) { ui.counter = false; ui.pick = null; }
     if (!G || G.step !== 'main' || G.active !== G.you || G.landPlayed) { ui.sel = null; ui.staged = null; }
     render();
   }
@@ -414,7 +431,7 @@ const pips = () => `<div class="fan">${TYPES.map((t, i) => `<div class="card min
 const who = (p) => (G && p === G.you ? 'me' : 'opp');
 const winsWith = (bf, t) => { const b = { ...bf, [t]: bf[t] + 1 }; return TYPES.every((x) => b[x] > 0) || TYPES.some((x) => b[x] >= 5); };
 const closeToWin = (bf) => TYPES.filter((t) => bf[t] > 0).length >= 4 || Math.max(...TYPES.map((t) => bf[t])) >= 4;
-const info = () => prefs.info;
+const info = () => prefs.info && !(S && S.tutorial); // nel tutorial spiega il Maestro
 
 // =====================================================================
 //  Render
@@ -439,7 +456,7 @@ function renderLobby() {
   const ttSeg = `<div class="seg" data-group="tt">${TURN_OPTIONS.map((v) => `<button data-tt="${v}" class="${v === tt ? 'on' : ''}">${v ? v + 's' : '∞'}</button>`).join('')}</div>`;
   app.innerHTML = `
   <div class="lobby">
-    ${Full.can() ? `<button class="fsbtn" id="fullscreen" aria-label="Schermo intero">${Full.on() ? '⤡' : '⤢'}</button>` : ''}
+    ${Full.can() ? `<button class="fsbtn" id="fullscreen">${Full.on() ? '⤡ Esci' : '⤢ Schermo intero'}</button>` : ''}
     <button class="musicbtn ${prefs.music ? '' : 'off'}" id="music" aria-label="Musica">♪</button>
     ${pips()}
     <h1>Atlas</h1>
@@ -479,6 +496,7 @@ function renderLobby() {
       if (open) m.classList.add('open');
       ui.mode = open ? m.dataset.mode : null;
       Sound.play('click');
+      fitLobby(); setTimeout(fitLobby, 380);
     };
   });
   $$('[data-tt]').forEach((b) => { b.onclick = () => { prefs.turnTime = Number(b.dataset.tt); $$('[data-tt]').forEach((x) => x.classList.toggle('on', x.dataset.tt === b.dataset.tt)); }; });
@@ -496,6 +514,7 @@ function renderLobby() {
     send({ t: 'join', code: c, name: n });
   };
   $('#code').onkeydown = (e) => { if (e.key === 'Enter') $('#join').click(); };
+  fitLobby();
 }
 
 function renderWaiting() {
@@ -519,6 +538,7 @@ function renderWaiting() {
     else { try { await navigator.clipboard.writeText(link); toast('Link copiato!', true); } catch { toast(link, true); } }
   };
   $('#leave').onclick = leave;
+  fitLobby();
 }
 
 function leave() {
@@ -571,8 +591,8 @@ function myTask() {
   if (!g || g.phase !== 'playing' || ui.animating) return null;
   const me = g.you;
   if (g.step === 'main' && g.active === me && !g.landPlayed) return 'main';
-  if (g.step === 'response' && g.pending.responder === me) return 'response';
-  if (g.step === 'choice' && g.choice.player === me) return 'choice';
+  if (g.step === 'response' && g.pending && g.pending.responder === me) return 'response';
+  if (g.step === 'choice' && g.choice && g.choice.player === me) return 'choice';
   return null;
 }
 const needsTarget = (card) => { const t = G.playable && G.playable[card]; return !!(t && t.length); };
@@ -616,14 +636,14 @@ function statusHtml() {
   }
   if (!info()) return { text: '', cls: '' };
   if (g.step === 'main') return g.active === me ? { text: 'Il tuo turno', cls: 'mine' } : { text: `Turno di ${opp}`, cls: '' };
-  if (g.step === 'response') {
+  if (g.step === 'response' && g.pending) {
     const p = g.pending;
     if (p.responder !== me) return { text: `${opp} può contrastare…`, cls: '' };
     if (p.owner !== me && p.counters === 0) return { text: `${opp} gioca ${NAMES[p.land]}`, cls: 'mine' };
     if (p.owner === me) return { text: `${opp} contrasta la tua ${NAMES[p.land]}!`, cls: 'mine' };
     return { text: `${opp} ha annullato il tuo contrasto!`, cls: 'mine' };
   }
-  if (g.step === 'choice' && g.choice.player !== me) return { text: `${opp} sta scegliendo…`, cls: '' };
+  if (g.step === 'choice' && g.choice && g.choice.player !== me) return { text: `${opp} sta scegliendo…`, cls: '' };
   return { text: '', cls: '' };
 }
 
@@ -668,7 +688,7 @@ function actionsHtml() {
       return hint(c === 'R' ? 'Tocca la terra avversaria da distruggere.' : c === 'G' ? 'Tocca nel tuo cimitero la terra da recuperare.' : 'Tocca la tua terra da riattivare.');
     }
     const how = prefs.controls === 'drag' ? 'Trascina una carta al centro per giocarla.' : 'Tocca una carta e poi il centro per giocarla.';
-    if (S.tutorial) return ''; // nel tutorial si gioca sempre la carta indicata
+    if (S.tutorial) return Tut.wantsPass() ? '<button class="btn passbtn" data-act="pass">Passa il turno</button>' : ''; // nel tutorial si fa sempre la mossa indicata
     return `${hint(how)}<button class="btn passbtn" data-act="pass">Passa il turno</button>`;
   }
   if (task === 'response') {
@@ -787,6 +807,7 @@ function renderGame() {
   if (handChanged) layoutHand();
   Altar.place();
   bindOverlays();
+  if (ui.menu) fitBox($('.sheet', app), 16);
   tickTimer();
   drawArrows();
   Tut.place();
@@ -868,21 +889,20 @@ function menuHtml() {
   <div class="sheet">
     <h3>Menu</h3>
     ${ui.confirmLeave ? `
-      <p>Vuoi davvero uscire? ${S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
-      <button class="btn danger" data-act="leave-now">Esci dalla partita</button>
+      <p>Vuoi davvero uscire? ${S.tutorial ? 'Potrai rifare il tutorial quando vuoi dalla home.' : S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
+      <button class="btn exitbtn" data-act="leave-now">Esci dalla partita</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
+    ${Full.can() ? `<button class="btn fullrow" data-act="toggle-full">${Full.on() ? '⤡ Esci dallo schermo intero' : '⤢ Schermo intero'}</button>` : ''}
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>Velocità animazioni</span>${seg('set-speed', prefs.speed, Object.keys(SPEEDS).map((k) => [k, SPEED_LABEL[k]]))}</div>
     <div class="mrow col"><span>Tema</span>${seg('set-theme', prefs.theme, [['notte', 'Notte'], ['giorno', 'Giorno']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
     <button class="mrow" data-act="toggle-sound">Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">Vibrazione ${tog(prefs.vibe)}</button>
-    ${Full.can() ? `<button class="mrow" data-act="toggle-full">Schermo intero ${tog(Full.on())}</button>` : ''}
     <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button><button data-act="open-stats">Statistiche</button></div>
-    <button class="mrow danger" data-act="leave-ask">Esci dalla partita</button>
-    <button class="btn" data-act="menu-close">Chiudi</button>`}
+    <button class="btn" data-act="menu-close">Chiudi</button>
+    <button class="btn exitbtn" data-act="leave-ask">Esci dalla partita</button>`}
   </div>`;
 }
 
@@ -985,7 +1005,6 @@ app.addEventListener('click', (e) => {
     case 'menu': ui.menu = true; ui.confirmLeave = false; return render();
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
-    case 'set-speed': prefs.speed = v; send({ t: 'prefs', speed: SPEEDS[v] }); Sound.play('click'); return render();
     case 'set-theme': prefs.theme = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
@@ -1008,7 +1027,7 @@ app.addEventListener('click', (e) => {
     case 'tut-next': Tut.next(); return render();
     case 'toggle-full': return Full.toggle();
     case 'tut-go': Sound.play('click'); return send({ t: 'tut-go' });
-    case 'tut-skip': return leave();
+    case 'tut-back': Tut.prev(); Sound.play('click'); return render();
     case 'rematch': return send({ t: 'rematch' });
   }
 });
@@ -1547,6 +1566,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'p' && myTask() === 'main' && !ui.staged) return act({ type: 'pass' });
 });
 FX.init();
+document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
 applyPrefs();
 Local.resume();
 render();

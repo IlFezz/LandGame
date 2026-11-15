@@ -28,7 +28,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .warn { color: var(--rosso); }
 .yes { color: #2f9e6a; font-style: normal; font-weight: 700; } .no { color: var(--rosso); font-style: normal; font-weight: 700; }
 
-#app { position: relative; z-index: 1; height: 100dvh; overflow: auto; display: flex; flex-direction: column; padding-top: var(--safe-t);
+#app { position: relative; z-index: 1; height: var(--app-h, 100dvh); overflow: hidden; display: flex; flex-direction: column; padding-top: var(--safe-t);
   padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 #app:not([data-game]) { padding-bottom: 14px; padding-top: calc(14px + var(--safe-t)); }
 #altar { position: fixed; z-index: 0; pointer-events: none; display: none; opacity: .7; background: var(--rosa) center / contain no-repeat; transform: rotate(var(--ang, 0deg)); }
@@ -92,7 +92,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 .linkbtn { padding: 6px; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; align-self: center; }
 .musicbtn { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); font-size: 19px; line-height: 1; z-index: 2; background: #fffaf0; }
 .musicbtn.off { opacity: .45; text-decoration: line-through; }
-.fsbtn { position: absolute; top: 12px; left: 12px; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--ink); font-size: 18px; line-height: 1; z-index: 2; background: #fffaf0; color: var(--ink); }
+.fsbtn { position: absolute; top: 12px; left: 12px; height: 40px; padding: 0 14px; border-radius: 999px; z-index: 2; background: var(--ink); color: var(--carta); font: 700 14px/1 var(--sans); box-shadow: 0 2px 0 #0006; }
 /* il nome è un dettaglio: una riga sola, come una firma; le modalità sono le scelte principali */
 .who { display: flex; align-items: baseline; justify-content: center; gap: 8px; font: italic 500 15px/1.3 var(--serif); margin: -2px 0 4px; }
 .who label { opacity: .75; }
@@ -117,7 +117,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--segnale); o
 @keyframes blink { 50% { opacity: .15; } }
 
 /* ---------- Partita (telefono, verticale) ---------- */
-.game { position: relative; height: 100dvh; flex: none; display: flex; flex-direction: column; width: 100%; max-width: 760px; margin: 0 auto; padding: 4px 10px calc(4px + var(--safe-b)); gap: 6px; overflow: hidden;
+.game { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 760px; margin: 0 auto; padding: 4px 10px calc(4px + var(--safe-b)); gap: 6px; overflow: hidden;
   --sw: min(17vw, 10vh); --hw: min(17.5vw, 12vh); --cw: min(26vw, 13.5vh); }
 .topbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muto); height: 34px; }
 .topbar .code { color: var(--testo); letter-spacing: .14em; }
@@ -288,7 +288,7 @@ body.dragging { cursor: grabbing; }
 
 /* ---------- Menu e finestre: fogli di carta ---------- */
 .sheet-bd { position: fixed; inset: 0; background: var(--tavolo2); opacity: .7; z-index: 60; }
-.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; max-width: 480px; margin: 0 auto; padding: 20px 20px calc(18px + var(--safe-b)); display: flex; flex-direction: column; gap: 12px; max-height: 94dvh; overflow-y: auto;
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; max-width: 480px; margin: 0 auto; padding: 20px 20px calc(18px + var(--safe-b)); display: flex; flex-direction: column; gap: 12px; 
   color: var(--ink); border-radius: 18px 18px 0 0; background: var(--topo-d) 30% 20% / 260% auto, var(--carta); box-shadow: 0 -18px 44px var(--ombra); animation: up .2s ease-out; }
 @keyframes up { from { transform: translateY(40px); opacity: 0; } }
 .sheet h3 { margin: 0; font: 700 22px/1.1 var(--sans); letter-spacing: -.01em; }
@@ -298,12 +298,16 @@ body.dragging { cursor: grabbing; }
 .mrow.two { gap: 8px; border: 0; padding: 0; }
 .mrow.two button { flex: 1; padding: 12px; border: 1.5px solid var(--ink); border-radius: 10px; font: 700 15px var(--sans); color: var(--ink); }
 .mrow.danger { color: var(--rosso); font-weight: 700; border: 0; padding: 6px 0; }
+/* uscire dalla partita: grande e rosso, impossibile non vederlo */
+.btn.exitbtn { background: var(--rosso); border-color: var(--rosso); color: #fff; font-size: 17px; padding: 15px 18px; box-shadow: 0 3px 0 #7d2416; }
+.btn.fullrow { background: var(--ink); border-color: var(--ink); color: var(--carta); font-size: 16px; }
 .tog { width: 44px; height: 26px; border-radius: 13px; border: 1.5px solid var(--ink); position: relative; flex: none; }
 .tog span { position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); opacity: .35; transition: left .15s; }
 .tog.on { background: var(--ink); } .tog.on span { left: 21px; background: var(--carta); opacity: 1; }
 @media (min-width: 700px) {
   .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 18px; animation: none; max-width: 700px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .sheet > h3, .sheet > p, .sheet > .btn, .sheet > .mrow.two, .sheet > .mrow.danger { grid-column: 1 / -1; }
+  .sheet > .btn[data-act="menu-close"], .sheet > .exitbtn[data-act="leave-ask"] { grid-column: auto; }
 }
 /* schermi grandi: fogli e finestre più leggibili */
 @media (min-width: 700px) and (min-height: 900px) { .lobby, .overlay .box, .sheet { zoom: 1.2; } }
@@ -352,7 +356,10 @@ body.dragging { cursor: grabbing; }
 .coach p b { font: 700 14px var(--sans); font-style: normal; }
 .coach .btn { --fill: var(--ink); --on: var(--carta); }
 .coach .linkbtn { color: var(--ink); }
-.coach-acts { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
+.coach-acts { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+.coach-acts .ghost { border: 1.5px solid #17262d40; opacity: 1; }
+.coach.review { box-shadow: 0 0 0 2px var(--muto), 0 14px 30px var(--ombra); }
+.coach.review small { display: block; margin-bottom: 4px; font: 700 11.5px var(--sans); opacity: .6; }
 .coach-hl { position: relative; z-index: 41 !important; }
 /* la carta che il tutorial chiede di giocare: sollevata, con etichetta; le altre restano giocabili ma spente */
 .hand .card.coach-hl { transform: translate(var(--x, 0), calc(var(--dy, 0px) - 14px)) rotate(0deg) scale(1.06); }
@@ -384,7 +391,7 @@ body.dragging { cursor: grabbing; }
 
 /* ---------- Tablet ---------- */
 @media (min-width: 700px) and (min-height: 521px) {
-  .game { padding: 10px 20px calc(10px + var(--safe-b)); gap: 10px; --sw: min(17vw, 11.5vh); --cw: min(26vw, 15vh); }
+  .game { padding: 10px 20px calc(10px + var(--safe-b)); gap: 10px; --sw: min(14vw, 9.5vh); --cw: min(28vw, 17vh); }
   .topbar { height: 44px; font-size: 15px; } .menubtn { width: 52px; height: 42px; font-size: 22px; }
   .timer { height: 18px; border-radius: 9px; } .tlabel { font-size: 12px; line-height: 18px; }
   .zhead { height: 46px; gap: 18px; font-size: 15px; } .pname { font-size: 20px; }
@@ -400,7 +407,7 @@ body.dragging { cursor: grabbing; }
 /* ---------- PC e tablet in orizzontale: tavolo a tutto schermo ---------- */
 @media (min-aspect-ratio: 11/10) and (min-height: 521px) {
   .game { max-width: none; width: 100vw; padding: 3.4vh 2vw 0; gap: 1.2vh; display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto auto; align-items: stretch;
-    --sw: min(15vh, 9vw); --hw: min(15vh, 9vw); --cw: min(17vh, 10vw); }
+    --sw: min(12vh, 8.2vw); --hw: min(15vh, 9.5vw); --cw: min(22vh, 12vw); }
   .topbar { position: absolute; top: 3.2vh; left: 2vw; right: 2vw; height: auto; z-index: 6; pointer-events: none; font-size: max(12.5px, 1.7vh); }
   .topbar > * { pointer-events: auto; } .topbar > span { position: fixed; left: 2vw; bottom: 1.6vh; }
   .menubtn { width: max(44px, 6vh); height: max(36px, 4.8vh); font-size: max(18px, 2.4vh); }

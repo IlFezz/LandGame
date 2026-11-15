@@ -32,7 +32,8 @@ function eventFor(ev, seat) {
 // ---------- Tutorial: mazzi preparati e mosse del computer già scritte ----------
 // Ordine di pescata (la prima carta dell'elenco è la prima pescata). Il resto del mazzo viene dopo.
 // Le pescate danno doppioni di Pianura e Palude: per il contrasto si può scartare qualsiasi seconda terra.
-const TUT_ME = ['U', 'G', 'R', 'W', 'B', /* pescate: */ 'G', 'W', 'B', 'R', 'U', 'G', 'W'];
+// Al 9° turno si impara a passare, quindi si vince al 13°.
+const TUT_ME = ['U', 'G', 'R', 'W', 'B', /* pescate: */ 'G', 'W', 'B', 'R', 'U', 'G', 'W', 'R'];
 const TUT_BOT = ['R', 'B', 'R', 'W', 'G', /* pescate: */ 'G', 'W', 'R', 'B', 'W', 'R'];
 function tutorialDeck(order) {
   const left = { W: 10, U: 10, B: 10, R: 10, G: 10 };
@@ -49,7 +50,7 @@ function tutorialBotMove(g) {
     const o = g.choice.options;
     return { type: 'choose', choice: ['G', 'R'].find((c) => o.includes(c)) || o[0] };
   }
-  const plan = { 2: ['R', 'U'], 4: ['B'], 6: ['R', 'G'], 8: ['W'], 10: ['G'], 12: ['R'] }[g.turn];
+  const plan = { 2: ['R', 'U'], 4: ['B'], 6: ['R', 'G'], 8: ['W'], 10: ['G'], 12: ['W', 'G'] }[g.turn];
   const hand = g.players[me].hand;
   if (plan && hand.includes(plan[0])) {
     const valid = g.targetsFor(me, plan[0]) || [];
