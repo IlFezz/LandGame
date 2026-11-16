@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preload" href="fonts/adventor-bold.woff" as="font" type="font/woff" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <script>try { if (JSON.parse(localStorage.getItem('blg.theme')) === 'giorno') document.documentElement.dataset.theme = 'giorno'; } catch (e) {}</script>
+  <script>try { const t = JSON.parse(localStorage.getItem('blg.theme')); if (['giorno', 'pergamena', 'corallo'].includes(t)) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
   <div id="altar"></div>
@@ -32,6 +32,7 @@
   <script src="bot.js"></script>
   <script src="hub.js"></script>
   <script src="stats.js"></script>
+  <script src="goals.js"></script>
   <script src="tutorial.js"></script>
   <script src="app.js"></script>
 </body>

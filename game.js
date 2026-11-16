@@ -34,10 +34,17 @@ class Game {
     // opts.decks (facoltativo): mazzi già in ordine, l'ultima carta è la prima pescata (serve al tutorial)
     this.players = names.map((name, i) => {
       if (opts.decks && opts.decks[i]) return { name, deck: opts.decks[i].slice(), hand: [], bf: emptyCount(), gy: emptyCount() };
-      const deck = [];
-      for (const t of TYPES) for (let k = 0; k < this.copies; k++) deck.push(t);
-      return { name, deck: shuffle(deck, this.rng), hand: [], bf: emptyCount(), gy: emptyCount() };
+      // opts.setup[i] (sfide): { bf: terre già in gioco, without: tipi tolti dal mazzo, hand: carte iniziali }
+      const su = (opts.setup && opts.setup[i]) || {}, bf = emptyCount(), deck = [];
+      for (const t of TYPES) {
+        if (su.without && su.without.includes(t)) continue;
+        bf[t] = (su.bf && su.bf[t]) || 0;
+        for (let k = bf[t]; k < this.copies; k++) deck.push(t);
+      }
+      return { name, deck: shuffle(deck, this.rng), hand: [], bf, gy: emptyCount(), handSize: su.hand || this.handSize };
     });
+    this.onlyFive = opts.onlyFive || [false, false];   // sfida: vince solo con cinque terre uguali
+    this.turnLimit = opts.turnLimit || null;           // sfida: { turn, loser } chi non vince entro quel turno perde
     this.phase = 'playing';
     this.turn = 0;
     this.active = null;
@@ -54,15 +61,28 @@ class Game {
     this.events = []; // eventi animabili: { ev, views: [vista P0, vista P1] }
     this.firstPlayer = opts.firstPlayer != null ? opts.firstPlayer : (this.rng() < 0.5 ? 0 : 1);
 
-    for (let p = 0; p < 2; p++) for (let i = 0; i < this.handSize; i++) this.draw(p, true);
+    for (let p = 0; p < 2; p++) for (let i = 0; i < (this.players[p].handSize || this.handSize); i++) this.draw(p, true);
     this.emit({ type: 'deal', first: this.firstPlayer });
     this.addLog(`${this.players[this.firstPlayer].name} inizia la partita (salta la prima pescata).`);
     this.beginTurn(this.firstPlayer);
   }
 
+  // Copia indipendente della partita (per le simulazioni del computer difficile).
+  clone() {
+    const c = Object.create(Game.prototype);
+    Object.assign(c, this);
+    c.players = this.players.map((pl) => ({ name: pl.name, deck: pl.deck.slice(), hand: pl.hand.slice(), bf: { ...pl.bf }, gy: { ...pl.gy } }));
+    c.pending = this.pending && { ...this.pending };
+    c.resolving = this.resolving && { ...this.resolving };
+    c.choice = this.choice && { ...this.choice, options: this.choice.options.slice() };
+    c.events = []; c.log = []; c.quiet = true; c.rng = Math.random;
+    return c;
+  }
+
   opp(p) { return 1 - p; }
   name(p) { return this.players[p].name; }
-  emit(ev) { this.events.push({ ev, views: [this.view(0), this.view(1)] }); }
+  // quiet: partita simulata dal computer difficile, niente eventi né registro
+  emit(ev) { if (!this.quiet) this.events.push({ ev, views: [this.view(0), this.view(1)] }); }
   takeEvents() { const e = this.events; this.events = []; return e; }
 
   // Chi deve agire adesso (o null).
@@ -85,7 +105,7 @@ class Game {
     else this.doChoose(p, this.choice.options[Math.floor(this.rng() * this.choice.options.length)]);
   }
 
-  addLog(text) { this.log.push(text); if (this.log.length > 200) this.log.shift(); }
+  addLog(text) { if (this.quiet) return; this.log.push(text); if (this.log.length > 200) this.log.shift(); }
 
   draw(p, silent) {
     const pl = this.players[p];
@@ -100,6 +120,11 @@ class Game {
   }
 
   beginTurn(p) {
+    if (this.turnLimit && this.turn >= this.turnLimit.turn) {
+      const l = this.turnLimit.loser;
+      this.endGame(this.opp(l), 'limit', `${this.name(l)} non ha vinto entro il turno ${this.turnLimit.turn}.`);
+      return;
+    }
     this.active = p;
     this.turn++;
     this.landPlayed = false;
@@ -147,7 +172,7 @@ class Game {
 
   hasWon(p) {
     const bf = this.players[p].bf;
-    return TYPES.every((t) => bf[t] > 0) || TYPES.some((t) => bf[t] >= 5);
+    return (!this.onlyFive[p] && TYPES.every((t) => bf[t] > 0)) || TYPES.some((t) => bf[t] >= 5);
   }
 
   endGame(winner, reason, text) {
@@ -404,7 +429,7 @@ class Game {
       resolving: this.resolving ? { ...this.resolving } : null,
       choice: null,
       winner: this.winner, endReason: this.endReason, endText: this.endText || '',
-      firstPlayer: this.firstPlayer,
+      firstPlayer: this.firstPlayer, onlyFive: !!this.onlyFive[p], turnLimit: this.turnLimit ? this.turnLimit.turn : null,
       log: this.log.slice(-60),
     };
     if (this.choice) {

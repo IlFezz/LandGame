@@ -74,6 +74,16 @@ test('non gioca la Montagna a vuoto se ha di meglio', () => {
   assert.strictEqual(new Bot(g, 1).decide().card, 'G');
 });
 
+test('il difficile gioca solo mosse valide e trova la vittoria', () => {
+  const g = setup({ h1: ['R', 'G', 'U'], bf1: { W: 1, U: 1, B: 1, R: 1 }, bf0: { G: 1 } });
+  botTurn(g);
+  assert.strictEqual(new Bot(g, 1, { level: 'hard', budget: 5 }).decide().card, 'G');
+  for (let i = 0; i < 6; i++) {
+    const g2 = new Game(['D', 'N']); const b = [new Bot(g2, 0, { level: 'hard', budget: 3 }), new Bot(g2, 1)];
+    while (g2.phase === 'playing') { const p = g2.actor(); ok(g2.act(p, b[p].decide())); }
+  }
+});
+
 test('batte quasi sempre un giocatore casuale', () => {
   let wins = 0;
   for (let i = 0; i < 300; i++) {

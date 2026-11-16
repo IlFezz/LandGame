@@ -7,17 +7,21 @@ const Stats = {
   cur: null, // la partita in corso
   // Due gruppi di statistiche separati: contro il computer ('cpu') e contro altri giocatori ('pvp').
   bucket: () => ({ played: 0, won: 0, lost: 0, draw: 0, streak: 0, best: 0, fastest: 0, counters: 0, destroyed: 0,
-    lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, winBy: { domain: 0, five: 0, cards: 0 }, modes: { easy: { p: 0, w: 0 }, normal: { p: 0, w: 0 } } }),
+    lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, winBy: { domain: 0, five: 0, cards: 0 }, modes: { easy: { p: 0, w: 0 }, normal: { p: 0, w: 0 }, hard: { p: 0, w: 0 } } }),
   blank() { return { tutorial: false, since: Date.now(), cpu: this.bucket(), pvp: this.bucket() }; },
   keyOf: (name) => String(name || '').trim().toLowerCase() || 'giocatore',
   all() { return ls.get('stats', {}); },
   save(all) { ls.set('stats', all); },
   // i salvataggi di prima avevano un solo gruppo: va tutto nel computer, tranne le partite con amici
   migrate(o) {
-    if (!o || o.cpu) return { ...this.blank(), ...o, cpu: { ...this.bucket(), ...(o && o.cpu) }, pvp: { ...this.bucket(), ...(o && o.pvp) } };
+    if (!o || o.cpu) {
+      const cpu = { ...this.bucket(), ...(o && o.cpu) };
+      cpu.modes = { ...this.bucket().modes, ...cpu.modes };
+      return { ...this.blank(), ...o, cpu, pvp: { ...this.bucket(), ...(o && o.pvp) } };
+    }
     const f = (o.modes && o.modes.friend) || { p: 0, w: 0 };
     const cpu = { ...this.bucket(), ...o, played: (o.played || 0) - f.p, won: (o.won || 0) - f.w, lost: Math.max(0, (o.lost || 0) - (f.p - f.w)),
-      modes: { easy: (o.modes && o.modes.easy) || { p: 0, w: 0 }, normal: (o.modes && o.modes.normal) || { p: 0, w: 0 } } };
+      modes: { easy: (o.modes && o.modes.easy) || { p: 0, w: 0 }, normal: (o.modes && o.modes.normal) || { p: 0, w: 0 }, hard: { p: 0, w: 0 } } };
     delete cpu.tutorial; delete cpu.since;
     const pvp = { ...this.bucket(), played: f.p, won: f.w, lost: f.p - f.w };
     return { tutorial: !!o.tutorial, since: o.since || Date.now(), cpu, pvp };
@@ -35,7 +39,8 @@ const Stats = {
 
   // chiamata per ogni evento della partita (anche quelli non animati)
   // la partita in corso resta salvata, così conta anche se l'app viene chiusa e riaperta a metà
-  fresh: () => ({ code: S.code, mode: !S.vsBot ? 'friend' : S.botLevel === 'easy' ? 'easy' : 'normal', tutorial: !!S.tutorial, lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, counters: 0, destroyed: 0 }),
+  fresh: () => ({ code: S.code, mode: !S.vsBot ? 'friend' : S.daily ? 'daily' : S.challenge ? 'challenge' : ['easy', 'hard'].includes(S.botLevel) ? S.botLevel : 'normal',
+    challenge: S.challenge || null, daily: S.daily || null, tutorial: !!S.tutorial, lands: { W: 0, U: 0, B: 0, R: 0, G: 0 }, counters: 0, cc: 0, destroyed: 0 }),
   track(ev, game) {
     if (!game || !S) return;
     if (!this.cur) { const saved = ls.get('statsCur', null); this.cur = saved && saved.code === S.code ? saved : null; }
@@ -43,28 +48,41 @@ const Stats = {
     if (ev.type === 'deal') return ls.set('statsCur', this.cur);
     const c = this.cur, me = game.you;
     if (ev.type === 'play' && ev.player === me) c.lands[ev.card]++;
-    if (ev.type === 'counter' && ev.player === me) c.counters++;
+    if (ev.type === 'counter' && ev.player === me) { c.counters++; if (ev.n >= 2) c.cc++; }
     if (ev.type === 'destroy' && ev.by === me) c.destroyed++;
-    if (ev.type === 'end') { this.finish(ev, game); this.cur = null; ls.set('statsCur', null); }
+    if (ev.type === 'end') { ui.newGoals = this.finish(ev, game) || []; this.cur = null; ls.set('statsCur', null); }
     else if (ev.type === 'play' || ev.type === 'counter' || ev.type === 'destroy') ls.set('statsCur', c);
   },
   finish(ev, game) {
     const c = this.cur, name = game.me.name, all = this.load(name);
-    if (c.tutorial) { all.tutorial = true; return this.store(name, all); }
+    if (c.tutorial) { all.tutorial = true; this.store(name, all); return []; }
+    const won = ev.winner === game.you;
+    const five = TYPES.find((t) => game.me.bf[t] >= 5);
+    const how = game.endReason === 'cards' ? 'cards' : five ? 'five' : 'domain';
+    // sfide: si registra il record (meno turni), le statistiche normali restano pulite
+    if (c.mode === 'daily' || c.mode === 'challenge') {
+      const book = c.mode === 'daily' ? (all.daily = all.daily || {}) : (all.challenges = all.challenges || {});
+      const key = c.mode === 'daily' ? c.daily : c.challenge;
+      if (won && (!book[key] || game.turn < book[key])) book[key] = game.turn;
+      const got = Goals.check(all, { won, how, fiveOf: five, turn: game.turn, mode: c.mode, cur: c });
+      this.store(name, all);
+      return got;
+    }
     const s = c.mode === 'friend' ? all.pvp : all.cpu;
-    const won = ev.winner === game.you, draw = ev.winner == null;
+    const draw = ev.winner == null;
     s.played++;
     if (s.modes[c.mode]) s.modes[c.mode].p++;
     if (draw) { s.draw++; s.streak = 0; }
     else if (won) {
       s.won++; if (s.modes[c.mode]) s.modes[c.mode].w++; s.streak++; s.best = Math.max(s.best, s.streak);
-      const how = game.endReason === 'cards' ? 'cards' : Object.values(game.me.bf).some((n) => n >= 5) ? 'five' : 'domain';
       s.winBy[how]++;
       if (!s.fastest || game.turn < s.fastest) s.fastest = game.turn;
     } else { s.lost++; s.streak = 0; }
     for (const t in c.lands) s.lands[t] += c.lands[t];
     s.counters += c.counters; s.destroyed += c.destroyed;
+    const got = Goals.check(all, { won, how, fiveOf: five, turn: game.turn, mode: c.mode, cur: c });
     this.store(name, all);
+    return got;
   },
 
   // ---------- trasferimento ----------
@@ -92,7 +110,7 @@ const Stats = {
     const total = all.cpu.played + all.pvp.played;
     const initial = esc((all.name || '?').trim().charAt(0).toUpperCase() || '?');
     const results = side === 'cpu'
-      ? `<h4>Vittorie</h4><ul class="srows"><li><span>Facile</span><b>${s.modes.easy.w}<small> / ${s.modes.easy.p}</small></b></li><li><span>Normale</span><b>${s.modes.normal.w}<small> / ${s.modes.normal.p}</small></b></li><li><span>Sconfitte</span><b>${s.lost}</b></li></ul>`
+      ? `<h4>Vittorie</h4><ul class="srows"><li><span>Facile</span><b>${s.modes.easy.w}<small> / ${s.modes.easy.p}</small></b></li><li><span>Normale</span><b>${s.modes.normal.w}<small> / ${s.modes.normal.p}</small></b></li><li><span>Difficile</span><b>${s.modes.hard.w}<small> / ${s.modes.hard.p}</small></b></li></ul>`
       : `<h4>Risultati</h4><ul class="srows"><li><span>Vinte</span><b>${s.won}</b></li><li><span>Perse</span><b>${s.lost}</b></li><li><span>Pari</span><b>${s.draw}</b></li></ul>`;
     return `<div class="prof">
       <div class="prof-head"><div class="avatar">${initial}</div><div class="who2"><h2>${esc(all.name)}</h2>

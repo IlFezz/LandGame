@@ -35,7 +35,7 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 ## Grafica
 
 - Stile **Atlante**: ogni terra è una tavola di un atlante vista dall'alto, in carta ritagliata a strati; il tavolo è una carta nautica con le curve di livello e al centro c'è una rosa dei venti, che fa un quinto di giro a ogni terra giocata.
-- Due tavoli, a scelta nella Collezione: **Notte** (predefinito) e **Giorno**.
+- Tavoli, a scelta nella Collezione: **Notte** (predefinito) e **Giorno**, più **Pergamena** e **Corallo** da sbloccare con gli obiettivi. Dorsi: Bussola, Meridiani e Correnti, più Sestante, Radici, Maree e Stelle da sbloccare.
 - Tutti i disegni (terre, simboli, rosa, dorso, sfondo) sono SVG generati all'avvio da `public/art.js`: nessuna immagine da scaricare. Per cambiarli si modifica quel file.
 - Caratteri: TeX Gyre Adventor (licenza GUST) e Lora corsivo (licenza OFL), ridotti ai soli segni necessari con `tools/make_fonts.py` e salvati in `public/fonts/`.
 - Effetti (`public/fx.js`): figurine animate solo con `transform` e `opacity` più un canvas a bassa risoluzione per la polvere, con un tetto alle particelle. Ogni terra ha il suo ingresso: sole e pula per la Pianura, marea per l'Isola, fuochi fatui per la Palude, crepa e faville per la Montagna, alberi che spuntano per la Foresta. Una terra distrutta si strappa in frammenti di carta, una terra contrastata riceve il timbro "Annullata", la vittoria accende le cinque terre sulla rosa dei venti. Dal menu si può passare a "Effetti ridotti"; sui dispositivi lenti la riduzione parte da sola.
@@ -48,13 +48,16 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - **Tutorial giocabile** ("Impara a giocare" nella home): una partita guidata di 13 turni contro il Maestro, con mazzi preparati. Spiega tavolo, mano, mazzo, cimitero, turno, l'effetto di ogni terra, il contrasto (serve un'Isola in mano, l'Isola si sceglie da sola, la seconda carta è libera) e il passaggio di turno. Il Maestro gioca solo dopo «Avanti»; «Indietro» rilegge i passaggi già visti; la carta da usare è sollevata con l'etichetta «Gioca questa» e le altre sono spente.
 - **Schermo intero**: pulsante giallo sempre presente in cima alla home e al menu, per entrare e uscire. La scelta viene ricordata: se l'ultima volta eri a schermo intero, ci si torna al primo tocco. Su iPhone, dove il browser non lo permette, spiega come installare l'app.
 - **Home a schede** (barra in basso; sul telefono in orizzontale una colonna a sinistra):
-  - **Gioca**: modalità contro il computer o con un amico, nome, schermo intero e musica.
+  - **Gioca**: modalità contro il computer (facile, normale, difficile) o con un amico, nome, schermo intero e musica.
+  - **Sfide**: la sfida del giorno (stessa partenza per tutti, decisa dalla data: si cerca di vincere nel minor numero di turni) e sei sfide a tema (Cinque uguali, In svantaggio, Senza Isole, Mano corta, Corsa entro il turno 14, Duello contro il difficile). I record restano nel profilo e non toccano le statistiche normali.
   - **Profilo**: percentuale di vittorie, vittorie, serie migliore, vittoria più rapida, terre giocate, vittorie per modalità e per tipo, contrasti e terre distrutte; profili salvati e codice di trasferimento in una finestra a parte.
-  - **Collezione**: tavolo (Notte/Giorno) e dorso delle carte (Bussola, Meridiani, Correnti).
+  - **Collezione**: tavolo e dorso delle carte; quelli con il lucchetto si sbloccano con gli obiettivi. Da qui si apre l'elenco dei 15 **obiettivi** (`public/goals.js`), controllati a fine partita e salvati nel profilo.
   - **Impara**: tutorial, promemoria delle cinque terre, regole complete.
   - Le schede scorrono di lato; il foglio ha sempre la stessa altezza, quindi niente salti. Entrare in partita e tornare alla home ha un passaggio animato.
 - **Statistiche** (scheda Profilo e menu in partita), separate tra partite contro il computer e contro altri giocatori: partite, vittorie per modalità, come vinci, terre giocate, contrasti, serie migliore. Restano sul dispositivo, una scheda per ogni nome usato; un codice di trasferimento le copia su un altro dispositivo.
-- **Computer**, livello facile o normale. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste.
+- **Computer**, livello facile, normale o difficile. Il normale: valuta ogni giocata, contrasta solo quando conviene (sempre se l'avversario sta per vincere), sceglie bersagli sensati e non sbircia le carte nascoste. Il difficile prova ogni mossa possibile in tante partite simulate (circa 120 ms per decisione), immaginando le carte nascoste in modo compatibile con quelle già uscite, e sceglie quella che vince più spesso: batte il normale circa 7 volte su 10.
+- **Anteprima della carta**: tenendo premuta una carta (in mano, in campo, nel cimitero, al centro o nella mano rivelata dalla Palude) la vedi in grande con il suo effetto; rilasciando si chiude.
+- **Reazioni rapide**: sei frasi predefinite (Ciao!, Bella mossa, Ops, Ci penso…, Fortuna!, Bella partita) dal pulsante a fumetto in alto; compaiono accanto al nome. Niente chat libera, una ogni 1,5 secondi, disattivabili dal menu. Anche il computer ogni tanto risponde.
 - Home essenziale: si sceglie la modalità e le opzioni (difficoltà, tempo per turno) compaiono sotto.
 - Musica ambient di sottofondo generata al momento, disattivabile dalla home e dal menu.
 - Su PC e tablet il gioco usa tutto lo schermo: carte e campo più grandi, scorciatoie da tastiera (P passa, Esc annulla, M menu).
@@ -71,16 +74,16 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - Spiegazioni sulla plancia attive di default; si spengono dal menu con "Info nella plancia". Se non puoi contrastare, la terra avversaria risolve da sola.
 - Contrasto guidato: si vede quale Isola e quale seconda carta verranno scartate e cosa succede ("Isola + Foresta = Palude annullata").
 - Testi degli effetti scritti dal punto di vista di chi guarda ("Se risolve, Marco guarderà la tua mano…").
-- Menu in partita: schermo intero (in cima), comandi (trascina/tocca), effetti grafici (completi/ridotti, predefiniti completi), info nella plancia (attive di default), musica, effetti sonori, vibrazione, registro, regole, statistiche e il grande pulsante rosso «Esci dalla partita». Le animazioni hanno una sola velocità (lenta).
+- Menu in partita: schermo intero (in cima), comandi (trascina/tocca), effetti grafici (completi/ridotti, predefiniti completi), info nella plancia (attive di default), musica, effetti sonori, vibrazione, reazioni rapide, registro, regole, statistiche e il grande pulsante rosso «Esci dalla partita». Le animazioni hanno una sola velocità (lenta).
 - Nessuno scorrimento e nessuna sovrapposizione: tutte le misure seguono l'altezza visibile vera (anche con le barre del browser visibili o entrando e uscendo dallo schermo intero); se al centro del tavolo lo spazio non basta, carta giocata, scritte e pulsanti si rimpiccioliscono insieme; home e menu si rimpiccioliscono se non ci stanno.
 
 ## Struttura
 
 - `game.js` – motore di gioco con tutte le regole (logica pura, testabile).
 - `bot.js` – giocatore computer.
-- `hub.js` – stanze, timer e mosse del computer; lo usano sia il server sia il browser (partite contro il computer e tutorial, con i mazzi preparati del tutorial).
+- `hub.js` – stanze, timer, mosse del computer, sfide e reazioni; lo usano sia il server sia il browser (partite contro il computer, sfide e tutorial, con i mazzi preparati del tutorial).
 - `server.js` – server HTTP + WebSocket; serve anche `game.js`, `bot.js` e `hub.js` al browser.
-- `public/` – client (HTML/CSS/JS), tutorial (`tutorial.js`), statistiche (`stats.js`), disegni (`art.js`), effetti (`fx.js`), caratteri (`fonts/`), manifest e service worker.
+- `public/` – client (HTML/CSS/JS), tutorial (`tutorial.js`), statistiche (`stats.js`), obiettivi (`goals.js`), disegni (`art.js`), effetti (`fx.js`), caratteri (`fonts/`), manifest e service worker.
 - `tools/make_fonts.py`, `tools/make_icons.py` – riducono i caratteri e generano le icone.
 - `preview-stili/` – le anteprime grafiche usate per scegliere lo stile (non fanno parte del gioco).
 - `test/` – test delle regole, test end-to-end con due client, timer, computer e tutorial.

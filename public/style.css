@@ -607,3 +607,111 @@ body.low-fx .card.floating, body.auto-low .card.floating { animation: none; tran
 body.low-fx .target, body.low-fx .card.staged, body.auto-low .target, body.auto-low .card.staged { animation: none; }
 body.low-fx #altar.cast { animation: none; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .sp { display: none; } }
+
+/* =====================================================================
+   Tavoli da sbloccare
+   ===================================================================== */
+html[data-theme="pergamena"] { --tavolo: #ecdfc2; --tavolo2: #d6c299; --testo: #3a2a18; --muto: #7a6446; --riga: #3a2a1847; --topo: var(--topo-p); --rosa: var(--rose-p); --ombra: #3a2a1852; }
+html[data-theme="corallo"] { --tavolo: #4c201c; --tavolo2: #2c1110; --testo: #f6e7dc; --muto: #c9a092; --riga: #f4d9cc45; --topo: var(--topo-c); --rosa: var(--rose-c); --ombra: #0009; }
+.tt-pergamena .tt-prev { background: var(--topo-p) center / cover, radial-gradient(120% 90% at 50% 38%, #ecdfc2, #d6c299); box-shadow: inset 0 0 0 1px #3a2a1826; }
+.tt-corallo .tt-prev { background: var(--topo-c) center / cover, radial-gradient(120% 90% at 50% 38%, #4c201c, #2c1110); }
+.tt-pergamena .tt-prev i { background-image: var(--rose-p); } .tt-corallo .tt-prev i { background-image: var(--rose-c); }
+
+/* Collezione: quattro per riga, lucchetti sui premi non ancora sbloccati */
+.tiles.four { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tiles.four .tile { padding: 6px 4px 7px; gap: 5px; font-size: 12px; }
+.tiles.four .tt-prev { aspect-ratio: 1.15; }
+.tiles.four .bk-prev { width: 56%; }
+.tile.locked { color: #17262d80; }
+.tile.locked .tt-prev, .tile.locked .bk-prev { filter: grayscale(.85) brightness(.75); }
+.tt-prev, .bk-prev { position: relative; }
+.lock { position: absolute; inset: 0; display: grid; place-items: center; filter: none; }
+.lock svg { width: 22px; height: 22px; padding: 4px; border-radius: 50%; background: var(--carta); fill: none; stroke: var(--ink); stroke-width: 2; box-shadow: 0 2px 6px #17262d55; }
+.goalsbtn { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-radius: 12px; background: var(--ink); color: var(--carta); text-align: left; margin-top: auto; }
+.goalsbtn span { display: flex; flex-direction: column; gap: 2px; }
+.goalsbtn b { font: 700 16px/1.2 var(--sans); }
+.goalsbtn small { font: italic 500 13px/1.25 var(--serif); opacity: .8; }
+.goalsbtn em { font: 700 15px var(--sans); font-style: normal; color: var(--ink); background: var(--segnale); padding: 4px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+
+/* Obiettivi e sfide: elenco con segno di spunta */
+.goallist, .chlist { list-style: none; margin: 0; padding: 0; }
+.goallist li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0 !important; }
+.gmark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px #17262d40; font: 700 14px var(--sans); }
+.got .gmark { background: var(--ink); color: var(--segnale); box-shadow: none; }
+.gtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gtext b { font: 700 15px/1.25 var(--sans); }
+.gtext small { font: italic 500 13.5px/1.3 var(--serif); opacity: .75; }
+.gtext em { font-style: normal; font-weight: 700; opacity: 1; }
+.goallist li:not(.got) .gtext { opacity: .8; }
+
+.daily { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center; padding: 14px 15px; border-radius: 14px; background: var(--ink); color: var(--carta); }
+.dl-text b { display: block; font: 700 17px/1.2 var(--sans); }
+.dl-text small { display: block; margin-top: 3px; font: italic 500 13.5px/1.3 var(--serif); opacity: .8; }
+.dl-text small::first-letter { text-transform: uppercase; }
+.daily .done { font: 700 12px var(--sans); color: var(--ink); background: var(--segnale); padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+.daily .btn.primary { --fill: var(--segnale); --on: var(--ink); grid-column: 1 / -1; box-shadow: 0 3px 0 var(--segnale2); }
+.h4n { font-variant-numeric: tabular-nums; margin-left: 4px; }
+.chlist { display: flex; flex-direction: column; }
+.ch { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1.5px solid #17262d1a; text-align: left; color: var(--ink); }
+.ch .gtext { flex: 1; }
+.ch .gtext b { font-size: 14.5px; } .ch .gtext small { font-size: 12.5px; line-height: 1.25; }
+.ch em { flex: none; font: 700 12px var(--sans); font-style: normal; opacity: .7; white-space: nowrap; }
+.ch .chev { flex: none; font-size: 22px; line-height: 1; opacity: .45; }
+.ch:active { background: #17262d0d; }
+
+/* fine partita: record e obiettivi raggiunti */
+.recline { font: 700 15px/1.3 var(--sans) !important; font-style: normal !important; }
+.newgoals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.newgoals li { display: flex; flex-direction: column; gap: 1px; padding: 9px 12px; border-radius: 12px; background: var(--ink); color: var(--carta); text-align: left; animation: pop .4s .2s cubic-bezier(.2, .9, .3, 1.2) both; }
+.newgoals b { font: 700 15px var(--sans); color: var(--segnale); }
+.newgoals small { font: italic 500 13.5px var(--serif); opacity: .85; }
+
+/* =====================================================================
+   Reazioni rapide
+   ===================================================================== */
+.topbar { position: relative; }
+.reactbtn { margin-left: auto; width: 40px; height: 32px; border-radius: 10px; border: 1.5px solid var(--riga); color: var(--testo); display: grid; place-items: center; }
+.reactbtn svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.reactbtn.on { background: var(--testo); color: var(--tavolo2); border-color: var(--testo); }
+.reactbtn + .menubtn { margin-left: 0; }
+.reactbar { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; width: min(330px, 92vw); padding: 8px; border-radius: 14px;
+  background: var(--carta); box-shadow: 0 12px 30px var(--ombra); animation: pop .2s cubic-bezier(.2, .9, .3, 1.1); transform-origin: top right; }
+.reactbar button { padding: 8px 12px; border-radius: 999px; background: #fffaf0; box-shadow: inset 0 0 0 1.5px #17262d33; color: var(--ink); font: 700 14px var(--sans); }
+.reactbar button:active { background: var(--ink); color: var(--carta); }
+.rbubble { position: fixed; z-index: 55; max-width: 70vw; padding: 7px 13px; border-radius: 14px; background: var(--carta); color: var(--ink); font: 700 15px var(--sans); white-space: nowrap;
+  box-shadow: 0 8px 22px var(--ombra); pointer-events: none; animation: bubin .3s cubic-bezier(.2, .9, .3, 1.3) both; transition: opacity .35s, transform .35s; }
+.rbubble.me { transform: translateY(-100%); }
+.rbubble::before { content: ""; position: absolute; left: 16px; width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
+.rbubble.opp::before { top: -4px; } .rbubble.me::before { bottom: -4px; }
+.rbubble.out { opacity: 0; }
+@keyframes bubin { from { opacity: 0; scale: .7; } }
+@media (min-aspect-ratio: 11/10) and (min-height: 521px) {
+  .reactbtn { width: max(44px, calc(6 * var(--vh))); height: max(36px, calc(4.8 * var(--vh))); }
+  .reactbtn svg { width: max(19px, calc(2.6 * var(--vh))); height: max(19px, calc(2.6 * var(--vh))); }
+}
+@media (min-aspect-ratio: 11/10) and (max-height: 520px) { .reactbtn { width: 38px; height: 28px; } }
+
+/* =====================================================================
+   Anteprima della carta (tenendola premuta)
+   ===================================================================== */
+.peek { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; pointer-events: none;
+  background: color-mix(in srgb, var(--tavolo2) 72%, transparent); animation: fade .18s; transition: opacity .18s; }
+.peek.out { opacity: 0; }
+.peekbox { display: flex; flex-direction: column; align-items: center; gap: 14px; animation: pop .22s cubic-bezier(.2, .9, .3, 1.15); }
+.peek .card.peekcard { --w: min(62vw, calc(44 * var(--vh)), 300px); width: var(--w); height: calc(var(--w) * 1.4); font-size: calc(var(--w) / 10); box-shadow: 0 24px 50px var(--ombra); transform: none; position: relative; }
+.peektext { max-width: min(86vw, 360px); padding: 12px 16px; border-radius: 14px; background: var(--carta); color: var(--ink); text-align: center; box-shadow: 0 10px 26px var(--ombra); }
+.peektext b { display: block; font: 700 19px/1.2 var(--sans); }
+.peektext p { margin: 4px 0 6px; font: italic 500 15px/1.35 var(--serif); }
+.peektext small { font: 700 12.5px var(--sans); opacity: .6; }
+@media (min-aspect-ratio: 11/10) { .peekbox { flex-direction: row; } .peektext { text-align: left; } .peek .card.peekcard { --w: min(calc(34 * var(--vh)), 300px); } }
+@media (min-aspect-ratio: 11/10) and (max-height: 520px) {
+  .pane-collection > .goalsbtn { grid-column: 1 / -1; grid-row: 4; margin-top: 4px; }
+  .pane-collection > h4:nth-of-type(1) { grid-column: 1; grid-row: 2; } .pane-collection > .tiles:nth-of-type(1) { grid-column: 1; grid-row: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pane-collection > h4:nth-of-type(2) { grid-column: 2; grid-row: 2; } .pane-collection > .tiles:nth-of-type(2) { grid-column: 2; grid-row: 3; }
+  .pane-collection > .tiles:nth-of-type(1) .tt-prev { aspect-ratio: 1.9; }
+  .tiles.four .tt-prev { aspect-ratio: 1.3; }
+  .pane-challenges { display: grid; grid-template-columns: 1fr 1.3fr; gap: 10px 24px; align-content: start; }
+  .pane-challenges > .pane-title, .pane-challenges > .daily { grid-column: 1; }
+  .pane-challenges > h4 { grid-column: 2; grid-row: 1; align-self: end; } .pane-challenges > .chlist { grid-column: 2; grid-row: 2 / 4; }
+  .ch { padding: 4px 2px; } .ch .gtext small { display: none; }
+}

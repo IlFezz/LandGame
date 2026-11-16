@@ -133,15 +133,46 @@ const ATL = (() => {
       let s = `<rect width="100" height="140" fill="#123a35"/><g fill="none" stroke="#bfe3d2" stroke-width=".6" stroke-linecap="round">`;
       for (let i = 0; i < 17; i++) { const y = 6 + i * 8; let d = `M-4 ${y}`; for (let x = -4; x <= 104; x += 6) d += `L${x} ${(y + Math.sin(x / 13 + i * 0.55) * 3.2).toFixed(2)}`; s += `<path d="${d}" opacity="${(0.18 + 0.3 * Math.abs(Math.sin(i * 0.7))).toFixed(2)}"/>`; }
       return s + `</g><circle cx="50" cy="70" r="15" fill="#123a35" stroke="#f4eddd" stroke-width=".8"/><g transform="translate(36.5 56.5) scale(.135)">${rose('#f4eddd')}</g>`; } },
+    // --- dorsi da sbloccare con gli obiettivi ---
+    // un sestante: arco graduato e due specchi
+    { id: 'sestante', name: 'Sestante', lock: 'prima', svg() {
+      let s = `<rect width="100" height="140" fill="#2a2433"/><g fill="none" stroke="#f0d79a" stroke-linecap="round">`;
+      s += `<path d="M18 100 A38 38 0 0 1 82 100" stroke-width="1.2" opacity=".8"/><path d="M24 98 A32 32 0 0 1 76 98" stroke-width=".5" opacity=".5"/>`;
+      for (let i = 0; i <= 24; i++) { const a = Math.PI * (1.12 + (i / 24) * 0.76), r0 = i % 6 ? 34 : 30; s += `<path d="M${50 + Math.cos(a) * r0} ${118 + Math.sin(a) * r0 - 18}L${50 + Math.cos(a) * 38} ${118 + Math.sin(a) * 38 - 18}" stroke-width=".5" opacity=".6"/>`; }
+      s += `<path d="M50 40L22 98M50 40L78 98M50 40L58 92" stroke-width="1" opacity=".75"/><circle cx="50" cy="40" r="4" stroke-width="1"/>`;
+      const q = rng(301);
+      for (let i = 0; i < 26; i++) s += `<circle cx="${(q() * 100).toFixed(1)}" cy="${(q() * 34 + 4).toFixed(1)}" r="${(q() * 0.7 + 0.25).toFixed(2)}" fill="#f0d79a" stroke="none" opacity=".7"/>`;
+      return s + `</g>`; } },
+    // anelli di un tronco, come curve di livello di un bosco
+    { id: 'radici', name: 'Radici', lock: 'cinqueforeste', svg() {
+      let s = `<rect width="100" height="140" fill="#163a2a"/><g fill="none" stroke="#b9dfa8" stroke-width=".7">`;
+      for (let i = 0; i < 11; i++) s += `<path d="${blob(50, 70, 46 * (1 - i / 11.5), 90 + i, 0.12)}" opacity="${(0.25 + (i % 3) * 0.12).toFixed(2)}"/>`;
+      return s + `</g><circle cx="50" cy="70" r="4" fill="#e9c46a"/>`; } },
+    // onde sotto la luna
+    { id: 'maree', name: 'Maree', lock: 'controcontrasto', svg() {
+      let s = `<rect width="100" height="140" fill="#0f2b4a"/><circle cx="50" cy="44" r="14" fill="#f4eddd" opacity=".9"/><circle cx="56" cy="40" r="12" fill="#0f2b4a"/><g fill="none" stroke="#9fd0ea" stroke-width=".8" stroke-linecap="round">`;
+      for (let i = 0; i < 9; i++) { const y = 74 + i * 7.5; let d = `M-4 ${y}`; for (let x = -4; x <= 104; x += 4) d += `L${x} ${(y + Math.sin(x / 7 + i) * 2).toFixed(2)}`; s += `<path d="${d}" opacity="${(0.25 + i * 0.07).toFixed(2)}"/>`; }
+      return s + `</g>`; } },
+    // costellazioni su una carta celeste
+    { id: 'stelle', name: 'Stelle', lock: 'giorno', svg() {
+      let s = `<rect width="100" height="140" fill="#14182e"/><g fill="#f4eddd">`;
+      const q = rng(707);
+      for (let i = 0; i < 70; i++) s += `<circle cx="${(q() * 100).toFixed(1)}" cy="${(q() * 140).toFixed(1)}" r="${(q() * 0.6 + 0.2).toFixed(2)}" opacity="${(0.3 + q() * 0.6).toFixed(2)}"/>`;
+      const pts = [[22, 30], [36, 42], [48, 36], [62, 52], [74, 46], [58, 74], [44, 92], [30, 104], [52, 114], [72, 108]];
+      s += `</g><path d="M${pts.slice(0, 5).join('L')}M62 52L58 74L44 92L30 104M44 92L52 114L72 108" fill="none" stroke="#f6c453" stroke-width=".6" opacity=".7"/>`;
+      return s + pts.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="#f6c453"/>`).join(''); } },
   ];
 
   const root = document.documentElement.style, ICO = {};
   for (const l of L) root.setProperty('--art-' + l, uri(MAPS[l](), '0 0 100 92', 'preserveAspectRatio="xMidYMid slice"'));
   for (const l of [...L, 'T']) { ICO[l] = uri(icon(l), '0 0 24 24'); root.setProperty('--ico-' + l, ICO[l]); }
   root.setProperty('--rose-n', uri(rose('#e3efe8'), '0 0 200 200')); root.setProperty('--rose-d', uri(rose('#17262d'), '0 0 200 200'));
+  // tavoli da sbloccare: pergamena antica e carta nautica rossa
+  root.setProperty('--rose-p', uri(rose('#5a3e22'), '0 0 200 200')); root.setProperty('--rose-c', uri(rose('#f4d9cc'), '0 0 200 200'));
+  root.setProperty('--topo-p', uri(topo('#5a3e22', 0.09), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"')); root.setProperty('--topo-c', uri(topo('#f4d9cc', 0.08), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"'));
   root.setProperty('--topo-n', uri(topo('#d6e8e0', 0.07), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"')); root.setProperty('--topo-d', uri(topo('#17262d', 0.07), '0 0 440 800', 'preserveAspectRatio="xMidYMid slice"'));
   for (const b of BACKS) root.setProperty('--bk-' + b.id, uri(b.svg(), '0 0 100 140', 'preserveAspectRatio="xMidYMid slice"'));
   root.setProperty('--bk', 'var(--bk-bussola)');
 
-  return { L, COL, ICO, PAPER, INK, blob, uri, rng, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
+  return { L, COL, ICO, PAPER, INK, blob, uri, rng, BACKS: BACKS.map(({ id, name, lock }) => ({ id, name, lock: lock || null })) };
 })();

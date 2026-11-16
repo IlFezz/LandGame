@@ -24,6 +24,11 @@ const LONG_FX = {
   G: 'Riprendi in mano una terra dal tuo cimitero.',
 };
 const TURN_OPTIONS = [30, 45, 60, 90, 0];
+const THEMES = [['notte', 'Notte'], ['giorno', 'Giorno'], ['pergamena', 'Pergamena'], ['corallo', 'Corallo']];
+const THEME_COLOR = { notte: '#0a232b', giorno: '#cbd8d4', pergamena: '#d8c6a0', corallo: '#2c1110' };
+const LEVELS = [['easy', 'Facile'], ['normal', 'Normale'], ['hard', 'Difficile']];
+// premio sbloccato dal profilo con cui giochi?
+const owns = (kind, id) => { try { return Goals.unlocked(Stats.load(ls.get('name2', '')), kind, id); } catch { return true; } };
 const SPEEDS = { slow: 1.5, medium: 1, fast: 0.6 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -45,11 +50,13 @@ const prefs = {
   get turnTime() { return ls.get('turnTime', 60); }, set turnTime(v) { ls.set('turnTime', v); },
   get controls() { return ls.get('controls', 'drag'); }, set controls(v) { ls.set('controls', v); },
   get info() { return ls.get('info2', true); }, set info(v) { ls.set('info2', v); },
-  get back() { const v = ls.get('back', 'bussola'); return ATL.BACKS.some((b) => b.id === v) ? v : 'bussola'; }, set back(v) { ls.set('back', v); },
-  get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
+  // dorsi e tavoli da sbloccare valgono solo se il profilo attuale li ha sbloccati
+  get back() { const v = ls.get('back', 'bussola'); return ATL.BACKS.some((b) => b.id === v) && owns('back', v) ? v : 'bussola'; }, set back(v) { ls.set('back', v); },
+  get theme() { const v = ls.get('theme', 'notte'); return THEMES.some((t) => t[0] === v) && owns('table', v) ? v : 'notte'; }, set theme(v) { ls.set('theme', v); },
+  get react() { return ls.get('react', true); }, set react(v) { ls.set('react', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
-  get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
+  get level() { const v = ls.get('level', 'normal'); return LEVELS.some((l) => l[0] === v) ? v : 'normal'; }, set level(v) { ls.set('level', v); },
   // la velocità delle animazioni è fissa (lenta); 'speedDev' serve solo ai test automatici
   get speed() { const v = ls.get('speedDev', 'slow'); return SPEEDS[v] ? v : 'slow'; },
 };
@@ -228,7 +235,7 @@ function applyPrefs() {
   document.documentElement.dataset.theme = prefs.theme;
   document.documentElement.style.setProperty('--bk', `var(--bk-${prefs.back})`);
   const tc = document.querySelector('meta[name="theme-color"]');
-  if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
+  if (tc) tc.content = THEME_COLOR[prefs.theme];
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -394,6 +401,8 @@ function onMessage(m) {
       send({ t: 'prefs', speed: SPEEDS[prefs.speed] });
     } else if (m.t === 'state') {
       inbox.push(m); pump();
+    } else if (m.t === 'react') {
+      Reacts.show(m.seat, m.i);
     } else if (m.t === 'error') {
       toast(m.msg);
       if (/non trovata/.test(m.msg) || (/piena/.test(m.msg) && !S)) { prefs.session = null; S = null; G = null; render(); }
@@ -449,6 +458,10 @@ async function pump() {
     S = meta;
     if (steps && steps.length && drag) cancelDrag(true);
     if (steps) for (const st of steps) Stats.track(st.ev, st.game);
+    if (steps && steps.some((st) => st.ev.type === 'deal') && S.challenge) {
+      const ch = BLGHub.CHALLENGES.find((c) => c.id === S.challenge);
+      if (ch) setTimeout(() => toast(ch.desc, true), 600);
+    }
     const animate = steps && steps.length && !document.hidden && inbox.length < 3 && !reduceMotion;
     if (animate) {
       ui.animating = true;
@@ -503,9 +516,10 @@ function render() {
 }
 
 // ---------- Home: quattro schede (Gioca, Profilo, Collezione, Impara) ----------
-const TABS = [['play', 'Gioca'], ['profile', 'Profilo'], ['collection', 'Collezione'], ['learn', 'Impara']];
+const TABS = [['play', 'Gioca'], ['challenges', 'Sfide'], ['profile', 'Profilo'], ['collection', 'Collezione'], ['learn', 'Impara']];
 const TAB_ICON = {
   play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  challenges: '<path d="M6 21V4"/><path d="M6 4.5c4-2 7 2 12 0v9c-5 2-8-2-12 0"/>',
   profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5"/>',
   collection: '<rect x="8" y="3" width="11" height="15" rx="2"/><path d="M5 7v12a2 2 0 0 0 2 2h9"/>',
   learn: '<path d="M3.5 5.5c3-1.5 5.8-1 8.5 1 2.7-2 5.5-2.5 8.5-1V19c-3-1.5-5.8-1-8.5 1-2.7-2-5.5-2.5-8.5-1z"/><path d="M12 6.5V20"/>',
@@ -513,14 +527,36 @@ const TAB_ICON = {
 const tabIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICON[id]}</svg>`;
 
 function collectionHtml() {
-  const theme = (id, label) => `<button class="tile table-tile tt-${id} ${prefs.theme === id ? 'on' : ''}" data-theme-pick="${id}"><span class="tt-prev"><i></i></span><b>${label}</b></button>`;
+  const all = Stats.load(prefs.name), got = all.goals || {};
+  const lockOf = (kind, id) => { const g = Goals.lockFor(kind, id); return g && !got[g.id] ? g : null; };
+  const lockTag = (g) => g ? `<span class="lock" title="${esc(g.desc)}"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>` : '';
+  const theme = ([id, label]) => { const lk = lockOf('table', id);
+    return `<button class="tile table-tile tt-${id} ${prefs.theme === id ? 'on' : ''} ${lk ? 'locked' : ''}" data-theme-pick="${id}" ${lk ? `data-lock="${lk.id}"` : ''}><span class="tt-prev"><i></i>${lockTag(lk)}</span><b>${label}</b></button>`; };
+  const back = (b) => { const lk = lockOf('back', b.id);
+    return `<button class="tile back-tile ${prefs.back === b.id ? 'on' : ''} ${lk ? 'locked' : ''}" data-back="${b.id}" ${lk ? `data-lock="${lk.id}"` : ''}><span class="bk-prev" style="background-image:var(--bk-${b.id})">${lockTag(lk)}</span><b>${b.name}</b></button>`; };
+  const n = Goals.LIST.filter((g) => got[g.id]).length;
   return `<h2 class="pane-title">Collezione</h2>
-    <p class="pane-sub">Scegli il tavolo e il dorso delle carte.</p>
     <h4>Tavolo</h4>
-    <div class="tiles">${theme('notte', 'Notte')}${theme('giorno', 'Giorno')}</div>
+    <div class="tiles four">${THEMES.map(theme).join('')}</div>
     <h4>Dorso delle carte</h4>
-    <div class="tiles">${ATL.BACKS.map((b) => `<button class="tile back-tile ${prefs.back === b.id ? 'on' : ''}" data-back="${b.id}"><span class="bk-prev" style="background-image:var(--bk-${b.id})"></span><b>${b.name}</b></button>`).join('')}</div>
-    <p class="pane-note">Altri tavoli e dorsi in arrivo.</p>`;
+    <div class="tiles four backs7">${ATL.BACKS.map(back).join('')}</div>
+    <button class="goalsbtn" id="goals"><span><b>Obiettivi</b><small>I lucchetti si aprono raggiungendo gli obiettivi</small></span><em>${n}/${Goals.LIST.length}</em></button>`;
+}
+
+// Sfida del giorno e sfide a tema (tutto nel browser, anche offline)
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function challengesHtml() {
+  const all = Stats.load(prefs.name), day = today(), best = all.daily && all.daily[day], done = all.challenges || {};
+  const nice = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const doneN = BLGHub.CHALLENGES.filter((c) => done[c.id]).length;
+  return `<h2 class="pane-title">Sfide</h2>
+    <div class="daily"><div class="dl-text"><b>Sfida del giorno</b><small>${nice}: stessa partenza per tutti, vinci nel minor numero di turni.</small></div>
+      ${best ? `<span class="done">Record: turno ${best}</span>` : ''}
+      <button class="btn primary" data-daily="${day}">${best ? 'Riprova' : 'Gioca la sfida'}</button></div>
+    <h4>Sfide a tema <span class="h4n">${doneN}/${BLGHub.CHALLENGES.length}</span></h4>
+    <ul class="chlist">${BLGHub.CHALLENGES.map((c) => `<li><button class="ch ${done[c.id] ? 'got' : ''}" data-challenge="${c.id}">
+      <span class="gmark">${done[c.id] ? '✓' : ''}</span><span class="gtext"><b>${c.name}</b><small>${c.desc}</small></span>
+      ${done[c.id] ? `<em>turno ${done[c.id]}</em>` : '<span class="chev">›</span>'}</button></li>`).join('')}</ul>`;
 }
 
 function learnHtml() {
@@ -538,6 +574,8 @@ function learnHtml() {
 // Cambia scheda senza ridisegnare la home: le schede scorrono di lato e sfumano.
 function setTab(id) {
   if (id === (ui.tab || 'play')) return;
+  if (id === 'challenges') { const pc = $('.pane-challenges'); if (pc) { pc.innerHTML = challengesHtml(); bindChallenges(); } }
+  if (id === 'collection') { const pc = $('.pane-collection'); if (pc) { pc.innerHTML = collectionHtml(); bindCollection(); } }
   const order = TABS.map((t) => t[0]), ti = order.indexOf(id);
   ui.tab = id;
   if (id === 'profile') { const n = $('#name') && $('#name').value.trim(); if (n) prefs.name = n; const pp = $('.pane-profile'); if (pp) { pp.innerHTML = Stats.panel(prefs.name); Stats.bind(); } }
@@ -552,6 +590,28 @@ function setTab(id) {
   ui.prevTab = id;
   $$('.tab', app).forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
   Sound.play('click');
+}
+function bindChallenges() {
+  const go = (extra) => {
+    const n = ($('#name') && $('#name').value.trim()) || prefs.name;
+    if (!n) { setTab('play'); toast('Scrivi il tuo nome'); setTimeout(() => $('#name') && $('#name').focus(), 350); return; }
+    prefs.name = n;
+    send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed: SPEEDS[prefs.speed], ...extra });
+  };
+  $$('[data-daily]').forEach((b) => { b.onclick = () => go({ daily: b.dataset.daily }); });
+  $$('[data-challenge]').forEach((b) => { b.onclick = () => go({ challenge: b.dataset.challenge }); });
+}
+function bindCollection() {
+  const locked = (b) => { if (!b.dataset.lock) return false; const g = Goals.byId(b.dataset.lock); toast(`Si sblocca con l'obiettivo «${g.name}»: ${g.desc}`, true); Sound.play('deny'); return true; };
+  $$('[data-theme-pick]').forEach((b) => { b.onclick = () => { if (locked(b)) return; prefs.theme = b.dataset.themePick; applyPrefs(); Sound.play('click'); $$('[data-theme-pick]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  $$('[data-back]').forEach((b) => { b.onclick = () => { if (locked(b)) return; prefs.back = b.dataset.back; applyPrefs(); Sound.play('click'); $$('[data-back]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  const gb = $('#goals'); if (gb) gb.onclick = () => { ui.goals = true; Sound.play('click'); render(); };
+}
+function bindGoals() {
+  const ov = $('#goals-ov'); if (!ov) return;
+  const shut = () => { ui.goals = false; render(); };
+  ov.onclick = (e) => { if (e.target === ov) shut(); };
+  $('#goals-close').onclick = shut;
 }
 function bindLearn() {
   const t = $('#tutorial');
@@ -588,7 +648,7 @@ function renderLobby() {
       <button class="btn modebtn"><span class="mt"><b>Contro il computer</b><small>Anche senza connessione</small></span><span class="chev">▾</span></button>
       <div class="modebody"><div class="modeinner">
         <div class="field"><label>Difficoltà</label>
-          <div class="seg" data-group="lvl"><button data-lvl="easy" class="${prefs.level === 'easy' ? 'on' : ''}">Facile</button><button data-lvl="normal" class="${prefs.level !== 'easy' ? 'on' : ''}">Normale</button></div></div>
+          <div class="seg" data-group="lvl">${LEVELS.map(([v, l]) => `<button data-lvl="${v}" class="${prefs.level === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
         <div class="field"><label>Tempo per turno</label>${ttSeg}</div>
         <button class="btn primary" id="bot">Inizia la partita</button>
       </div></div>
@@ -607,17 +667,15 @@ function renderLobby() {
   <div class="lobby tabbed">
     <div class="panes">
       ${pane('play', 0, play)}
-      ${reconnecting ? '' : pane('profile', 1, Stats.panel(prefs.name)) + pane('collection', 2, collectionHtml()) + pane('learn', 3, learnHtml())}
+      ${reconnecting ? '' : pane('challenges', 1, challengesHtml()) + pane('profile', 2, Stats.panel(prefs.name)) + pane('collection', 3, collectionHtml()) + pane('learn', 4, learnHtml())}
     </div>
     ${reconnecting ? '' : `<nav class="tabs" aria-label="Sezioni">${TABS.map(([id, l]) => `<button class="tab ${id === tab ? 'on' : ''}" data-tab="${id}">${tabIcon(id)}<span>${l}</span></button>`).join('')}</nav>`}
-  </div>${ui.rules ? rulesHtml() : ''}${ui.transfer ? Stats.transferHtml() : ''}`;
+  </div>${ui.rules ? rulesHtml() : ''}${ui.transfer ? Stats.transferHtml() : ''}${ui.goals ? Goals.html(prefs.name) : ''}`;
   bindOverlays();
-  bindLearn();
+  bindLearn(); bindChallenges(); bindCollection(); bindGoals();
   $('#music').onclick = () => { setMusic(!prefs.music); $('#music').classList.toggle('off', !prefs.music); };
   if ($('#fullscreen')) $('#fullscreen').onclick = () => Full.toggle();
   $$('[data-tab]').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
-  $$('[data-theme-pick]').forEach((b) => { b.onclick = () => { prefs.theme = b.dataset.themePick; applyPrefs(); Sound.play('click'); $$('[data-theme-pick]').forEach((x) => x.classList.toggle('on', x === b)); }; });
-  $$('[data-back]').forEach((b) => { b.onclick = () => { prefs.back = b.dataset.back; applyPrefs(); Sound.play('click'); $$('[data-back]').forEach((x) => x.classList.toggle('on', x === b)); }; });
   if (reconnecting) {
     $('#forget').onclick = () => { prefs.session = null; render(); };
     return fitLobby();
@@ -636,7 +694,7 @@ function renderLobby() {
   const getName = () => { const n = $('#name').value.trim(); if (!n) { toast('Scrivi il tuo nome'); $('#name').focus(); return null; } prefs.name = n; return n; };
   const speed = SPEEDS[prefs.speed];
   // il nome si salva mentre lo scrivi: Profilo e statistiche lo seguono
-  $('#name').addEventListener('input', () => { const n = $('#name').value.trim(); if (n) prefs.name = n; });
+  $('#name').addEventListener('input', () => { const n = $('#name').value.trim(); if (n) { prefs.name = n; applyPrefs(); } });
   $('#bot').onclick = () => { const n = getName(); if (n) send({ t: 'bot', name: n, turnTime: prefs.turnTime, speed, level: prefs.level }); };
   $('#create').onclick = () => { const n = getName(); if (n) send({ t: 'create', name: n, turnTime: prefs.turnTime, speed }); };
   $('#join').onclick = () => {
@@ -677,7 +735,7 @@ function leave() {
   cancelDrag(true);
   send({ t: 'leave' });
   prefs.session = null; S = null; G = null;
-  Object.assign(ui, { sel: null, staged: null, counter: false, pick: null, gyOpen: null, menu: false, confirmLeave: false, log: false, rules: false });
+  Object.assign(ui, { sel: null, staged: null, counter: false, pick: null, gyOpen: null, menu: false, confirmLeave: false, log: false, rules: false, newGoals: [], reactOpen: false });
   render();
 }
 
@@ -878,6 +936,43 @@ function handHtml(task) {
 
 const PARTS = ['top', 'timer', 'opp', 'center', 'me', 'hand'];
 const partCache = {};
+function modeLabel() {
+  if (S.tutorial) return 'Tutorial';
+  if (S.daily) return 'Sfida del giorno';
+  const ch = S.challenge && BLGHub.CHALLENGES.find((c) => c.id === S.challenge);
+  if (ch) return `Sfida: ${ch.name}`;
+  if (S.vsBot) return S.botLevel === 'hard' ? 'Contro il computer difficile' : 'Contro il computer';
+  return `Stanza <b class="code">${S.code}</b>`;
+}
+const canReact = () => prefs.react && S && !S.tutorial && G && G.phase === 'playing';
+
+// ---------- Reazioni rapide ----------
+const Reacts = {
+  last: 0,
+  send(i) {
+    if (Date.now() - this.last < 1500) return toast('Aspetta un attimo prima della prossima', true);
+    this.last = Date.now();
+    send({ t: 'react', i });
+  },
+  // fumetto accanto al nome di chi reagisce
+  show(seat, i) {
+    if (!prefs.react || !G || !BLGHub.REACTIONS[i]) return;
+    const w = seat === G.you ? 'me' : 'opp';
+    const name = $(`.zone.${w} .pname`);
+    if (!name) return;
+    const old = $(`.rbubble.${w}`); if (old) old.remove();
+    const b = document.createElement('div');
+    b.className = `rbubble ${w}`; b.textContent = BLGHub.REACTIONS[i];
+    const r = name.getBoundingClientRect();
+    b.style.left = `${Math.max(8, r.left)}px`;
+    b.style.top = w === 'opp' ? `${r.bottom + 6}px` : `${r.top - 6}px`;
+    document.body.appendChild(b);
+    if (w === 'opp') { Sound.play('click'); vibrate(10); }
+    setTimeout(() => b.classList.add('out'), 2400);
+    setTimeout(() => b.remove(), 2800);
+  },
+};
+
 function renderGame() {
   const g = G, me = g.you;
   const oppConnected = S.seats[g.opp.seat] && S.seats[g.opp.seat].connected;
@@ -889,8 +984,10 @@ function renderGame() {
 
   const parts = {
     top: `<div class="topbar">
-      <span>${S.tutorial ? 'Tutorial' : S.vsBot ? 'Contro il computer' : `Stanza <b class="code">${S.code}</b>`}${wsReady || S.local ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
+      <span>${modeLabel()}${wsReady || S.local ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
+      ${canReact() ? `<button class="reactbtn ${ui.reactOpen ? 'on' : ''}" data-act="react-open" aria-label="Reazioni"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/></svg></button>` : ''}
       <button class="menubtn" data-act="menu" aria-label="Menu">☰</button>
+      ${canReact() && ui.reactOpen ? `<div class="reactbar">${BLGHub.REACTIONS.map((r, i) => `<button data-act="react" data-v="${i}">${r}</button>`).join('')}</div>` : ''}
     </div>`,
     timer: timerHtml(),
     opp: `<section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
@@ -1006,11 +1103,16 @@ function overHtml() {
     <button class="btn primary" data-act="rematch">Gioca contro il computer</button>
     <button class="btn" data-act="leave-now">Torna alla home</button>
   </div></div>`;
+  const goals = (ui.newGoals || []).map((id) => Goals.byId(id)).filter(Boolean);
+  const all = (S.daily || S.challenge) && Stats.load(prefs.name);
+  const rec = all && (S.daily ? all.daily && all.daily[S.daily] : all.challenges && all.challenges[S.challenge]);
   return `<div class="overlay"><div class="box endbox ${g.winner == null ? '' : won ? 'won' : 'lost'}">
     <h2>${title}</h2>
     <p class="muted">${esc(g.endText || '')}</p>
+    ${won && rec ? `<p class="recline">${S.daily ? 'Sfida del giorno' : 'Sfida'} vinta al turno ${g.turn}${rec < g.turn ? ` · record: turno ${rec}` : ' · nuovo record'}</p>` : ''}
+    ${goals.length ? `<ul class="newgoals">${goals.map((x) => `<li><b>Obiettivo: ${x.name}</b>${x.reward ? `<small>Sbloccato: ${x.reward.name}</small>` : `<small>${x.desc}</small>`}</li>`).join('')}</ul>` : ''}
     ${iAsked && !S.vsBot ? `<p>In attesa che ${esc(g.opp.name)} accetti la rivincita…</p>`
-      : `<button class="btn primary" data-act="rematch">${oppAsked && !S.vsBot ? 'Accetta la rivincita' : 'Rivincita'}</button>`}
+      : `<button class="btn primary" data-act="rematch">${oppAsked && !S.vsBot ? 'Accetta la rivincita' : S.daily || S.challenge ? 'Riprova' : 'Rivincita'}</button>`}
     <button class="btn" data-act="leave-now">Esci</button>
   </div></div>`;
 }
@@ -1032,6 +1134,7 @@ function menuHtml() {
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
     <button class="mrow" data-act="toggle-sound">Effetti sonori ${tog(prefs.sound)}</button>
     <button class="mrow" data-act="toggle-vibe">Vibrazione ${tog(prefs.vibe)}</button>
+    ${S.tutorial ? '' : `<button class="mrow" data-act="toggle-react">Reazioni rapide ${tog(prefs.react)}</button>`}
     <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button><button data-act="open-stats">Statistiche</button></div>
     <button class="btn" data-act="menu-close">Chiudi</button>
     <button class="btn exitbtn" data-act="leave-ask">Esci dalla partita</button>`}
@@ -1160,10 +1263,69 @@ app.addEventListener('click', (e) => {
     case 'toggle-full': return Full.toggle();
     case 'tut-go': Sound.play('click'); return send({ t: 'tut-go' });
     case 'tut-back': Tut.prev(); Sound.play('click'); return render();
-    case 'rematch': return send({ t: 'rematch' });
+    case 'rematch': ui.newGoals = []; return send({ t: 'rematch' });
+    case 'react-open': ui.reactOpen = !ui.reactOpen; Sound.play('click'); return render();
+    case 'react': ui.reactOpen = false; Reacts.send(Number(v)); return render();
+    case 'toggle-react': prefs.react = !prefs.react; ui.reactOpen = false; Sound.play('click'); return render();
   }
 });
 app.addEventListener('contextmenu', (e) => { if (e.target.closest('.game')) e.preventDefault(); });
+
+// =====================================================================
+//  Anteprima: tenendo premuta una carta (mano, campo, cimitero, centro) la vedi in grande
+// =====================================================================
+const Peek = {
+  timer: null, x: 0, y: 0, el: null, pid: null,
+  // che carta c'è sotto il dito, e dove si trova
+  find(target) {
+    if (!G || !target.closest('.game, .reveal')) return null;
+    const own = (w) => (w === 'me' ? 'tua' : `di ${G.opp.name}`);
+    const hc = target.closest('#hand-me .card[data-card]');
+    if (hc) return { t: hc.dataset.card, where: 'Nella tua mano' };
+    const rv = target.closest('.reveal .card[data-card]');
+    if (rv) return { t: rv.dataset.card, where: `Nella mano di ${G.opp.name}` };
+    const st = target.closest('#stack .card[data-card]');
+    if (st) return { t: st.dataset.card, where: 'Al centro del tavolo' };
+    const sl = target.closest('.slot.full');
+    if (sl) { const [, w, t] = sl.id.split('-'); const n = (w === 'me' ? G.me : G.opp).bf[t]; return { t, where: `In gioco, ${own(w)}${n > 1 ? `: ${n} copie` : ''}` }; }
+    const gc = target.closest('.gchip');
+    if (gc) { const [, w, t] = gc.id.split('-'); const n = (w === 'me' ? G.me : G.opp).gy[t]; return { t, where: `Nel cimitero, ${own(w)}: ${n} ${n === 1 ? 'copia' : 'copie'}` }; }
+    return null;
+  },
+  down(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const hit = this.find(e.target);
+    if (!hit) return;
+    this.cancel();
+    this.x = e.clientX; this.y = e.clientY; this.pid = e.pointerId;
+    this.timer = setTimeout(() => this.show(hit), 480);
+  },
+  move(e) {
+    if (this.timer && e.pointerId === this.pid && Math.hypot(e.clientX - this.x, e.clientY - this.y) > 9) this.cancel();
+  },
+  cancel() { clearTimeout(this.timer); this.timer = null; },
+  show({ t, where }) {
+    this.timer = null;
+    if (drag) cancelDrag(true); // la carta torna in mano: si stava solo guardando
+    this.hide();
+    const el = document.createElement('div');
+    el.className = 'peek';
+    el.innerHTML = `<div class="peekbox">${cardHtml(t, 'peekcard')}<div class="peektext"><b>${NAMES[t]}</b><p>${LONG_FX[t]}${t === 'U' ? ' Dalla mano, scartata con un\'altra terra, contrasta la terra appena giocata.' : ''}</p><small>${esc(where)}</small></div></div>`;
+    document.body.appendChild(el);
+    this.el = el;
+    vibrate(12);
+  },
+  hide() {
+    if (!this.el) return;
+    const el = this.el; this.el = null;
+    el.classList.add('out'); setTimeout(() => el.remove(), 180);
+    dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 80); // il rilascio non vale come tocco
+  },
+};
+app.addEventListener('pointerdown', (e) => Peek.down(e), true);
+window.addEventListener('pointermove', (e) => Peek.move(e), { passive: true });
+window.addEventListener('pointerup', () => { Peek.cancel(); Peek.hide(); });
+window.addEventListener('pointercancel', () => { Peek.cancel(); Peek.hide(); });
 
 // =====================================================================
 //  Trascinamento: parte subito (al primo movimento o dopo un attimo)

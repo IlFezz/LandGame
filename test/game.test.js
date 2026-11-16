@@ -297,4 +297,52 @@ test('Durante la scelta della Palude la terra non è ancora in gioco', () => {
   assert.strictEqual(g.players[0].bf.B, 1);
 });
 
+// ---- Sfide ----
+test('sfida "cinque uguali": le cinque diverse non fanno vincere', () => {
+  const g = new Game(['Anna', 'Bruno'], { firstPlayer: 0, onlyFive: [true, false] });
+  g.players[0].hand = ['G', 'W']; g.players[0].bf = { W: 1, U: 1, B: 1, R: 1, G: 0 };
+  ok(g.act(0, { type: 'play', card: 'G' }));
+  if (g.step === 'response') ok(g.act(1, { type: 'allow' }));
+  assert.strictEqual(g.phase, 'playing');
+  g.players[0].bf = { W: 0, U: 0, B: 0, R: 0, G: 4 };
+  assert.strictEqual(g.hasWon(0), false);
+  g.players[0].bf.G = 5;
+  assert.strictEqual(g.hasWon(0), true);
+});
+
+test('sfida: terre già in gioco, tipi tolti dal mazzo e mano corta', () => {
+  const g = new Game(['Anna', 'Bruno'], { firstPlayer: 0, setup: [{ without: ['U'], hand: 3 }, { bf: { W: 1, U: 1 } }] });
+  const a = g.players[0], b = g.players[1];
+  assert.strictEqual(a.hand.length, 3);
+  assert.ok(!a.hand.concat(a.deck).includes('U'));
+  assert.strictEqual(a.hand.length + a.deck.length, 40);
+  assert.deepStrictEqual([b.bf.W, b.bf.U], [1, 1]);
+  assert.strictEqual(b.hand.length + b.deck.length, 48);
+});
+
+test('sfida "corsa": chi non vince entro il turno limite perde', () => {
+  const g = new Game(['Anna', 'Bruno'], { firstPlayer: 0, turnLimit: { turn: 4, loser: 0 } });
+  let guard = 0;
+  while (g.phase === 'playing' && guard++ < 20) {
+    const p = g.actor();
+    ok(g.act(p, g.step === 'main' ? { type: 'pass' } : g.step === 'response' ? { type: 'allow' } : { type: 'choose', choice: g.choice.options[0] }));
+  }
+  assert.strictEqual(g.phase, 'over');
+  assert.strictEqual(g.winner, 1);
+  assert.strictEqual(g.endReason, 'limit');
+  assert.strictEqual(g.turn, 4);
+});
+
+test('sfida del giorno: stessa data, stessa partenza', () => {
+  const { Hub } = require('../hub');
+  const hand = (day) => {
+    const hub = new Hub({ local: true }); let st = null;
+    hub.message({ send: (m) => { if (m.t === 'state') st = m; } }, { t: 'bot', name: 'A', daily: day, turnTime: 0 });
+    for (const r of hub.rooms.values()) hub.clearTimers(r);
+    return st.game.hand.join('') + '|' + st.game.me.deckCount;
+  };
+  assert.strictEqual(hand('2026-11-16'), hand('2026-11-16'));
+  assert.notStrictEqual(hand('2026-11-16') + hand('2026-11-17') + hand('2026-11-18'), hand('2026-11-16').repeat(3));
+});
+
 console.log(`\n${passed} test superati`);

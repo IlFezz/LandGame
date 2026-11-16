@@ -60,6 +60,28 @@ function tutorialBotMove(g) {
   return null; // se qualcosa non va come previsto gioca il computer normale
 }
 
+// ---------- Sfide contro il computer ----------
+// Il giocatore è sempre il posto 0. `opts` va al costruttore della partita.
+const CHALLENGES = [
+  { id: 'cinque', name: 'Cinque uguali', desc: 'Vinci solo con cinque terre uguali: le cinque diverse non bastano.', level: 'normal', opts: { onlyFive: [true, false] } },
+  { id: 'svantaggio', name: 'In svantaggio', desc: 'Il computer parte con Pianura, Isola e Palude già in gioco.', level: 'normal', opts: { setup: [null, { bf: { W: 1, U: 1, B: 1 } }] } },
+  { id: 'senzaisole', name: 'Senza Isole', desc: 'Nel tuo mazzo non ci sono Isole: non puoi contrastare.', level: 'normal', opts: { setup: [{ without: ['U'] }, null] } },
+  { id: 'manocorta', name: 'Mano corta', desc: 'Parti con 3 carte invece di 5.', level: 'normal', opts: { setup: [{ hand: 3 }, null] } },
+  { id: 'corsa', name: 'Corsa', desc: 'Vinci entro il turno 14, altrimenti perdi.', level: 'normal', opts: { turnLimit: { turn: 14, loser: 0 } } },
+  { id: 'duello', name: 'Duello difficile', desc: 'Contro il computer difficile, che gioca per primo.', level: 'hard', opts: { firstPlayer: 1 } },
+];
+// Sfida del giorno: stesso mescolamento per tutti, deciso dalla data.
+function seeded(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  let a = h >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+
+// Reazioni rapide: solo frasi predefinite, niente chat libera.
+const REACTIONS = ['Ciao!', 'Bella mossa', 'Ops', 'Ci penso…', 'Fortuna!', 'Bella partita'];
+
 class Hub {
   // opts.local: stanze nel browser (solo computer e tutorial). opts.timeScale: solo per i test.
   // opts.onChange(room): chiamata dopo ogni cambiamento (il browser la usa per salvare la partita).
@@ -82,6 +104,7 @@ class Hub {
   broadcast(room, events) {
     room.touched = Date.now();
     const n = events ? events.length : 0;
+    if (events) this.botReacts(room, events);
     this.scheduleTimer(room, n);
     this.scheduleBot(room, n);
     room.seats.forEach((s, i) => {
@@ -95,7 +118,7 @@ class Hub {
     const msg = {
       t: 'state', code: room.code, seat: i, now: Date.now(),
       seats: room.seats.map((x) => (x ? { name: x.name, connected: !!x.conn || !!x.bot, bot: !!x.bot } : null)),
-      vsBot: !!room.bot, botLevel: room.botLevel || null, local: this.local, tutorial: !!room.tutorial,
+      vsBot: !!room.bot, botLevel: room.botLevel || null, challenge: room.challenge || null, daily: room.daily || null, local: this.local, tutorial: !!room.tutorial,
       tutWait: !!(room.tutorial && room.tutWait && room.tutWait !== room.tutGo), // il Maestro aspetta «Avanti»
       rematch: room.rematch.slice(), turnTime: room.turnTime,
       timer: room.timer ? { deadline: room.timer.deadline, total: room.timer.total, actor: room.timer.actor } : null,
@@ -156,6 +179,23 @@ class Hub {
     room.botTimer = { key, handle };
   }
 
+  react(room, seat, i) {
+    room.seats.forEach((s) => { if (s && s.conn) s.conn.send({ t: 'react', seat, i }); });
+  }
+  // Il computer ogni tanto reagisce anche lui, dopo che le animazioni sono finite.
+  botReacts(room, events) {
+    if (!room.bot || room.tutorial || !events.length) return;
+    let i = null;
+    for (const { ev } of events) {
+      if (ev.type === 'counter' && ev.player !== BOT_SEAT && Math.random() < 0.5) i = 1;
+      if (ev.type === 'countered' && ev.player === BOT_SEAT && Math.random() < 0.4) i = 2;
+      if (ev.type === 'end') i = ev.winner === BOT_SEAT ? (Math.random() < 0.7 ? 5 : null) : 5;
+    }
+    if (i == null) return;
+    const delay = this.animTime(room, events.length) + 400;
+    setTimeout(() => { if (this.rooms.get(room.code) === room) this.react(room, BOT_SEAT, i); }, delay * this.timeScale);
+  }
+
   clearTimers(room) {
     if (room.timer) { clearTimeout(room.timer.handle); room.timer = null; }
     if (room.botTimer) { clearTimeout(room.botTimer.handle); room.botTimer = null; }
@@ -163,7 +203,10 @@ class Hub {
 
   startGame(room) {
     const names = [room.seats[0].name, room.seats[1].name];
-    room.game = room.tutorial ? new Game(names, { decks: [tutorialDeck(TUT_ME), tutorialDeck(TUT_BOT)], firstPlayer: 0 }) : new Game(names);
+    const ch = room.challenge && CHALLENGES.find((c) => c.id === room.challenge);
+    room.game = room.tutorial ? new Game(names, { decks: [tutorialDeck(TUT_ME), tutorialDeck(TUT_BOT)], firstPlayer: 0 })
+      : room.daily ? new Game(names, { rng: seeded('atlas-' + room.daily), firstPlayer: 0 })
+      : ch ? new Game(names, ch.opts) : new Game(names);
     room.rematch = [false, false];
     this.clearTimers(room);
   }
@@ -183,9 +226,12 @@ class Hub {
       seats: [{ name: cleanName(m.name), token: newToken(), conn: null }, { name: 'Computer', token: null, conn: null, bot: true }],
       game: null, rematch: [false, false], touched: Date.now(), timer: null, botTimer: null,
       turnTime: tutorial ? 0 : TURN_TIMES.includes(tt) ? tt : 60, animFactor: speedOf(m.speed),
-      botLevel: m.level === 'easy' ? 'easy' : 'normal',
+      botLevel: ['easy', 'hard'].includes(m.level) ? m.level : 'normal',
     };
-    room.seats[1].name = tutorial ? 'Maestro' : room.botLevel === 'easy' ? 'Computer (facile)' : 'Computer';
+    const ch = !tutorial && CHALLENGES.find((c) => c.id === m.challenge);
+    if (ch) { room.challenge = ch.id; room.botLevel = ch.level; }
+    else if (!tutorial && isDay(m.daily)) { room.daily = m.daily; room.botLevel = 'normal'; }
+    room.seats[1].name = tutorial ? 'Maestro' : { easy: 'Computer (facile)', hard: 'Computer (difficile)' }[room.botLevel] || 'Computer';
     this.rooms.set(room.code, room);
     return room;
   }
@@ -266,6 +312,16 @@ class Hub {
       room.tutGo = room.tutWait; room.tutWait = null;
       return this.broadcast(room);
     }
+    if (m.t === 'react') {
+      const i = Number(m.i), seat = conn.seat, now = Date.now();
+      if (!REACTIONS[i] || room.tutorial) return;
+      room.lastReact = room.lastReact || [0, 0];
+      if (now - room.lastReact[seat] < 1500) return; // niente raffiche
+      room.lastReact[seat] = now;
+      this.react(room, seat, i);
+      if (room.bot && i === 0 && Math.random() < 0.8) setTimeout(() => this.react(room, BOT_SEAT, 0), 1200 + Math.random() * 800);
+      return;
+    }
     if (m.t === 'prefs') {
       room.animFactor = speedOf(m.speed);
       return;
@@ -298,6 +354,6 @@ class Hub {
   }
 }
 
-if (isNode) module.exports = { Hub, BOT_SEAT };
-else globalThis.BLGHub = { Hub, BOT_SEAT };
+if (isNode) module.exports = { Hub, BOT_SEAT, CHALLENGES, REACTIONS };
+else globalThis.BLGHub = { Hub, BOT_SEAT, CHALLENGES, REACTIONS };
 }
