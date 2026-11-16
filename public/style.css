@@ -607,21 +607,3 @@ body.low-fx .card.floating, body.auto-low .card.floating { animation: none; tran
 body.low-fx .target, body.low-fx .card.staged, body.auto-low .target, body.auto-low .card.staged { animation: none; }
 body.low-fx #altar.cast { animation: none; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .sp { display: none; } }
-
-/* =====================================================================
-   Grafica avanzata (body.gl): il tavolo è disegnato dalla scena WebGL (scene.js) dietro l'interfaccia.
-   Le carte della pagina restano al loro posto ma invisibili: servono per la disposizione e per i tocchi.
-   ===================================================================== */
-#scene { position: fixed; inset: 0; width: 100vw; height: 100%; z-index: 0; display: none; pointer-events: none; }
-#scene.on { display: block; }
-body.gl #altar { display: none !important; }
-body.gl .game .slot > .card, body.gl .game .stack-area > .card, body.gl .game #hand-me > .card, body.gl .drag-ghost .card {
-  background: none !important; box-shadow: none !important; animation: none !important; transition: none !important; }
-body.gl .game .slot > .card > *, body.gl .game .stack-area > .card > :not(.unstage), body.gl .game #hand-me > .card > :not(.badge):not(.coach-tag), body.gl .drag-ghost .card > * { visibility: hidden; }
-body.gl .game #hand-me > .card::after { display: none; }
-body.gl .game .slot, body.gl .game .slot.target { animation: none !important; box-shadow: none !important; }
-body.gl .game .hand.counter-mode .card { opacity: 1 !important; }
-body.gl .game .hand .card.coach-dim { opacity: 1; }
-/* mentre trascini una carta, scritte e pulsanti al centro si fanno da parte */
-body.gl .status, body.gl .actions-area { transition: opacity .15s; }
-body.gl.dragging .status, body.gl.dragging .actions-area { opacity: .15; }

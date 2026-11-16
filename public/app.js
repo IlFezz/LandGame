@@ -47,8 +47,6 @@ const prefs = {
   get info() { return ls.get('info2', true); }, set info(v) { ls.set('info2', v); },
   get back() { const v = ls.get('back', 'bussola'); return ATL.BACKS.some((b) => b.id === v) ? v : 'bussola'; }, set back(v) { ls.set('back', v); },
   get theme() { return ls.get('theme', 'notte') === 'giorno' ? 'giorno' : 'notte'; }, set theme(v) { ls.set('theme', v); },
-  // grafica: 'auto' sceglie da sola in base al dispositivo, 'lite' = Leggera, 'adv' = Avanzata
-  get gfx() { const v = ls.get('gfx', 'auto'); return v === 'adv' || v === 'lite' ? v : 'auto'; }, set gfx(v) { ls.set('gfx', v); },
   get fx() { return ls.get('fx', 'high'); }, set fx(v) { ls.set('fx', v); },
   get music() { return ls.get('music', true); }, set music(v) { ls.set('music', v); },
   get level() { return ls.get('level', 'normal'); }, set level(v) { ls.set('level', v); },
@@ -165,23 +163,9 @@ const Music = {
     this.master.gain.cancelScheduledValues(c.currentTime);
     this.master.gain.setTargetAtTime(0, c.currentTime, 0.5);
   },
-  // quando qualcuno è a un passo dalla vittoria la musica si fa più tesa: un battito grave e un suono più aperto
-  tension(v) {
-    v = !!v; if (v === this.tense) return; this.tense = v;
-    if (this.bus) this.bus.frequency.setTargetAtTime(v ? 1700 : 950, Sound.ctx.currentTime, 1.5);
-  },
   tick() {
     const c = Sound.ctx;
     if (!c || c.state !== 'running') return;
-    if (this.tense) {
-      if (!this.nextBeat || this.nextBeat < c.currentTime) this.nextBeat = c.currentTime + 0.2;
-      while (this.nextBeat < c.currentTime + 1.5) {
-        this.voice(55, this.nextBeat, { peak: 0.13, attack: 0.03, hold: 0.05, release: 0.35 });
-        this.voice(55, this.nextBeat + 0.28, { peak: 0.08, attack: 0.03, hold: 0.04, release: 0.3 });
-        this.voice(this.mtof(74), this.nextBeat, { type: 'triangle', peak: 0.012, attack: 0.6, hold: 0.1, release: 0.5 });
-        this.nextBeat += 1.25;
-      }
-    }
     while (this.nextChord < c.currentTime + 1.5) { this.chord(this.nextChord); this.nextChord += 11; }
     while (this.nextNote < c.currentTime + 1.5) {
       if (Math.random() < 0.55) this.note(this.nextNote);
@@ -240,26 +224,11 @@ function vibrate(pattern) {
 }
 
 // ---------- Aspetto ----------
-let gfxCapable = null;
-// con la grafica avanzata ogni effetto del gioco avviene anche dentro la scena (onde sul tavolo, particelle)
-for (const k of ['enter', 'cast', 'destroy', 'counter', 'regrow', 'reuse', 'look', 'discard', 'win', 'lose']) {
-  const orig = FX[k];
-  FX[k] = function (a, b) { if (Scene.active) Scene.fx(k, a, b); return orig.apply(this, arguments); };
-}
-// se la grafica avanzata rallenta il dispositivo, si torna alla leggera (solo se non l'hai scelta tu)
-Scene.onSlow = (why) => {
-  if (prefs.gfx === 'adv' && why === 'slow') return;
-  prefs.gfx = 'lite'; Scene.set(false);
-  toast('Grafica leggera attivata per mantenere il gioco fluido', true);
-  if (ui.menu) render();
-};
 function applyPrefs() {
   document.documentElement.dataset.theme = prefs.theme;
   document.documentElement.style.setProperty('--bk', `var(--bk-${prefs.back})`);
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
-  Scene.setTheme(prefs.theme); Scene.setBack(prefs.back);
-  Scene.set(prefs.gfx === 'adv');
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -295,13 +264,11 @@ const Altar = {
     const land = innerWidth / innerHeight >= 1.1;
     const size = land && innerHeight > 520 ? Math.min(innerHeight * 0.5, r.width * 0.5) : Math.min(r.height * 0.96, r.width * 0.96);
     Object.assign(el.style, { left: `${r.left + r.width / 2 - size / 2}px`, top: `${r.top + r.height / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` });
-    this.rect = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, size };
     el.classList.add('on');
   },
   state() {},
   // un quinto di giro quando si gioca una carta (invece di una rotazione continua)
-  cast(card) {
-    Scene.cast(card, this.rect);
+  cast() {
     const el = this.el; if (!el) return;
     el.style.setProperty('--ang0', `${this.ang}deg`);
     this.ang += 72;
@@ -339,7 +306,6 @@ document.addEventListener('pointerdown', () => {
 let fitTimer = null;
 function fitScreen() {
   document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
-  Scene.resize();
   if (app.dataset.game) { layoutHand(); fitCenter(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
   Full.sync();
 }
@@ -528,7 +494,6 @@ function render() {
   needRender = false;
   const view = !S || !prefs.session ? 'lobby' : !G ? 'waiting' : 'game';
   if (view === 'lobby') renderLobby(); else if (view === 'waiting') renderWaiting(); else renderGame();
-  Music.tension(view === 'game' && G.phase === 'playing' && (closeToWin(G.me.bf) || closeToWin(G.opp.bf)));
   // passaggio animato quando si cambia schermata (home ↔ attesa ↔ tavolo)
   if (ui.view && ui.view !== view) {
     const root = $('.lobby, .game', app);
@@ -1062,7 +1027,6 @@ function menuHtml() {
       <button class="btn" data-act="leave-no">Annulla</button>` : `
     <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Scene.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata (prova)']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
@@ -1174,9 +1138,6 @@ app.addEventListener('click', (e) => {
     case 'menu-close': ui.menu = false; ui.confirmLeave = false; return render();
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-theme': prefs.theme = v; applyPrefs(); Sound.play('click'); return render();
-    case 'set-gfx':
-      if (v === 'adv' && !Scene.supported()) { toast('Questo dispositivo non supporta la grafica avanzata'); return; }
-      prefs.gfx = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
     case 'toggle-sound': prefs.sound = !prefs.sound; Sound.unlock(); Sound.play('click'); return render();
@@ -1479,18 +1440,10 @@ function makeFlyer(face, w, h) {
 }
 
 // Fa volare una carta da `from` (rettangolo) all'elemento `toEl`.
-// Con `flip` (solo grafica avanzata) la carta parte coperta e si gira in volo.
-function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0, flip = false } = {}) {
+function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0 } = {}) {
   const to = rectOf(toEl);
   if (!okRect(from) || !okRect(to)) return Promise.resolve();
   const W = Math.max(46, Math.min(Math.max(to.width, from.width * 0.8), 190)), H = W * 1.4;
-  // grafica avanzata: il volo lo disegna la scena (la carta si gira e si piega in aria)
-  if (Scene.active) {
-    if (hideTarget && toEl) toEl.style.visibility = 'hidden';
-    setTimeout(() => FX.trail({ sx: from.left + from.width / 2, sy: from.top + from.height / 2, ex: to.left + to.width / 2, ey: to.top + to.height / 2, w: W * 0.8, h: H * 0.8 }, face || 'N', D(dur)), D(delay));
-    return Scene.fly(from, to, face, { dur: D(dur), delay: D(delay), flip, mini: !!(toEl && toEl.closest && toEl.closest('.slot')) })
-      .then(() => { if (hideTarget && toEl) toEl.style.visibility = ''; });
-  }
   const f = makeFlyer(face, W, H);
   const sx = from.left + from.width / 2 - W / 2, sy = from.top + from.height / 2 - H / 2;
   const ex = to.left + to.width / 2 - W / 2, ey = to.top + to.height / 2 - H / 2;
@@ -1566,7 +1519,7 @@ async function animateStep(ev, next) {
       G = next; render();
       Sound.play('draw');
       const to = w === 'me' ? handEl('me', ev.card) : handEl('opp');
-      await fly(from, to, w === 'me' ? ev.card : null, { dur: 380, flip: true });
+      await fly(from, to, w === 'me' ? ev.card : null, { dur: 380 });
       if (w === 'me') { pulse(to, 'newcard', 700); FX.sparkle(rectOf(to), ev.card, 6); }
       return;
     }
@@ -1579,7 +1532,7 @@ async function animateStep(ev, next) {
       if (ev.player !== G.you) setCaption(`${opp} gioca ${NAMES[ev.card]}`);
       Sound.play('play');
       Altar.cast(ev.card);
-      await fly(from, stackCard(), ev.card, { dur: 420, flip: w !== 'me' });
+      await fly(from, stackCard(), ev.card, { dur: 420 });
       FX.cast(ev.card, rectOf(stackCard()));
       if (ev.target) { lastArrowKey = null; drawArrows(); await pulse(pendingTargetEl(G.pending), 'aimed', 500); }
       else await wait(250);
