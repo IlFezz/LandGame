@@ -15,7 +15,8 @@ func tests() -> Array:
 		["il difficile gioca solo mosse valide e trova la vittoria", t_difficile],
 		["batte quasi sempre un giocatore casuale", t_contro_casuale],
 		["il livello normale batte spesso il facile", t_normale_facile],
-		["tempo di pensiero del difficile (budget 120 ms)", t_tempo_difficile],
+		["tempo di pensiero del difficile", t_tempo_difficile],
+		["il difficile pensa su un thread e risponde con un segnale", t_async],
 	]
 
 
@@ -99,10 +100,10 @@ func _play_out(g, bots: Array) -> void:
 func t_difficile():
 	var g = bot_setup({"h1": ["R", "G", "U"], "bf1": {"W": 1, "U": 1, "B": 1, "R": 1}, "bf0": {"G": 1}})
 	bot_turn(g)
-	eq(Bot.new(g, 1, {"level": "hard", "budget": 5}).decide().card, "G")
+	eq(Bot.new(g, 1, {"level": "hard", "budget": 5, "rounds": 4}).decide().card, "G")
 	for i in 6:
 		var g2 = Game.new(["D", "N"])
-		_play_out(g2, [Bot.new(g2, 0, {"level": "hard", "budget": 3}), Bot.new(g2, 1)])
+		_play_out(g2, [Bot.new(g2, 0, {"level": "hard", "budget": 3, "rounds": 6}), Bot.new(g2, 1)])
 	return true
 
 
@@ -154,27 +155,49 @@ func t_normale_facile():
 	return true
 
 
-## Non c'è nella versione web: misura quanto pensa il difficile in GDScript (sul telefono
-## deve restare sotto il mezzo secondo per non far aspettare).
+## Non c'è nella versione web: quanto pensa il difficile in GDScript. Con le impostazioni
+## normali fa almeno 80 giri di simulazione (come il browser in 120 ms), ma mai oltre un secondo.
 func t_tempo_difficile():
 	var g = Game.new(["D", "N"], {"firstPlayer": 0})
 	var bot = Bot.new(g, 0, {"level": "hard"})
 	var worst := 0
 	var total := 0
+	var rounds := 0
 	var n := 0
 	for k in 6:
 		if g.phase != "playing" or g.actor() != 0:
 			break
+		bot.last_rounds = 0
 		var t0 := Time.get_ticks_msec()
 		var a = bot.decide()
 		var ms := Time.get_ticks_msec() - t0
-		worst = max(worst, ms)
-		total += ms
-		n += 1
+		if bot.last_rounds > 0:
+			worst = max(worst, ms)
+			total += ms
+			rounds += bot.last_rounds
+			n += 1
 		is_ok(g.act(0, a))
 		while g.phase == "playing" and g.actor() == 1:
 			is_ok(g.act(1, Bot.new(g, 1).decide()))
 	if n > 0:
-		print("        difficile: %d decisioni, media %d ms, peggiore %d ms" % [n, total / n, worst])
-	check(worst < 1500, "una decisione ha richiesto %d ms" % worst)
+		print("        difficile: %d decisioni pensate, media %d ms e %d giri, peggiore %d ms" % [n, total / n, rounds / n, worst])
+	check(worst < 1200, "una decisione ha richiesto %d ms" % worst)
+	return true
+
+
+func t_async():
+	var g = bot_setup({"h1": ["R", "G", "U", "B"], "bf1": {"W": 1}, "bf0": {"G": 1, "U": 1}})
+	bot_turn(g)
+	var bot = Bot.new(g, 1, {"level": "hard", "budget": 20, "rounds": 10})
+	var got := []
+	bot.decided.connect(func(a): got.append(a))
+	bot.decide_async()
+	# il segnale arriva sul thread principale, a uno dei fotogrammi successivi
+	var t0 := Time.get_ticks_msec()
+	while got.is_empty() and Time.get_ticks_msec() - t0 < 5000:
+		await Engine.get_main_loop().process_frame
+	check(not got.is_empty(), "il segnale non è arrivato")
+	if not got.is_empty():
+		var c = g.clone()
+		is_ok(c.act(1, got[0]))
 	return true

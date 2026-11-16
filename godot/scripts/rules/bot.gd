@@ -6,6 +6,7 @@ class_name AtlasBot
 extends RefCounted
 
 const GameScript := preload("res://scripts/rules/game.gd")
+const SimScript := preload("res://scripts/rules/sim.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 ## Valore di una posizione sul campo: premia l'avvicinarsi a dominio o cinque uguali.
 const STEP := [0, 3, 9, 20, 45, 1000]
@@ -114,15 +115,6 @@ static func best_regrow(my_bf: Dictionary, gy: Dictionary) -> Dictionary:
 	return {"target": best, "value": maxf(0.0, v)}
 
 
-static func _shuffle(a: Array) -> Array:
-	for i in range(a.size() - 1, 0, -1):
-		var j := randi_range(0, i)
-		var tmp = a[i]
-		a[i] = a[j]
-		a[j] = tmp
-	return a
-
-
 static func _now() -> float:
 	return Time.get_ticks_usec() / 1000.0
 
@@ -148,7 +140,11 @@ var p: int  # il posto del computer
 var rng: Callable
 var easy := false  # facile: sbaglia più spesso e contrasta di rado
 var hard := false  # difficile: prova ogni mossa in tante partite simulate
-var budget := 120.0  # millisecondi di "pensiero" per decisione
+var budget := 120.0  # millisecondi di "pensiero" per decisione, come nel browser
+## Giri di simulazione minimi: nel browser in 120 ms se ne fanno circa 80, e GDScript è più lento,
+## quindi il difficile pensa finché non li ha fatti (su un thread, il tavolo non si blocca)...
+var min_rounds := 80
+var max_ms := 1000.0  # ...ma mai più di un secondo, anche sui telefoni lenti
 
 var me: Dictionary:
 	get:
@@ -158,7 +154,7 @@ var op: Dictionary:
 		return g.players[1 - p]
 
 
-## opts: level ("easy" | "normal" | "hard"), rng (Callable), budget (ms).
+## opts: level ("easy" | "normal" | "hard"), rng (Callable), budget (ms), rounds (giri minimi), max_ms.
 func _init(game, seat: int, opts: Dictionary = {}) -> void:
 	g = game
 	p = seat
@@ -166,6 +162,8 @@ func _init(game, seat: int, opts: Dictionary = {}) -> void:
 	easy = opts.get("level") == "easy"
 	hard = opts.get("level") == "hard"
 	budget = opts.get("budget", 120.0)
+	min_rounds = opts.get("rounds", 80)
+	max_ms = opts.get("max_ms", 1000.0)
 
 
 ## Tutte le azioni possibili adesso (per il livello difficile).
@@ -191,37 +189,20 @@ func options() -> Array:
 	return out
 
 
-## Una versione possibile delle carte nascoste: la mano avversaria e i due mazzi vengono rimescolati
-## tra le carte che non vedo. Se la Palude ha appena rivelato la mano avversaria, quella resta com'è.
-func determinize() -> GameScript:
-	var c: GameScript = g.clone()
-	var my = c.players[p]
-	var o = c.players[1 - p]
-	var known: bool = g.step == "choice" and g.choice.kind == "discard" and g.choice.player == p
-	_shuffle(my.deck)
-	if not known:
-		var pool := _shuffle(o.hand + o.deck)
-		var h: int = o.hand.size()
-		o.hand = pool.slice(0, h)
-		o.deck = pool.slice(h)
-	else:
-		_shuffle(o.deck)
+## Una versione possibile delle carte nascoste, come simulazione veloce (sim.gd): la mano
+## avversaria e i due mazzi vengono rimescolati tra le carte che non vedo. Se la Palude ha appena
+## rivelato la mano avversaria, quella resta com'è. `base`: la partita vera già copiata in sim.
+func determinize(base = null) -> RefCounted:
+	if base == null:
+		base = SimScript.new().load_game(g)
+	var c = base.copy()
+	c.determinize(p, g.step == "choice" and g.choice.kind == "discard" and g.choice.player == p)
 	return c
 
 
-## Gioca la partita fino in fondo con il computer normale; 1 se vinco, 0 se perdo.
-func playout(c: GameScript) -> float:
-	var bots := [get_script().new(c, 0), get_script().new(c, 1)]
-	var guard := 0
-	while c.phase == "playing" and guard < 400:
-		guard += 1
-		var pp: int = c.actor()
-		var a = bots[pp].decide()
-		if a == null or c.act(pp, a) != null:
-			c.act(pp, {"type": "pass"} if c.step == "main" else {"type": "allow"})
-	if c.winner == p:
-		return 1.0
-	return 0.5 if c.winner == null else 0.0
+## Gioca la simulazione fino in fondo con il computer normale; 1 se vinco, 0 se perdo.
+func playout(c) -> float:
+	return c.playout(p)
 
 
 ## Prova ogni azione su tante versioni possibili della partita e sceglie quella che vince più spesso.
@@ -244,17 +225,22 @@ func search():
 				break
 	var t0 := _now()
 	var rounds := 0
-	while rounds < 400 and (rounds < 24 or _now() - t0 < budget):
+	var base_sim = SimScript.new().load_game(g)
+	while rounds < 400:
+		var el := _now() - t0
+		if el >= max_ms or (rounds >= min_rounds and el >= budget):
+			break
 		for s in stats:
 			if s.bad:
 				continue
-			var c := determinize()
-			if c.act(p, s.a) != null:
+			var c = determinize(base_sim)
+			if not c.act(p, s.a):
 				s.bad = true
 				continue
-			s.w += playout(c)
+			s.w += c.playout(p)
 			s.n += 1
 		rounds += 1
+	last_rounds = rounds
 	var best = null
 	var bv := -1.0
 	for s in stats:
@@ -300,6 +286,32 @@ func play_value(owner: int, card: String, target) -> float:
 	if after == 1000:
 		return 10000.0
 	return (after - score(bf)) + effect_value(owner, card, target)
+
+
+## Emesso da decide_async() quando il computer ha deciso (sul thread principale).
+signal decided(action)
+
+var _thread: Thread
+var last_rounds := 0  # giri di simulazione dell'ultima decisione del difficile (per i test)
+
+
+## Come decide(), ma pensa su un thread separato così il tavolo non si blocca:
+##   bot.decide_async(); var a = await bot.decided
+## Mentre pensa, la partita non va toccata.
+func decide_async() -> void:
+	_thread = Thread.new()
+	_thread.start(_think)
+
+
+func _think() -> void:
+	var a = decide()
+	_done.call_deferred(a)
+
+
+func _done(a) -> void:
+	_thread.wait_to_finish()
+	_thread = null
+	decided.emit(a)
 
 
 ## La mossa da fare adesso (null se non tocca al computer).

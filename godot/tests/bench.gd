@@ -4,20 +4,15 @@ extends SceneTree
 const Game := preload("res://scripts/rules/game.gd")
 const Bot := preload("res://scripts/rules/bot.gd")
 func _init() -> void:
-	seed(1)
 	var g = Game.new(["A", "B"], {"firstPlayer": 0, "seed": 7})
 	var b = Bot.new(g, 0, {"level": "hard"})
 	var t0 := Time.get_ticks_usec()
-	var n := 500
+	var n := 2000
+	var base = b.determinize()
 	for i in n:
-		b.playout(b.determinize())
-	print("playout: %.3f ms l'uno" % ((Time.get_ticks_usec() - t0) / 1000.0 / n))
+		b.playout(b.determinize(base))
+	print("partita simulata: %.3f ms l'una" % ((Time.get_ticks_usec() - t0) / 1000.0 / n))
 	t0 = Time.get_ticks_usec()
-	for i in 20000:
-		b.decide_main()
-	print("decide_main: %.4f ms" % ((Time.get_ticks_usec() - t0) / 1000.0 / 20000))
-	t0 = Time.get_ticks_usec()
-	for i in 2000:
-		g.clone()
-	print("clone: %.4f ms" % ((Time.get_ticks_usec() - t0) / 1000.0 / 2000))
+	var a = b.decide()
+	print("decisione del difficile: %d ms, %d giri di simulazione" % [(Time.get_ticks_usec() - t0) / 1000, b.last_rounds])
 	quit(0)

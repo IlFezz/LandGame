@@ -3,10 +3,11 @@
 ## Esce con codice 0 se tutto va bene, 1 se qualcosa fallisce.
 extends SceneTree
 
-const SUITES := ["res://tests/test_game.gd", "res://tests/test_bot.gd"]
+const SUITES := ["res://tests/test_game.gd", "res://tests/test_sim.gd", "res://tests/test_bot.gd"]
 
 
-func _init() -> void:
+## Parte quando il ciclo principale è avviato, così i test possono aspettare i fotogrammi (await).
+func _initialize() -> void:
 	var passed := 0
 	var failed := 0
 	for path in SUITES:
@@ -15,7 +16,7 @@ func _init() -> void:
 		for t in suite.tests():
 			suite.failures = []
 			var t0 := Time.get_ticks_msec()
-			var finished = t[1].call()
+			var finished = await t[1].call()
 			var ms := Time.get_ticks_msec() - t0
 			if finished != true:
 				suite.failures.append("il test si è interrotto per un errore (vedi SCRIPT ERROR sopra)")
