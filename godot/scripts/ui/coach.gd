@@ -372,18 +372,18 @@ func _highlight(P: Dictionary) -> void:
 						break
 		"bf":
 			var z = t.zones[arg]
-			_rings.append(z.slots["W"].get_global_rect().merge(z.slots["G"].get_global_rect()).grow(6))
+			_rings.append(t._lr(z.slots["W"]).merge(t._lr(z.slots["G"])).grow(6))
 		"gy":
-			_rings.append(t.zones[arg].gy.get_global_rect().grow(4))
+			_rings.append(t._lr(t.zones[arg].gy).grow(4))
 		"deckgy":
-			_rings.append(t.zones[arg].deck.get_global_rect().grow(4))
-			_rings.append(t.zones[arg].gy.get_global_rect().grow(4))
+			_rings.append(t._lr(t.zones[arg].deck).grow(4))
+			_rings.append(t._lr(t.zones[arg].gy).grow(4))
 		"name":
-			_rings.append(t.zones[arg].name.get_global_rect().merge(t.zones[arg].near.get_global_rect()).grow(6))
+			_rings.append(t._lr(t.zones[arg].name).merge(t._lr(t.zones[arg].near)).grow(6))
 		"btn":
 			for b in _buttons(t.actions):
 				if b.text == arg:
-					_rings.append(b.get_global_rect().grow(5))
+					_rings.append(t._lr(b).grow(5))
 
 
 func _buttons(n: Node) -> Array:

@@ -188,7 +188,7 @@ func _build() -> void:
 	arrow_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arrow_layer.draw.connect(_draw_arrow)
 	add_child(arrow_layer)
-	move_child(arrow_layer, hand_layer.get_index())
+	move_child(arrow_layer, stack_card.get_index())  # sopra il campo, sotto carta al centro, scritte e pulsanti
 	timer_bar = Control.new()
 	timer_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	timer_bar.draw.connect(_draw_timer)
@@ -198,6 +198,7 @@ func _build() -> void:
 	react_btn.focus_mode = Control.FOCUS_NONE
 	react_btn.flat = true
 	react_btn.icon = Art.line_icon("react", "<path d=\"M4 5.5h16v10H10l-4.5 3.5v-3.5H4z\"/>", Art.TESTO, 22)
+	react_btn.add_theme_constant_override("icon_max_width", 22)
 	react_btn.pressed.connect(_open_reactions)
 	add_child(react_btn)
 	peek_layer = Control.new()
@@ -683,7 +684,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	stack_rect.position.y = start
 	status_label.position = Vector2(x0, start + cw * 1.4 + 6)
 	status_label.size = Vector2(inner, st_h)
-	actions.position = Vector2(x0, status_label.position.y + st_h + 2)
+	actions.position = Vector2(x0, status_label.position.y + st_h + 8)
 	actions.size = Vector2(inner, center_rect.end.y - actions.position.y)
 	actions.alignment = BoxContainer.ALIGNMENT_BEGIN
 
@@ -946,7 +947,7 @@ func _draw_center_frame() -> void:
 		var r := Rect2(stack_rect.position - center_frame.position, stack_rect.size).grow(-stack_rect.size.x * 0.1)
 		center_frame.draw_style_box(Art.box(Color(0, 0, 0, 0), cw * 0.06, Color(Art.RIGA, 0.6), 1.5), r)
 	if drop:
-		var over := _drag != null and _over_center(get_global_mouse_position())
+		var over := _drag != null and _over_center(get_local_mouse_position())
 		var r2 := Rect2(Vector2.ZERO, center_frame.size)
 		center_frame.draw_style_box(Art.box(Color(Art.SEGNALE, 0.12) if over else Color(0, 0, 0, 0), 16, Art.SEGNALE, 1.5), r2)
 
@@ -1305,7 +1306,7 @@ func _hand_index_at(p: Vector2) -> int:
 		var c: Card = hand_cards[i]
 		if not c.visible:
 			continue
-		var local: Vector2 = c.get_global_transform().affine_inverse() * p
+		var local: Vector2 = c.get_global_transform().affine_inverse() * (p + global_position)
 		if Rect2(Vector2.ZERO, c.size).has_point(local):
 			return i
 	return -1
@@ -1378,7 +1379,7 @@ func _on_release(p: Vector2) -> void:
 		var d = _drag
 		_drag = null
 		if _over_center(p) and _task() == "main":
-			_play_card(d.idx, Rect2(d.view.global_position, d.view.size))
+			_play_card(d.idx, Rect2(d.view.position, d.view.size))
 		else:
 			d.view.pivot_offset = Vector2(hw / 2, hw * 1.4)
 			_place_hand(true)
@@ -1394,14 +1395,14 @@ func _on_tap(p: Vector2, idx: int) -> void:
 	# fuori dal cimitero aperto: lo chiude
 	if gy_open != "" and not (task == "choice" and V.choice.kind == "regrow") and not (staged != null and staged.card == "G"):
 		var pop := overlay_layer.get_node_or_null("GyPop")
-		if pop == null or not pop.get_global_rect().has_point(p):
+		if pop == null or not _lr(pop).has_point(p):
 			_close_gy()
 	if task == "main":
 		if staged != null:
 			var tg := _board_targets()
 			for w in ["opp", "me"]:
 				for t in tg[w]:
-					if zones[w].slots[t].get_global_rect().grow(4).has_point(p):
+					if _lr(zones[w].slots[t]).grow(4).has_point(p):
 						act({"type": "play", "card": staged.card, "target": t})
 						return
 			return
@@ -1427,7 +1428,7 @@ func _on_tap(p: Vector2, idx: int) -> void:
 		return
 	if task == "choice" and V.choice.kind == "destroy":
 		for t in V.choice.options:
-			if zones.opp.slots[t].get_global_rect().grow(4).has_point(p):
+			if _lr(zones.opp.slots[t]).grow(4).has_point(p):
 				act({"type": "choose", "choice": t})
 				return
 
@@ -1440,7 +1441,7 @@ func _play_card(idx: int, from := Rect2()) -> void:
 		staged = {"card": card, "idx": idx}
 		_refresh()
 	else:
-		_play_from = from if from.has_area() else Rect2(hand_cards[idx].global_position, hand_cards[idx].size)
+		_play_from = from if from.has_area() else Rect2(hand_cards[idx].position, hand_cards[idx].size)
 		act({"type": "play", "card": card})
 
 
@@ -1484,7 +1485,7 @@ func _peek_target(p: Vector2, idx: int) -> String:
 	for w in ["opp", "me"]:
 		for t in TYPES:
 			var s: W.Slot = zones[w].slots[t]
-			if s.count > 0 and s.get_global_rect().has_point(p):
+			if s.count > 0 and _lr(s).has_point(p):
 				return t
 	return ""
 
@@ -1591,7 +1592,7 @@ func _open_gy(w: String) -> void:
 	overlay_layer.add_child(panel)
 	panel.reset_size()
 	var badge: Control = zones[w].gy
-	var r := badge.get_global_rect()
+	var r := _lr(badge)
 	var ps := panel.get_combined_minimum_size()
 	ps.x = maxf(ps.x, 210)
 	panel.size = ps
@@ -1874,6 +1875,13 @@ func _toast(msg: String) -> void:
 #  Animazioni degli eventi
 # =====================================================================
 
+## Rettangolo di un nodo nelle coordinate del tavolo (sul telefono il tavolo è spostato
+## per lasciare spazio alla fotocamera, quindi le coordinate globali non vanno bene).
+func _lr(c: Control) -> Rect2:
+	var gt := c.get_global_transform()
+	return Rect2(gt.origin - global_position, c.size * gt.get_scale())
+
+
 func _who(p: int) -> String:
 	return "me" if p == me else "opp"
 
@@ -1883,16 +1891,16 @@ func _hand_rect_of(w: String, card := "") -> Rect2:
 		return zones.opp.backs.fan_rect()
 	for i in hand_cards.size():
 		if hand_cards[i].kind == card and hand_cards[i].visible:
-			return Rect2(hand_cards[i].global_position, hand_cards[i].size)
+			return Rect2(hand_cards[i].position, hand_cards[i].size)
 	return Rect2(hand_rect.get_center() - Vector2(hw, hw * 1.4) / 2, Vector2(hw, hw * 1.4))
 
 
 func _gy_rect(w: String) -> Rect2:
-	return zones[w].gy.get_global_rect()
+	return _lr(zones[w].gy)
 
 
 func _slot_rect(w: String, t: String) -> Rect2:
-	return zones[w].slots[t].get_global_rect()
+	return _lr(zones[w].slots[t])
 
 
 func _deck_rect(w: String) -> Rect2:
@@ -2141,7 +2149,10 @@ func _draw_arrow() -> void:
 	var hx := stack_rect.size.x / 2 / maxf(0.001, absf(dir.x))
 	var hy := stack_rect.size.y / 2 / maxf(0.001, absf(dir.y))
 	var from := c + dir * minf(hx, hy)
-	to -= dir * minf(a.rect.size.x, a.rect.size.y) * 0.45
+	# la punta si ferma appena fuori dal bordo della carta colpita
+	var tx: float = a.rect.size.x / 2 / maxf(0.001, absf(dir.x))
+	var ty: float = a.rect.size.y / 2 / maxf(0.001, absf(dir.y))
+	to -= dir * (minf(tx, ty) + 4)
 	var mid := (from + to) / 2 + Vector2(-dir.y, dir.x) * from.distance_to(to) * 0.18
 	var pts := PackedVector2Array()
 	for i in 25:
@@ -2194,7 +2205,7 @@ func _open_reactions() -> void:
 		flow.add_child(b)
 	overlay_layer.add_child(box)
 	box.reset_size()
-	var r := react_btn.get_global_rect()
+	var r := _lr(react_btn)
 	box.position = Vector2(clampf(r.position.x, 6, size.x - box.size.x - 6), clampf(r.position.y - box.size.y - 8, 6, size.y - box.size.y - 6))
 
 
@@ -2228,7 +2239,7 @@ func _bubble(seat: int, i: int) -> void:
 	l.add_theme_stylebox_override("normal", sb)
 	overlay_layer.add_child(l)
 	l.reset_size()
-	var r: Rect2 = zones[w].name.get_global_rect()
+	var r: Rect2 = _lr(zones[w].name)
 	l.position = Vector2(clampf(r.position.x, 8, size.x - l.size.x - 8), r.end.y + 6 if w == "opp" else r.position.y - l.size.y - 6)
 	if w == "opp":
 		Sound.play("click")

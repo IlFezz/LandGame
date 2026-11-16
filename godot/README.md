@@ -42,6 +42,18 @@ Godot 4.7 → *Importa* → scegli `godot/project.godot`.
 
 Il renderer è **Compatibilità** (OpenGL): è l'unico che funziona anche nella versione web e va bene anche sui telefoni più vecchi; per un gioco di carte in 2D non serve altro.
 
+## Provarlo sul telefono Android
+
+Serve una volta sola: i modelli di esportazione di Godot 4.7.2 (Editor → Gestisci modelli di esportazione), l'Android SDK e Java 17 indicati nelle impostazioni dell'editor (Esporta → Android), e sul telefono il «Debug USB» attivo (Opzioni sviluppatore).
+
+Poi, con il telefono collegato via cavo:
+
+```bash
+bash godot/tools/android.sh
+```
+
+crea `build/atlas.apk` (versione di prova), la installa e avvia Atlas. Il tasto «Indietro» chiude le finestre aperte, in partita apre il menu, dalla home esce. Home e tavolo stanno dentro la zona sicura dello schermo (fotocamera e barre di sistema).
+
 ## Test
 
 ```bash

@@ -18,6 +18,7 @@ var _table: Table
 
 
 func _ready() -> void:
+	get_tree().quit_on_go_back = false  # il tasto Indietro lo gestiamo noi
 	Prefs.load_all()
 	Art.apply_theme(Prefs.get_value("theme"))
 	Art.BACK = Prefs.get_value("back")
@@ -96,6 +97,47 @@ func _fit_window() -> void:
 	var win := get_tree().root
 	var s := Vector2(win.size) / _factor
 	win.content_scale_size = Vector2i(maxi(1, int(s.x)), maxi(1, int(s.y)))
+	_fit_safe.call_deferred()
+
+
+## Sul telefono la zona sicura esclude fotocamera e barre di sistema: home e tavolo stanno lì dentro,
+## lo sfondo del tavolo invece arriva fino ai bordi.
+func _safe_margins() -> Array:
+	if not OS.has_feature("mobile"):
+		return [0.0, 0.0, 0.0, 0.0]
+	var safe := DisplayServer.get_display_safe_area()
+	var full := DisplayServer.screen_get_size()
+	if safe.size.x <= 0 or full.x <= 0:
+		return [0.0, 0.0, 0.0, 0.0]
+	var k := _factor
+	return [safe.position.x / k, safe.position.y / k, (full.x - safe.end.x) / k, (full.y - safe.end.y) / k]
+
+
+func _fit_safe() -> void:
+	var m := _safe_margins()
+	for c in [_home, _table]:
+		if c != null and is_instance_valid(c):
+			c.offset_left = m[0]
+			c.offset_top = m[1]
+			c.offset_right = -m[2]
+			c.offset_bottom = -m[3]
+
+
+## Il tasto «Indietro» di Android: chiude le finestre aperte, poi apre il menu della partita;
+## dalla home esce dall'app.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if _table != null and is_instance_valid(_table):
+			if _table.overlay_layer.get_child_count() > 0 and not _table.overlay_layer.has_node("Over"):
+				_table._close_overlays()
+				_table._refresh()
+			else:
+				_table._open_menu()
+		elif _home != null and is_instance_valid(_home) and _home._overlays.get_child_count() > 0:
+			for c in _home._overlays.get_children():
+				c.queue_free()
+		else:
+			get_tree().quit()
 
 
 func toggle_fullscreen() -> void:
@@ -114,6 +156,7 @@ func _show_home() -> void:
 	_home = Home.new()
 	_home.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_home)
+	_fit_safe()
 	_home.play_bot.connect(func(level): _start(level))
 	_home.play_challenge.connect(func(id): _start("normal", {"kind": "challenge", "challenge": id}))
 	_home.play_daily.connect(func(day): _start("normal", {"kind": "daily", "daily": day}))
@@ -130,6 +173,7 @@ func _make_table() -> void:
 	_table = Table.new()
 	_table.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_table)
+	_fit_safe()
 	_table.exit_requested.connect(_end_game)
 	_table.fullscreen_requested.connect(func():
 		toggle_fullscreen()

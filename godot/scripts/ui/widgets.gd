@@ -127,7 +127,7 @@ class Slot extends Control:
 		queue_redraw()
 
 	func card_rect() -> Rect2:
-		return get_global_rect()
+		return Rect2(position, size)
 
 	func _draw() -> void:
 		var w := size.x
@@ -192,7 +192,7 @@ class Deck extends Control:
 
 	func pile_rect() -> Rect2:
 		var ph := pw * 1.4
-		return Rect2(global_position + Vector2(0, (size.y - ph) / 2), Vector2(pw, ph))
+		return Rect2(position + Vector2(0, (size.y - ph) / 2), Vector2(pw, ph))
 
 	func _draw() -> void:
 		var ph := pw * 1.4
@@ -225,7 +225,7 @@ class Backs extends Control:
 			queue_redraw()
 
 	func fan_rect() -> Rect2:
-		return Rect2(global_position, Vector2(size.x * 0.6, size.y))
+		return Rect2(position, Vector2(size.x * 0.6, size.y))
 
 	func _draw() -> void:
 		var k := mini(count, 10)

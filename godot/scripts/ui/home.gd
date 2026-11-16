@@ -106,6 +106,7 @@ func _layout() -> void:
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.expand_icon = false
+		b.add_theme_constant_override("icon_max_width", 24)  # l'immagine è più grande sugli schermi densi
 		b.custom_minimum_size = Vector2(tab_w, tab_h)
 		b.add_theme_font_override("font", Art.bold() if on else Art.sans())
 		b.add_theme_font_size_override("font_size", 12)
@@ -167,6 +168,8 @@ func _build_pane() -> void:
 			_pane = _learn_pane()
 	_pane_box.add_child(_pane)
 	_fit_pane.call_deferred()
+	# i testi a capo conoscono la loro altezza solo dopo aver avuto la larghezza: seconda misura
+	get_tree().process_frame.connect(_fit_pane, CONNECT_ONE_SHOT)
 
 
 ## Il contenuto prende tutta la larghezza; se è più alto dello spazio si rimpicciolisce.
@@ -180,14 +183,24 @@ func _fit_pane() -> void:
 	_pane.custom_minimum_size.x = area.x
 	_pane.reset_size()
 	var ms := _pane.get_combined_minimum_size()
-	var k := minf(1.0, area.y / maxf(1.0, ms.y))
-	if k < 1.0:
+	var k := minf(1.0, minf(area.y / maxf(1.0, ms.y), area.x / maxf(1.0, ms.x)))
+	# se non ci sta (in altezza o in larghezza) si rimpicciolisce tutto insieme
+	for i in 3:
+		if k >= 1.0:
+			break
 		_pane.custom_minimum_size.x = area.x / k
 		_pane.reset_size()
 		ms = _pane.get_combined_minimum_size()
-		k = minf(1.0, minf(area.y / ms.y, area.x / ms.x))
+		k = minf(k, minf(area.y / ms.y, area.x / ms.x))
 	_pane.scale = Vector2(k, k)
 	_pane.size = Vector2(area.x / k, ms.y)
+	# controllo finale: con la larghezza vera, l'altezza può essere cresciuta
+	var real := _pane.get_combined_minimum_size().y
+	if real * k > area.y:
+		k = area.y / real
+		_pane.scale = Vector2(k, k)
+		_pane.size = Vector2(area.x / k, real)
+		ms.y = real
 	_pane.position = Vector2(0, maxf(0, (area.y - ms.y * k) / 2) if tab == "play" else 0.0)
 
 
@@ -400,7 +413,7 @@ func _tile(label: String, on: bool, locked: bool, draw_prev: Callable, cb: Calla
 		if locked:
 			b.draw_rect(pr, Color(Art.CARTA, 0.45))
 			var lt := Art.line_icon("lock", LOCK, Art.INK, 20)
-			b.draw_texture(lt, pr.get_center() - Vector2(10, 10))
+			b.draw_texture_rect(lt, Rect2(pr.get_center() - Vector2(10, 10), Vector2(20, 20)), false)
 		var f := Art.bold() if on else Art.sans()
 		var tw := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		b.draw_string(f, Vector2((b.size.x - tw) / 2, b.size.y - 9), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Art.INK))
