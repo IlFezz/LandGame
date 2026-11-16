@@ -143,7 +143,14 @@ const ATL = (() => {
   for (const b of BACKS) root.setProperty('--bk-' + b.id, uri(b.svg(), '0 0 100 140', 'preserveAspectRatio="xMidYMid slice"'));
   root.setProperty('--bk', 'var(--bk-bussola)');
 
-  // la tavola come immagine a sé: la grafica avanzata la carica come texture e la anima
-  const mapSrc = (l) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 92" width="500" height="460" preserveAspectRatio="none">${MAPS[l]()}</svg>`);
-  return { L, COL, ICO, PAPER, INK, blob, uri, rng, mapSrc, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
+  // le stesse immagini come file a sé: il motore grafico (scene.js) le carica come texture
+  const raw = (inner, vb, w, h) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${w}" height="${h}" preserveAspectRatio="none">${inner}</svg>`);
+  const SRC = {
+    map: (l) => raw(MAPS[l](), '0 0 100 92', 500, 460),
+    ico: (l) => raw(icon(l), '0 0 24 24', 96, 96),
+    rose: () => raw(rose('#ffffff'), '0 0 200 200', 800, 800),
+    topo: () => raw(topo('#ffffff', 1), '0 0 440 800', 440, 800),
+    back: (id) => raw((BACKS.find((b) => b.id === id) || BACKS[0]).svg(), '0 0 100 140', 300, 420),
+  };
+  return { L, COL, ICO, PAPER, INK, blob, uri, rng, SRC, BACKS: BACKS.map(({ id, name }) => ({ id, name })) };
 })();

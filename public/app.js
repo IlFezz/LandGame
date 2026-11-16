@@ -70,55 +70,68 @@ const Sound = {
       if (prefs.music && !document.hidden) Music.start();
     } catch {}
   },
-  tone(freq, dur, { type = 'sine', vol = 0.12, at = 0, to = null } = {}) {
+  // uscita comune degli effetti, con un filo di riverbero (due eco filtrate: leggero anche sui telefoni)
+  out() {
+    if (this.bus) return this.bus;
+    const c = this.ctx, bus = c.createGain(), wet = c.createGain(); wet.gain.value = 0.22;
+    bus.connect(c.destination);
+    for (const [time, fb] of [[0.09, 0.3], [0.17, 0.26]]) { const d = c.createDelay(0.5), g = c.createGain(), f = c.createBiquadFilter(); d.delayTime.value = time; g.gain.value = fb; f.type = 'lowpass'; f.frequency.value = 2400; bus.connect(d); d.connect(f).connect(g).connect(d); f.connect(wet); }
+    wet.connect(c.destination);
+    const len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.nbuf = buf;
+    return (this.bus = bus);
+  },
+  tone(freq, dur, { type = 'sine', vol = 0.12, at = 0, to = null, attack = 0.01 } = {}) {
     const c = this.ctx, t = c.currentTime + at;
     const o = c.createOscillator(), g = c.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+    o.connect(g).connect(this.out()); o.start(t); o.stop(t + dur + 0.02);
   },
-  noise(dur, { vol = 0.15, at = 0, freq = 1200, to = null } = {}) {
-    const c = this.ctx, t = c.currentTime + at;
-    const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const src = c.createBufferSource(); src.buffer = buf;
-    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(freq, t);
+  // rumore filtrato: è la materia di carta, acqua, pietra e fuoco
+  noise(dur, { vol = 0.15, at = 0, freq = 1200, to = null, type = 'lowpass', q = 0.8, attack = 0.004 } = {}) {
+    const c = this.ctx, t = c.currentTime + at, out = this.out();
+    const src = c.createBufferSource(); src.buffer = this.nbuf;
+    const f = c.createBiquadFilter(); f.type = type; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
     if (to) f.frequency.exponentialRampToValueAtTime(to, t + dur);
-    const g = c.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(c.destination); src.start(t);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(out); src.start(t, Math.random() * 1.2, dur + 0.05);
   },
   play(name) {
     if (!prefs.sound || !this.ctx || this.ctx.state !== 'running') return;
-    const T = (...a) => this.tone(...a), N = (...a) => this.noise(...a);
+    const T = (...a) => this.tone(...a), N = (...a) => this.noise(...a), r = Math.random;
     switch (name) {
-      case 'draw': T(900, 0.07, { type: 'triangle', vol: 0.06, to: 600 }); break;
-      case 'play': T(260, 0.12, { vol: 0.14, to: 180 }); N(0.08, { vol: 0.05, freq: 2500 }); break;
-      case 'land': T(330, 0.16, { type: 'triangle', vol: 0.12 }); T(495, 0.2, { type: 'triangle', vol: 0.1, at: 0.07 }); break;
-      case 'counter': T(1400, 0.28, { type: 'sawtooth', vol: 0.05, to: 250 }); N(0.2, { vol: 0.05, freq: 4000, to: 500 }); break;
-      case 'fizzle': N(0.35, { vol: 0.12, freq: 3000, to: 200 }); break;
-      case 'destroy': N(0.4, { vol: 0.25, freq: 900, to: 80 }); T(110, 0.25, { type: 'square', vol: 0.06, to: 50 }); break;
-      case 'regrow': T(392, 0.12, { type: 'triangle', vol: 0.1 }); T(523, 0.12, { type: 'triangle', vol: 0.1, at: 0.08 }); T(659, 0.18, { type: 'triangle', vol: 0.1, at: 0.16 }); break;
-      case 'discard': N(0.12, { vol: 0.1, freq: 1800 }); T(300, 0.15, { vol: 0.08, to: 180 }); break;
-      case 'reuse': [660, 880, 990].forEach((f, i) => T(f, 0.2, { vol: 0.06, at: i * 0.06 })); break;
-      case 'look': T(500, 0.25, { vol: 0.05, to: 700 }); break;
-      case 'turn': T(523, 0.15, { vol: 0.09 }); T(784, 0.25, { vol: 0.09, at: 0.12 }); break;
+      case 'draw': N(0.14, { type: 'bandpass', freq: 2200, to: 4600, vol: 0.1, q: 1.2, attack: 0.03 }); break;                       // la carta scivola
+      case 'grab': N(0.08, { type: 'bandpass', freq: 1700, to: 3200, vol: 0.08, q: 1 }); break;
+      case 'play': N(0.05, { freq: 3200, vol: 0.2 }); T(150, 0.1, { vol: 0.2, to: 70 }); break;                                        // la carta sbatte sul tavolo
+      case 'land': T(110, 0.16, { vol: 0.2, to: 60 }); N(0.06, { freq: 1800, vol: 0.12 }); break;
+      // --- una voce per ogni terra che entra in gioco ---
+      case 'land-W': N(0.7, { type: 'bandpass', freq: 500, to: 1500, vol: 0.08, q: 0.7, attack: 0.2 }); [392, 494, 587, 784].forEach((f, i) => T(f, 0.7, { type: 'triangle', vol: 0.06, at: i * 0.07, attack: 0.04 })); break;
+      case 'land-U': N(0.5, { freq: 3400, to: 260, vol: 0.2, attack: 0.01 }); N(0.9, { type: 'bandpass', freq: 900, to: 400, vol: 0.06, attack: 0.2 }); [0.12, 0.22, 0.36].forEach((at) => T(900 + r() * 600, 0.07, { vol: 0.07, to: 500, at })); break;
+      case 'land-B': T(82, 0.8, { vol: 0.13, attack: 0.15 }); for (let i = 0; i < 6; i++) { const f = 160 + r() * 200; T(f, 0.09, { vol: 0.09, to: f * 1.7, at: 0.05 + i * 0.09 + r() * 0.05 }); } N(0.7, { type: 'bandpass', freq: 300, vol: 0.05, attack: 0.25 }); break;
+      case 'land-R': N(0.8, { freq: 240, to: 60, vol: 0.4 }); T(62, 0.6, { vol: 0.24, to: 36 }); for (let i = 0; i < 8; i++) N(0.03, { type: 'highpass', freq: 3000 + r() * 3000, vol: 0.09, at: 0.1 + r() * 0.7 }); break;
+      case 'land-G': N(0.6, { type: 'bandpass', freq: 3600, vol: 0.07, q: 0.6, attack: 0.2 }); N(0.4, { type: 'bandpass', freq: 5200, vol: 0.05, at: 0.2, attack: 0.15 }); [523, 659, 784].forEach((f, i) => T(f, 0.5, { vol: 0.06, at: 0.05 + i * 0.09, attack: 0.03 })); break;
+      case 'counter': N(0.26, { type: 'bandpass', freq: 400, to: 3200, vol: 0.16, q: 1.4, attack: 0.08 }); T(120, 0.14, { vol: 0.24, to: 55, at: 0.27 }); N(0.05, { freq: 2200, vol: 0.18, at: 0.27 }); break;  // soffio e timbro
+      case 'fizzle': N(0.4, { freq: 3000, to: 200, vol: 0.12 }); break;
+      case 'destroy': N(0.24, { type: 'bandpass', freq: 2600, to: 600, vol: 0.26, q: 1.6 }); T(90, 0.3, { vol: 0.24, to: 38 }); for (let i = 0; i < 5; i++) N(0.03, { type: 'highpass', freq: 2500, vol: 0.07, at: 0.15 + r() * 0.4 }); break; // lo strappo
+      case 'regrow': N(0.3, { type: 'bandpass', freq: 3000, vol: 0.05, attack: 0.1 }); [392, 523, 659].forEach((f, i) => T(f, 0.3, { type: 'triangle', vol: 0.08, at: i * 0.08 })); break;
+      case 'discard': N(0.13, { type: 'bandpass', freq: 2000, to: 900, vol: 0.12 }); T(200, 0.12, { vol: 0.08, to: 110, at: 0.08 }); break;
+      case 'reuse': [660, 880, 990, 1320].forEach((f, i) => T(f, 0.4, { vol: 0.05, at: i * 0.06, attack: 0.02 })); break;
+      case 'look': N(0.5, { type: 'bandpass', freq: 500, to: 1200, vol: 0.06, attack: 0.2 }); T(440, 0.4, { vol: 0.04, to: 660, attack: 0.1 }); break;
+      case 'turn': T(523, 0.5, { vol: 0.08, attack: 0.01 }); T(784, 0.7, { vol: 0.07, at: 0.12 }); break;
       case 'tick': T(1050, 0.04, { type: 'square', vol: 0.03 }); break;
       case 'timeout': T(220, 0.3, { type: 'square', vol: 0.06, to: 140 }); break;
-      case 'win': [523, 659, 784, 1046].forEach((f, i) => T(f, 0.28, { type: 'triangle', vol: 0.1, at: i * 0.12 })); break;
-      case 'lose': [392, 330, 262].forEach((f, i) => T(f, 0.35, { type: 'triangle', vol: 0.09, at: i * 0.18 })); break;
-      case 'click': T(700, 0.03, { type: 'triangle', vol: 0.04 }); break;
-      case 'grab': T(420, 0.12, { type: 'triangle', vol: 0.07, to: 820 }); break;
+      case 'win': [523, 659, 784, 1046, 1318].forEach((f, i) => { T(f, 0.6, { type: 'triangle', vol: 0.1, at: i * 0.12 }); T(f * 2, 0.5, { vol: 0.03, at: i * 0.12 + 0.03 }); }); N(1.2, { type: 'highpass', freq: 5000, vol: 0.03, at: 0.5, attack: 0.3 }); break;
+      case 'lose': [392, 330, 262, 196].forEach((f, i) => T(f, 0.5, { type: 'triangle', vol: 0.09, at: i * 0.2 })); break;
+      case 'click': N(0.02, { freq: 3600, vol: 0.06 }); T(700, 0.03, { type: 'triangle', vol: 0.025 }); break;
       case 'deny': T(220, 0.14, { type: 'square', vol: 0.04, to: 170 }); break;
     }
   },
 };
-document.addEventListener('pointerdown', () => Sound.unlock(), { capture: true });
-
-// ---------- Musica di sottofondo: ambient generata al volo, morbida e lenta ----------
 const Music = {
   on: false, master: null, bus: null, timer: null, nextChord: 0, nextNote: 0, step: 0,
   // Am9 · Fmaj7 · Cadd9 · G6 (note MIDI)
@@ -165,9 +178,23 @@ const Music = {
     this.master.gain.cancelScheduledValues(c.currentTime);
     this.master.gain.setTargetAtTime(0, c.currentTime, 0.5);
   },
+  // quando qualcuno è a un passo dalla vittoria la musica si fa più tesa: un battito grave e un suono più aperto
+  tension(v) {
+    v = !!v; if (v === this.tense) return; this.tense = v;
+    if (this.bus) this.bus.frequency.setTargetAtTime(v ? 1700 : 950, Sound.ctx.currentTime, 1.5);
+  },
   tick() {
     const c = Sound.ctx;
     if (!c || c.state !== 'running') return;
+    if (this.tense) {
+      if (!this.nextBeat || this.nextBeat < c.currentTime) this.nextBeat = c.currentTime + 0.2;
+      while (this.nextBeat < c.currentTime + 1.5) {
+        this.voice(55, this.nextBeat, { peak: 0.13, attack: 0.03, hold: 0.05, release: 0.35 });
+        this.voice(55, this.nextBeat + 0.28, { peak: 0.08, attack: 0.03, hold: 0.04, release: 0.3 });
+        this.voice(this.mtof(74), this.nextBeat, { type: 'triangle', peak: 0.012, attack: 0.6, hold: 0.1, release: 0.5 });
+        this.nextBeat += 1.25;
+      }
+    }
     while (this.nextChord < c.currentTime + 1.5) { this.chord(this.nextChord); this.nextChord += 11; }
     while (this.nextNote < c.currentTime + 1.5) {
       if (Math.random() < 0.55) this.note(this.nextNote);
@@ -227,10 +254,15 @@ function vibrate(pattern) {
 
 // ---------- Aspetto ----------
 let gfxCapable = null;
+// con la grafica avanzata ogni effetto del gioco avviene anche dentro la scena (onde sul tavolo, particelle)
+for (const k of ['enter', 'cast', 'destroy', 'counter', 'regrow', 'reuse', 'look', 'discard', 'win', 'lose']) {
+  const orig = FX[k];
+  FX[k] = function (a, b) { if (Scene.active) Scene.fx(k, a, b); return orig.apply(this, arguments); };
+}
 // se la grafica avanzata rallenta il dispositivo, si torna alla leggera (solo se non l'hai scelta tu)
-Live.onSlow = (why) => {
+Scene.onSlow = (why) => {
   if (prefs.gfx === 'adv' && why === 'slow') return;
-  prefs.gfx = 'lite'; Live.set(false);
+  prefs.gfx = 'lite'; Scene.set(false);
   toast('Grafica leggera attivata per mantenere il gioco fluido', true);
   if (ui.menu) render();
 };
@@ -239,8 +271,8 @@ function applyPrefs() {
   document.documentElement.style.setProperty('--bk', `var(--bk-${prefs.back})`);
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = prefs.theme === 'giorno' ? '#cbd8d4' : '#0a232b';
-  if (gfxCapable == null) gfxCapable = Live.capable();
-  Live.set(prefs.gfx === 'adv'); // per ora solo se scelta: la versione attuale rallenta il trascinamento
+  Scene.setTheme(prefs.theme); Scene.setBack(prefs.back);
+  Scene.set(prefs.gfx === 'adv');
   document.body.classList.toggle('low-fx', prefs.fx === 'low');
   FX.setQuality(prefs.fx === 'low' ? 0.4 : 1);
 }
@@ -276,11 +308,13 @@ const Altar = {
     const land = innerWidth / innerHeight >= 1.1;
     const size = land && innerHeight > 520 ? Math.min(innerHeight * 0.5, r.width * 0.5) : Math.min(r.height * 0.96, r.width * 0.96);
     Object.assign(el.style, { left: `${r.left + r.width / 2 - size / 2}px`, top: `${r.top + r.height / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` });
+    this.rect = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, size };
     el.classList.add('on');
   },
   state() {},
   // un quinto di giro quando si gioca una carta (invece di una rotazione continua)
-  cast() {
+  cast(card) {
+    Scene.cast(card, this.rect);
     const el = this.el; if (!el) return;
     el.style.setProperty('--ang0', `${this.ang}deg`);
     this.ang += 72;
@@ -318,7 +352,7 @@ document.addEventListener('pointerdown', () => {
 let fitTimer = null;
 function fitScreen() {
   document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
-  Live.reset();
+  Scene.resize();
   if (app.dataset.game) { layoutHand(); fitCenter(); drawArrows(); Altar.place(); Tut.place(); fitBox($('.sheet', app), 16); } else fitLobby();
   Full.sync();
 }
@@ -507,6 +541,7 @@ function render() {
   needRender = false;
   const view = !S || !prefs.session ? 'lobby' : !G ? 'waiting' : 'game';
   if (view === 'lobby') renderLobby(); else if (view === 'waiting') renderWaiting(); else renderGame();
+  Music.tension(view === 'game' && G.phase === 'playing' && (closeToWin(G.me.bf) || closeToWin(G.opp.bf)));
   // passaggio animato quando si cambia schermata (home ↔ attesa ↔ tavolo)
   if (ui.view && ui.view !== view) {
     const root = $('.lobby, .game', app);
@@ -1040,7 +1075,7 @@ function menuHtml() {
       <button class="btn" data-act="leave-no">Annulla</button>` : `
     <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
-    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Live.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata (prova)']])}</div>
+    <div class="mrow col"><span>Grafica</span>${seg('set-gfx', Scene.on ? 'adv' : 'lite', [['lite', 'Leggera'], ['adv', 'Avanzata (prova)']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
     <button class="mrow" data-act="toggle-info">Info nella plancia ${tog(prefs.info)}</button>
     <button class="mrow" data-act="toggle-music">Musica ${tog(prefs.music)}</button>
@@ -1153,7 +1188,7 @@ app.addEventListener('click', (e) => {
     case 'set-controls': prefs.controls = v; ui.sel = null; Sound.play('click'); return render();
     case 'set-theme': prefs.theme = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-gfx':
-      if (v === 'adv' && !Live.supported()) { toast('Questo dispositivo non supporta la grafica avanzata'); return; }
+      if (v === 'adv' && !Scene.supported()) { toast('Questo dispositivo non supporta la grafica avanzata'); return; }
       prefs.gfx = v; applyPrefs(); Sound.play('click'); return render();
     case 'set-fx': prefs.fx = v; applyPrefs(); Sound.play('click'); return render();
     case 'toggle-info': prefs.info = !prefs.info; Sound.play('click'); return render();
@@ -1462,16 +1497,14 @@ function fly(from, toEl, face, { dur = 420, hideTarget = true, delay = 0, flip =
   const to = rectOf(toEl);
   if (!okRect(from) || !okRect(to)) return Promise.resolve();
   const W = Math.max(46, Math.min(Math.max(to.width, from.width * 0.8), 190)), H = W * 1.4;
-  let f;
-  if (flip && face && Live.on) {
-    dur = Math.round(dur * 1.35);
-    f = document.createElement('div'); f.className = 'flyer flipwrap';
-    Object.assign(f.style, { width: W + 'px', height: H + 'px' }); f.style.setProperty('--w', W + 'px');
-    f.innerHTML = `<div class="flipper"><div class="card k-${face} ${W < 120 ? 'compact' : ''}">${cardFace(face, W >= 120)}</div><div class="cardback"></div></div>`;
-    document.body.appendChild(f);
-    f.firstChild.animate([{ transform: 'rotateY(180deg)' }, { transform: 'rotateY(180deg)', offset: 0.12 }, { transform: 'rotateY(0deg)', offset: 0.8 }, { transform: 'rotateY(0deg)' }],
-      { duration: D(dur), delay: D(delay), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'both' });
-  } else f = makeFlyer(face, W, H);
+  // grafica avanzata: il volo lo disegna la scena (la carta si gira e si piega in aria)
+  if (Scene.active) {
+    if (hideTarget && toEl) toEl.style.visibility = 'hidden';
+    setTimeout(() => FX.trail({ sx: from.left + from.width / 2, sy: from.top + from.height / 2, ex: to.left + to.width / 2, ey: to.top + to.height / 2, w: W * 0.8, h: H * 0.8 }, face || 'N', D(dur)), D(delay));
+    return Scene.fly(from, to, face, { dur: D(dur), delay: D(delay), flip, mini: !!(toEl && toEl.closest && toEl.closest('.slot')) })
+      .then(() => { if (hideTarget && toEl) toEl.style.visibility = ''; });
+  }
+  const f = makeFlyer(face, W, H);
   const sx = from.left + from.width / 2 - W / 2, sy = from.top + from.height / 2 - H / 2;
   const ex = to.left + to.width / 2 - W / 2, ey = to.top + to.height / 2 - H / 2;
   const s0 = Math.max(0.15, Math.min(from.width / W, 1.2)), s1 = Math.max(0.15, Math.min(to.width / W, 1.2));
@@ -1608,7 +1641,7 @@ async function animateStep(ev, next) {
       lastReuse = null;
       G = next; render();
       setCaption('');
-      Sound.play('land');
+      Sound.play('land'); Sound.play('land-' + ev.card);
       const to = slotEl(w, ev.card);
       await fly(from, to, ev.card, { dur: 420 });
       FX.enter(ev.card, rectOf(to));
