@@ -1,0 +1,356 @@
+## Finestre e pannelli condivisi tra home e tavolo: regole, obiettivi, profilo con le statistiche,
+## profili e trasferimento. Tutto si rimpicciolisce per stare nello schermo: mai scorrere.
+extends RefCounted
+
+const Art := preload("res://scripts/ui/art.gd")
+const W := preload("res://scripts/ui/widgets.gd")
+const Profile := preload("res://scripts/app/profile.gd")
+const Prefs := preload("res://scripts/app/prefs.gd")
+const TYPES := ["W", "U", "B", "R", "G"]
+
+
+## Velo + foglio di carta centrato. Restituisce il contenitore in cui aggiungere i contenuti;
+## dopo averli aggiunti si chiama fit(). `host` è il nodo che riceve il velo (a tutto schermo).
+static func sheet(host: Control, name: String, width := 400.0) -> VBoxContainer:
+	var veil := ColorRect.new()
+	veil.name = name
+	veil.color = Color(Art.TAVOLO2, 0.82)
+	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	veil.size = host.size
+	host.add_child(veil)
+	var panel := PanelContainer.new()
+	var sb := Art.box(Art.CARTA, 16)
+	for m in ["left", "right", "top", "bottom"]:
+		sb.set("content_margin_" + m, 22)
+	sb.shadow_color = Art.OMBRA
+	sb.shadow_size = 30
+	panel.add_theme_stylebox_override("panel", sb)
+	veil.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	v.set_meta("panel", panel)
+	v.set_meta("width", width)
+	veil.resized.connect(fit.bind(v))
+	return v
+
+
+static func fit(v: VBoxContainer) -> void:
+	if not is_instance_valid(v):
+		return
+	var panel: PanelContainer = v.get_meta("panel")
+	var veil: Control = panel.get_parent()
+	var S := veil.size
+	var w := minf(float(v.get_meta("width")), S.x - 28)
+	panel.custom_minimum_size.x = w
+	panel.reset_size()
+	var ps := panel.get_combined_minimum_size()
+	ps.x = w
+	var k := minf(1.0, (S.y - 24) / ps.y)
+	panel.pivot_offset = Vector2.ZERO
+	panel.scale = Vector2(k, k)
+	panel.size = ps
+	panel.position = (S - ps * k) / 2
+
+
+static func close(n: Node) -> void:
+	if n != null and n.get_parent():
+		n.get_parent().remove_child(n)
+		n.queue_free()
+
+
+static func title(text: String, fs := 22) -> Label:
+	var t := W.label(text, fs, Art.INK, Art.bold())
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return t
+
+
+static func para(text: String, fs := 15, color := Color(0, 0, 0, 0), center := true) -> Label:
+	var l := W.label(text, fs, color if color.a > 0 else Color(Art.INK, 0.75), Art.serif())
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if center:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return l
+
+
+static func h4(text: String) -> Label:
+	var l := W.label(text, 13, Color(Art.INK, 0.6), Art.bold())
+	return l
+
+
+static func rich(bbcode: String, fs := 14) -> RichTextLabel:
+	var r := RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	r.add_theme_font_override("normal_font", Art.sans())
+	r.add_theme_font_override("bold_font", Art.bold())
+	r.add_theme_font_override("italics_font", Art.serif())
+	for f in ["normal_font_size", "bold_font_size", "italics_font_size"]:
+		r.add_theme_font_size_override(f, fs)
+	r.add_theme_color_override("default_color", Art.INK)
+	r.text = bbcode
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
+
+
+static func button(text: String, kind: String, cb: Callable, fs := 15) -> Button:
+	var b := W.button(text, kind, fs)
+	b.pressed.connect(cb)
+	return b
+
+
+# ---------------------------------------------------------------- regole
+
+static func rules(host: Control) -> void:
+	var v := sheet(host, "Regole", 520)
+	v.add_child(title("Regole"))
+	v.add_child(rich(
+		"[b]Obiettivo[/b]  Avere in gioco una terra di ogni tipo, oppure 5 terre dello stesso tipo. Si vince appena la terra entra in gioco.\n" +
+		"[b]Preparazione[/b]  Mazzo da 50 carte, 10 per tipo. Si pescano 5 carte, niente mulligan. Chi inizia salta la prima pescata.\n" +
+		"[b]Turno[/b]  Peschi una carta, poi puoi giocare [b]una[/b] terra (o passare). L'effetto si attiva quando entra in gioco.\n" +
+		"[b]Pianura[/b]: riattiva l'effetto di un'altra tua terra in gioco (non Pianura).\n" +
+		"[b]Isola[/b]: quando entra peschi 1 carta. Dalla mano, scartala con un'altra terra per contrastare la terra appena giocata dall'avversario (e il suo effetto). Anche un contrasto può essere contrastato.\n" +
+		"[b]Palude[/b]: guardi la mano avversaria e scegli una terra da scartare.\n" +
+		"[b]Montagna[/b]: distruggi una terra avversaria in gioco.\n" +
+		"[b]Foresta[/b]: riprendi in mano una terra dal tuo cimitero.\n" +
+		"Senza bersagli la terra si gioca comunque, senza effetto.\n" +
+		"[b]Comandi[/b]  Porta la carta al centro (trascinandola, o toccandola e poi toccando il centro). Se ha un bersaglio, tocca poi la carta da colpire: terra avversaria per la Montagna, tua terra per la Pianura, carta nel tuo cimitero per la Foresta. Tenendo premuta una carta la vedi in grande.\n" +
+		"[b]Tempo[/b]  Se il tempo scade passi il turno; se scade durante una risposta la terra avversaria risolve.\n" +
+		"[b]Carte finite[/b]  Se un mazzo è vuoto non si pesca. Quando entrambi i mazzi sono vuoti e nessuno può o vuole più giocare, vince chi ha più tipi di terra diversi in gioco; in parità vince chi ha giocato l'ultima terra.", 14))
+	var veil: Node = v.get_meta("panel").get_parent()
+	v.add_child(button("Chiudi", "ink", func(): close(veil)))
+	fit(v)
+
+
+# ---------------------------------------------------------------- obiettivi
+
+static func goals(host: Control) -> void:
+	var a := Profile.load_profile(Prefs.player_name())
+	var got: Dictionary = a.get("goals", {})
+	var v := sheet(host, "Obiettivi", 460)
+	v.add_child(title("Obiettivi"))
+	var n := 0
+	for g in Profile.GOALS:
+		if got.has(g.id):
+			n += 1
+	v.add_child(para("%d di %d raggiunti. Alcuni sbloccano dorsi e tavoli nella Collezione." % [n, Profile.GOALS.size()], 14))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6)
+	for g in Profile.GOALS:
+		var row := HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("separation", 6)
+		var mark := W.label("✓" if got.has(g.id) else "·", 15, Art.LAND.G if got.has(g.id) else Color(Art.INK, 0.3), Art.bold())
+		mark.custom_minimum_size.x = 14
+		row.add_child(mark)
+		var txt := W.label("%s\n%s%s" % [g.name, g.desc, ("  Premio: " + g.reward.name) if g.has("reward") else ""], 11, Art.INK if got.has(g.id) else Color(Art.INK, 0.6))
+		txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		txt.custom_minimum_size.x = 160
+		row.add_child(txt)
+		grid.add_child(row)
+	v.add_child(grid)
+	var veil: Node = v.get_meta("panel").get_parent()
+	v.add_child(button("Chiudi", "ink", func(): close(veil)))
+	fit(v)
+
+
+# ---------------------------------------------------------------- profilo
+
+## Il pannello Profilo con le statistiche (`side`: "cpu" o "pvp"). on_side(side) per cambiare lato,
+## on_transfer() per aprire profili e trasferimento.
+static func profile_panel(side: String, on_side: Callable, on_transfer: Callable) -> VBoxContainer:
+	var a := Profile.load_profile(Prefs.player_name())
+	var s: Dictionary = a[side]
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 9)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var av := Control.new()
+	av.custom_minimum_size = Vector2(54, 54)
+	var initial: String = (a.name as String).strip_edges().substr(0, 1).to_upper()
+	av.draw.connect(func():
+		av.draw_circle(Vector2(27, 27), 27, Art.SEGNALE)
+		av.draw_circle(Vector2(27, 27), 25, Art.CARTA)
+		av.draw_circle(Vector2(27, 27), 22, Art.INK)
+		var f := Art.bold()
+		var tw := f.get_string_size(initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25).x
+		av.draw_string(f, Vector2(27 - tw / 2, 27 + f.get_ascent(25) * 0.36), initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Art.CARTA))
+	head.add_child(av)
+	var who := VBoxContainer.new()
+	who.add_theme_constant_override("separation", 0)
+	who.add_child(W.label(a.name, 20, Art.INK, Art.bold()))
+	var total := int(a.cpu.played) + int(a.pvp.played)
+	var sub := "Ancora nessuna partita: le statistiche si riempiono giocando." if total == 0 else \
+		"%d %s%s" % [total, "partita giocata" if total == 1 else "partite giocate", " · tutorial completato" if a.tutorial else ""]
+	var sl := W.label(sub, 12, Color(Art.INK, 0.65))
+	sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sl.custom_minimum_size.x = 200
+	who.add_child(sl)
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(who)
+	v.add_child(head)
+	var seg := HBoxContainer.new()
+	for o in [["cpu", "Contro il computer"], ["pvp", "Contro giocatori"]]:
+		var b := W.button(o[1], "ink" if side == o[0] else "ghost_ink", 13)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var id: String = o[0]
+		b.pressed.connect(func(): on_side.call(id))
+		seg.add_child(b)
+	v.add_child(seg)
+	# anello con la percentuale di vittorie e tre numeri
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	var pct := int(round(100.0 * s.won / s.played)) if s.played > 0 else 0
+	var ring := Control.new()
+	ring.custom_minimum_size = Vector2(80, 80)
+	ring.draw.connect(func():
+		ring.draw_arc(Vector2(40, 40), 34, 0, TAU, 64, Color(Art.INK, 0.12), 8, true)
+		if pct > 0:
+			ring.draw_arc(Vector2(40, 40), 34, -PI / 2, -PI / 2 + TAU * pct / 100.0, 64, Art.INK, 8, true)
+		var f := Art.bold()
+		var t := "%d%%" % pct
+		var tw := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
+		ring.draw_string(f, Vector2(40 - tw / 2, 44), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Art.INK)
+		var f2 := Art.sans()
+		var tw2 := f2.get_string_size("vinte", HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+		ring.draw_string(f2, Vector2(40 - tw2 / 2, 57), "vinte", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(Art.INK, 0.6)))
+	top.add_child(ring)
+	for k in [[s.played, "partite"], [s.best, "serie migliore"], [s.fastest if s.fastest else "–", "turni, vittoria più rapida"]]:
+		var box := VBoxContainer.new()
+		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.add_theme_constant_override("separation", 0)
+		var n := W.label(str(int(k[0])) if not k[0] is String else k[0], 24, Art.INK, Art.bold())
+		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(n)
+		var l := W.label(k[1], 11, Color(Art.INK, 0.7))
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 60
+		box.add_child(l)
+		top.add_child(box)
+	v.add_child(top)
+	v.add_child(h4("Terre giocate"))
+	var maxl := 1
+	for t in TYPES:
+		maxl = maxi(maxl, int(s.lands[t]))
+	for t in TYPES:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var ico := TextureRect.new()
+		ico.texture = Art.tex("ico-" + t, 20)
+		ico.custom_minimum_size = Vector2(20, 20)
+		ico.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ico.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(ico)
+		var bar := Control.new()
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.custom_minimum_size.y = 20
+		var k2: float = float(s.lands[t]) / maxl
+		bar.draw.connect(func():
+			var r := Rect2(0, 5, bar.size.x, 10)
+			bar.draw_style_box(Art.box(Color(Art.INK, 0.08), 5), r)
+			if k2 > 0:
+				bar.draw_style_box(Art.box(Art.INK, 5), Rect2(0, 5, maxf(10, bar.size.x * k2), 10)))
+		row.add_child(bar)
+		var num := W.label(str(int(s.lands[t])), 13, Art.INK, Art.bold())
+		num.custom_minimum_size.x = 34
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(num)
+		v.add_child(row)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 16)
+	var res := [["Facile", "%d / %d" % [s.modes.easy.w, s.modes.easy.p]], ["Normale", "%d / %d" % [s.modes.normal.w, s.modes.normal.p]],
+		["Difficile", "%d / %d" % [s.modes.hard.w, s.modes.hard.p]]] if side == "cpu" else \
+		[["Vinte", str(int(s.won))], ["Perse", str(int(s.lost))], ["Pari", str(int(s.draw))]]
+	cols.add_child(_rows("Vittorie" if side == "cpu" else "Risultati", res))
+	cols.add_child(_rows("Come vinci", [["Cinque diverse", str(int(s.winBy.domain))], ["Cinque uguali", str(int(s.winBy.five))], ["Carte finite", str(int(s.winBy.cards))]]))
+	v.add_child(cols)
+	var more := W.label("Contrasti fatti  %d      Terre distrutte  %d" % [s.counters, s.destroyed], 13, Color(Art.INK, 0.75))
+	more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(more)
+	v.add_child(button("Profili e trasferimento", "ghost_ink", on_transfer, 13))
+	return v
+
+
+static func _rows(head: String, rows: Array) -> VBoxContainer:
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 3)
+	v.add_child(h4(head))
+	for r in rows:
+		var h := HBoxContainer.new()
+		var a := W.label(r[0], 13, Art.INK)
+		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(a)
+		h.add_child(W.label(r[1], 13, Art.INK, Art.bold()))
+		v.add_child(h)
+	return v
+
+
+# ---------------------------------------------------------------- trasferimento
+
+static func transfer(host: Control, on_change: Callable) -> void:
+	var name := Prefs.player_name()
+	var v := sheet(host, "Trasferimento", 440)
+	var veil: Node = v.get_meta("panel").get_parent()
+	v.add_child(title("Profili e trasferimento"))
+	v.add_child(para("Le statistiche seguono il nome con cui giochi e restano su questo dispositivo.", 14))
+	var others := []
+	for n in Profile.profile_names():
+		if Profile.key_of(n) != Profile.key_of(name):
+			others.append(n)
+	if not others.is_empty():
+		v.add_child(h4("Altri profili su questo dispositivo"))
+		var flow := HFlowContainer.new()
+		for n in others:
+			var b := W.button(n, "ghost_ink", 13)
+			var nn: String = n
+			b.pressed.connect(func():
+				Prefs.set_value("name", nn)
+				close(veil)
+				on_change.call())
+			flow.add_child(b)
+		v.add_child(flow)
+	v.add_child(h4("Su un altro dispositivo (anche la versione nel browser)"))
+	v.add_child(para("Copia il codice e incollalo nel Profilo dell'altro telefono o computer.", 13, Color(0, 0, 0, 0), false))
+	var code := LineEdit.new()
+	code.placeholder_text = "Incolla un codice"
+	code.add_theme_font_size_override("font_size", 13)
+	code.add_theme_color_override("font_color", Art.INK)
+	var es := Art.box(Color("#fffaf0"), 10, Art.INK, 1.5)
+	es.content_margin_left = 10
+	es.content_margin_right = 10
+	es.content_margin_top = 8
+	es.content_margin_bottom = 8
+	code.add_theme_stylebox_override("normal", es)
+	code.add_theme_stylebox_override("focus", es)
+	var msg := para("", 13)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var copy := W.button("Copia codice", "ink", 13)
+	copy.pressed.connect(func():
+		DisplayServer.clipboard_set(Profile.export_code(name))
+		msg.text = "Codice copiato.")
+	row.add_child(copy)
+	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(code)
+	var imp := W.button("Importa", "ink", 13)
+	imp.pressed.connect(func():
+		var n := Profile.import_code(code.text)
+		if n == "":
+			msg.text = "Codice non valido."
+			return
+		Prefs.set_value("name", n)
+		close(veil)
+		on_change.call())
+	row.add_child(imp)
+	v.add_child(row)
+	v.add_child(msg)
+	v.add_child(button("Chiudi", "ink", func(): close(veil)))
+	fit(v)

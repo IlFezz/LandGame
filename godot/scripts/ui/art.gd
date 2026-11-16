@@ -4,19 +4,23 @@ extends RefCounted
 
 const Data := preload("res://scripts/ui/art_data.gd")
 
-# colori del tema Notte (style.css)
-const TAVOLO := Color("#12363f")
-const TAVOLO2 := Color("#0a232b")
-const TESTO := Color("#e9f1ec")
-const MUTO := Color("#93b3b0")
-const RIGA := Color("#d6e8e04d")
+# colori del tavolo: cambiano con il tema scelto nella Collezione (vedi apply_theme)
+static var TAVOLO := Color("#12363f")
+static var TAVOLO2 := Color("#0a232b")
+static var TESTO := Color("#e9f1ec")
+static var MUTO := Color("#93b3b0")
+static var RIGA := Color("#d6e8e04d")
+static var OMBRA := Color(0, 0, 0, 0.53)
+static var TOPO := "topo-n"
+static var ROSE := "rose-n"
+static var THEME := "notte"
+static var BACK := "bussola"  # dorso delle carte
 const CARTA := Color("#f4eddd")
 const CARTA2 := Color("#e2d6bd")
 const INK := Color("#17262d")
 const SEGNALE := Color("#f6c453")
 const SEGNALE2 := Color("#c9962e")
 const ROSSO := Color("#c8402b")
-const OMBRA := Color(0, 0, 0, 0.53)
 const LAND := {"W": Color("#e0a92e"), "U": Color("#1f8fb8"), "B": Color("#7557a6"), "R": Color("#d9482f"), "G": Color("#23855a")}
 
 const NAMES := {"W": "Pianura", "U": "Isola", "B": "Palude", "R": "Montagna", "G": "Foresta"}
@@ -34,6 +38,31 @@ const LONG_FX := {
 	"R": "Distruggi una terra avversaria in gioco.",
 	"G": "Riprendi in mano una terra dal tuo cimitero.",
 }
+
+## Tavoli (style.css): [tavolo, tavolo2, testo, muto, riga, ombra, curve di livello, rosa]
+const THEMES := {
+	"notte": ["#12363f", "#0a232b", "#e9f1ec", "#93b3b0", "#d6e8e04d", "#00000088", "topo-n", "rose-n"],
+	"giorno": ["#e3ebe7", "#cbd8d4", "#17262d", "#54707a", "#17262d47", "#17262d47", "topo-d", "rose-d"],
+	"pergamena": ["#ecdfc2", "#d6c299", "#3a2a18", "#7a6446", "#3a2a1847", "#3a2a1852", "topo-p", "rose-p"],
+	"corallo": ["#4c201c", "#2c1110", "#f6e7dc", "#c9a092", "#f4d9cc45", "#00000099", "topo-c", "rose-c"],
+}
+const THEME_NAMES := [["notte", "Notte"], ["giorno", "Giorno"], ["pergamena", "Pergamena"], ["corallo", "Corallo"]]
+const BACKS := [["bussola", "Bussola"], ["meridiani", "Meridiani"], ["correnti", "Correnti"], ["sestante", "Sestante"],
+	["radici", "Radici"], ["maree", "Maree"], ["stelle", "Stelle"]]
+
+
+static func apply_theme(id: String) -> void:
+	var t: Array = THEMES.get(id, THEMES.notte)
+	THEME = id if THEMES.has(id) else "notte"
+	TAVOLO = Color(t[0])
+	TAVOLO2 = Color(t[1])
+	TESTO = Color(t[2])
+	MUTO = Color(t[3])
+	RIGA = Color(t[4])
+	OMBRA = Color(t[5])
+	TOPO = t[6]
+	ROSE = t[7]
+
 
 static var _tex := {}
 static var _fonts := {}
@@ -83,6 +112,25 @@ static func tex(key: String, width: float) -> Texture2D:
 	var t := ImageTexture.create_from_image(img)
 	_tex[k] = t
 	return t
+
+
+## Un disegno SVG scritto a mano (icone delle schede, lucchetto), largo `width` unità logiche.
+static func svg_tex(key: String, svg: String, width: float) -> Texture2D:
+	var w := maxi(8, int(ceil(width * px)))
+	var k := "svg:%s@%d" % [key, w]
+	if _tex.has(k):
+		return _tex[k]
+	var img := Image.new()
+	img.load_svg_from_string(svg, float(w) / _viewbox(svg).x)
+	var t := ImageTexture.create_from_image(img)
+	_tex[k] = t
+	return t
+
+
+## Icona a tratto (viewBox 24×24) del colore dato, come le icone della barra delle schede.
+static func line_icon(key: String, paths: String, color: Color, width: float) -> Texture2D:
+	var svg := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#%s\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\">%s</svg>" % [color.to_html(false), paths]
+	return svg_tex(key + color.to_html(), svg, width)
 
 
 ## Disegna `t` dentro `r` riempiendolo tutto e tagliando ciò che avanza (come "cover" nel CSS).

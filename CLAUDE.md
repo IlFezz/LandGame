@@ -22,6 +22,8 @@ Ordine di lavoro concordato:
 4. Partite tra amici: il client Godot parla con lo stesso server Node (`server.js`, WebSocket, stessi messaggi di `hub.js`).
 5. Pubblicazione sugli store.
 
+Stato: punti 1 e 2 fatti (vedi `godot/README.md`). Test Godot: `godot --headless --path godot -s res://tests/run_tests.gd`; foto di prova con `--finestra=390x844 --scala=1 --partita=normal --foto=file.png` (dettagli nel README di `godot/`). Le prove non devono lasciare dati in `%APPDATA%/Godot/app_userdata/Atlas/` (partita salvata, profili di prova).
+
 Il collegamento con l'editor è il server MCP `godot` (`@coding-solo/godot-mcp`: avvia l'editor, esegue il progetto, legge gli errori), aggiunto dal proprietario sul suo computer. Se non c'è o non trova Godot, aiutalo ad aggiungerlo e a impostare `GODOT_PATH` con il percorso dell'eseguibile di Godot.
 
 ## Preferenze già espresse (valgono anche per Godot)

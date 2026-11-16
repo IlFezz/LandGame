@@ -15,7 +15,7 @@ var kind := "W":
 	set(v):
 		kind = v
 		queue_redraw()
-var back_id := "bussola"
+var back_id := ""  # vuoto: il dorso scelto nella Collezione
 ## anello intorno alla carta (giallo: si può usare / rosso: verrà scartata o è dell'avversario)
 var ring := Color(0, 0, 0, 0):
 	set(v):
@@ -57,7 +57,7 @@ func _draw() -> void:
 	draw_style_box(Art.box(Art.CARTA, rad), Rect2(Vector2.ZERO, size))
 	if kind == "back":
 		var inset := w * 0.035
-		Art.draw_cover(self, Art.tex("bk-" + back_id, w), Rect2(inset, inset, w - inset * 2, h - inset * 2))
+		Art.draw_cover(self, Art.tex("bk-" + (back_id if back_id != "" else Art.BACK), w), Rect2(inset, inset, w - inset * 2, h - inset * 2))
 	else:
 		_draw_face(w, h)
 	if dim > 0:
@@ -108,6 +108,8 @@ func _draw_face(w: float, h: float) -> void:
 	draw_circle(gc, gd / 2 + w * 0.024, Art.CARTA)
 	Art.draw_contain(self, Art.tex("ico-" + kind, gd), Rect2(gc - Vector2(gd, gd) / 2, Vector2(gd, gd)))
 	var em := w * 0.1
+	if em * 0.66 < 2:
+		return  # troppo piccola per le scritte
 	if show_name:
 		_draw_spaced(Art.NAMES[kind].to_upper(), h * name_top, em * name_em, spacing)
 	if show_text:

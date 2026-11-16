@@ -11,7 +11,13 @@ const Bot := preload("res://scripts/rules/bot.gd")
 const Art := preload("res://scripts/ui/art.gd")
 const W := preload("res://scripts/ui/widgets.gd")
 const Card := preload("res://scripts/ui/card_view.gd")
+const Modes := preload("res://scripts/app/modes.gd")
+const Profile := preload("res://scripts/app/profile.gd")
+const Prefs := preload("res://scripts/app/prefs.gd")
+const Sound := preload("res://scripts/app/sound.gd")
+const Sheets := preload("res://scripts/ui/sheets.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
+const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
 const FLY := 0.5  # durata di un volo di carta (una sola velocità, lenta)
 const SLOP := 6.0  # movimento oltre il quale la pressione diventa trascinamento
@@ -22,6 +28,9 @@ var g: Game
 var bot: Bot
 var level := "normal"
 var player_name := "Tu"
+var mode := {"kind": "bot"}  # kind: "bot" | "challenge" | "daily" | "tutorial"
+var cur := {}  # conteggi della partita per statistiche e obiettivi
+var new_goals: Array = []
 var me := 0
 var V := {}  # vista mostrata adesso (durante le animazioni è quella dell'evento in corso)
 var busy := false  # animazioni in corso: niente input di gioco
@@ -30,6 +39,15 @@ var _bot_thinking := false
 var _auto_allow_key := ""
 var _game_id := 0
 var autoplay := false  # solo per le prove: il computer gioca anche al posto mio
+var save_enabled := true  # i test lo spengono, per non lasciare partite salvate
+var turn_time := 0  # secondi per turno (0: illimitato)
+var _timer_key := ""
+var _timer_end := 0.0
+var _last_tick := -1
+var timer_bar: Control
+var arrow_layer: Control
+var react_btn: Button
+var _react_last := 0
 var _me_bot: Bot
 
 # ---------- stato dell'interfaccia ----------
@@ -166,6 +184,22 @@ func _build() -> void:
 	overlay_layer = Control.new()
 	overlay_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(overlay_layer)
+	arrow_layer = Control.new()
+	arrow_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrow_layer.draw.connect(_draw_arrow)
+	add_child(arrow_layer)
+	move_child(arrow_layer, hand_layer.get_index())
+	timer_bar = Control.new()
+	timer_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	timer_bar.draw.connect(_draw_timer)
+	timer_bar.visible = false
+	add_child(timer_bar)
+	react_btn = Button.new()
+	react_btn.focus_mode = Control.FOCUS_NONE
+	react_btn.flat = true
+	react_btn.icon = Art.line_icon("react", "<path d=\"M4 5.5h16v10H10l-4.5 3.5v-3.5H4z\"/>", Art.TESTO, 22)
+	react_btn.pressed.connect(_open_reactions)
+	add_child(react_btn)
 	peek_layer = Control.new()
 	peek_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(peek_layer)
@@ -176,13 +210,46 @@ func _build() -> void:
 # =====================================================================
 
 ## Nuova partita contro il computer. lvl: "easy" | "normal" | "hard".
-## opts va al motore (per esempio firstPlayer, seed); serve anche ai test.
-func start(lvl: String, name := "Tu", opts := {}) -> void:
+## Nuova partita. opts va al motore (per esempio firstPlayer, seed; serve anche ai test).
+## m: { kind: "bot" | "challenge" | "daily" | "tutorial", challenge: id, daily: "2026-11-16" }
+func start(lvl: String, name := "Tu", opts := {}, m := {}) -> void:
 	_game_id += 1
+	mode = m if not m.is_empty() else {"kind": "bot"}
+	var kind: String = mode.kind
+	if kind == "challenge":
+		var ch := Modes.challenge(mode.challenge)
+		opts = ch.opts.duplicate(true)
+		lvl = ch.level
+	elif kind == "daily":
+		opts = Modes.daily_opts(mode.daily)
+		lvl = "normal"
+	elif kind == "tutorial":
+		opts = Modes.tutorial_opts()
+		lvl = "normal"
 	level = lvl
 	player_name = name
-	g = Game.new([name, "BOT"], opts)
-	bot = Bot.new(g, 1, {"level": lvl})
+	g = Game.new([name, "Maestro" if kind == "tutorial" else "BOT"], opts)
+	cur = Profile.fresh(lvl if kind == "bot" else kind, mode.get("challenge"), mode.get("daily"), kind == "tutorial")
+	new_goals = []
+	_begin()
+
+
+## Riprende una partita salvata alla chiusura dell'app.
+func resume(d: Dictionary) -> void:
+	_game_id += 1
+	mode = d.mode
+	level = d.level
+	player_name = d.name
+	cur = Game._ints(d.cur)
+	g = Game.from_dict(d.game)
+	new_goals = []
+	_begin()
+
+
+func _begin() -> void:
+	bot = Bot.new(g, 1, {"level": level})
+	turn_time = 0 if mode.kind == "tutorial" else int(Prefs.get_value("turn_time"))
+	_timer_key = ""
 	staged = null
 	sel = null
 	counter_mode = false
@@ -191,6 +258,7 @@ func start(lvl: String, name := "Tu", opts := {}) -> void:
 	caption = ""
 	_close_overlays()
 	V = g.view(me)
+	tutorial_reset()
 	g.take_events()  # la distribuzione iniziale non si anima
 	_layout()
 	_refresh()
@@ -212,6 +280,11 @@ func _task() -> String:
 ## Azione del giocatore.
 func act(a: Dictionary) -> void:
 	if busy or g == null:
+		return
+	if not _allowed(a):
+		staged = null
+		sel = null
+		_refresh()
 		return
 	var err = g.act(me, a)
 	if err != null:
@@ -238,16 +311,20 @@ func _pump() -> void:
 		if evs.is_empty():
 			break
 		busy = true
+		_track(evs)
+		var batch := evs
 		for e in evs:
 			await _animate(e)
 			if id != _game_id:
 				_pumping = false
 				return
+		_bot_reacts(batch)
 	busy = false
 	_pumping = false
 	V = g.view(me)
 	caption = ""
 	_refresh()
+	_save()
 	if g.phase != "playing":
 		await get_tree().create_timer(0.4).timeout
 		if id == _game_id:
@@ -263,7 +340,7 @@ func _pump() -> void:
 				_me_bot = Bot.new(g, me)
 			g.act(me, _me_bot.decide())
 			_pump()
-	elif _task() == "response" and V.get("counterOthers", []).is_empty():
+	elif _task() == "response" and V.get("counterOthers", []).is_empty() and mode.kind != "tutorial":
 		_auto_allow(id)
 
 
@@ -271,9 +348,16 @@ func _bot_move(id: int) -> void:
 	if _bot_thinking:
 		return
 	_bot_thinking = true
+	if mode.kind == "tutorial" and g.step != "response":
+		# il Maestro gioca solo dopo che hai letto e premuto «Avanti»
+		await _tutorial_wait()
+		if id != _game_id:
+			return
 	var t0 := Time.get_ticks_msec()
-	var a
-	if bot.hard:
+	var a = Modes.tutorial_bot_move(g) if mode.kind == "tutorial" else null
+	if a != null:
+		pass
+	elif bot.hard:
 		bot.decide_async()
 		a = await bot.decided
 	else:
@@ -286,8 +370,69 @@ func _bot_move(id: int) -> void:
 	if id != _game_id or g.phase != "playing" or g.actor() != bot.p:
 		return
 	if a == null or g.act(bot.p, a) != null:
-		g.act(bot.p, {"type": "pass"} if g.step == "main" else {"type": "allow"})
+		a = bot.decide() if not bot.hard else null
+		if a == null or g.act(bot.p, a) != null:
+			g.act(bot.p, {"type": "pass"} if g.step == "main" else {"type": "allow"})
 	_pump()
+
+
+# ---------- tutorial (scripts/ui/coach.gd) ----------
+var coach: Node = null
+
+
+func tutorial_reset() -> void:
+	if coach != null:
+		coach.queue_free()
+		coach = null
+	if mode.kind == "tutorial":
+		coach = load("res://scripts/ui/coach.gd").new(self)
+		add_child(coach)
+		move_child(coach, overlay_layer.get_index())
+
+
+## Aspetta che il giocatore prema «Avanti» prima della mossa del Maestro.
+func _tutorial_wait() -> void:
+	if coach != null:
+		await coach.wait_go()
+
+
+## Il tutorial può rifiutare una mossa fuori programma (spiegando perché).
+func _allowed(a: Dictionary) -> bool:
+	return coach == null or coach.allows(a)
+
+
+## Statistiche: ogni evento aggiorna i conteggi; a fine partita si salva il profilo.
+func _track(evs: Array) -> void:
+	for e in evs:
+		Profile.track(cur, e.ev, me)
+		if e.ev.type == "end":
+			new_goals = Profile.finish(cur, {"name": player_name, "won": g.winner == me, "winner_null": g.winner == null,
+				"bf": g.players[me].bf, "reason": g.end_reason, "turn": g.turn})
+
+
+## Salva la partita in corso (o la cancella se è finita).
+func _save() -> void:
+	if g == null or autoplay or not save_enabled:
+		return
+	if g.phase != "playing":
+		forget_save()
+		return
+	var f := FileAccess.open(SAVE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"mode": mode, "level": level, "name": player_name, "cur": cur, "game": g.to_dict()}))
+
+
+static func forget_save() -> void:
+	if FileAccess.file_exists(SAVE):
+		DirAccess.remove_absolute(SAVE)
+
+
+## La partita salvata, se c'è ({} altrimenti).
+static func saved_game() -> Dictionary:
+	if not FileAccess.file_exists(SAVE):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
+	return d if d is Dictionary and d.has("game") else {}
 
 
 ## Se non posso contrastare, la terra avversaria risolve da sola dopo una pausa casuale
@@ -349,6 +494,17 @@ func _layout() -> void:
 	bg.queue_redraw()
 	center_frame.position = center_rect.position
 	center_frame.size = center_rect.size
+	arrow_layer.size = S
+	# barra del tempo: sotto la barra in alto (telefono verticale) o lungo il bordo superiore
+	if lay == "portrait":
+		# nella barra in alto, tra la modalità e il menu
+		var bx := top_mode.position.x + top_mode.get_theme_font("font").get_string_size(top_mode.text if top_mode.text != "" else "vs BOT (difficile)", HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.small)).x + 12
+		timer_bar.position = Vector2(bx, menu_btn.position.y + (menu_btn.size.y - 14) / 2)
+		timer_bar.size = Vector2(maxf(40, menu_btn.position.x - 10 - bx), 14)
+	else:
+		timer_bar.position = Vector2(0, 0)
+		timer_bar.size = Vector2(S.x, maxf(12, 1.8 * vh))
+	_place_react()
 	_place_hand(false)
 
 
@@ -632,6 +788,13 @@ func _layout_side(S: Vector2, vw: float, vh: float) -> void:
 # =====================================================================
 
 func _mode_label() -> String:
+	match mode.kind:
+		"tutorial":
+			return "Tutorial"
+		"daily":
+			return "Sfida del giorno"
+		"challenge":
+			return "Sfida: %s" % Modes.challenge(mode.challenge).get("name", "")
 	return "vs BOT (%s)" % {"easy": "facile", "hard": "difficile"}.get(level, "normale")
 
 
@@ -689,6 +852,8 @@ func _board_targets() -> Dictionary:
 func _refresh() -> void:
 	if V.is_empty():
 		return
+	react_btn.visible = Prefs.get_value("react") and mode.kind != "tutorial" and V.phase == "playing"
+	arrow_layer.queue_redraw()
 	var task := _task()
 	var tg := _board_targets()
 	if task == "choice" and V.choice.kind == "regrow" and gy_open != "me":
@@ -732,6 +897,9 @@ func _refresh() -> void:
 		_drop(overlay_layer.get_node("Reveal"))
 	if gy_open != "":
 		_open_gy(gy_open)
+	if coach != null:
+		coach.update()
+	_place_react()
 
 
 func _stack_mode() -> String:
@@ -793,6 +961,8 @@ func _status() -> Dictionary:
 	var p = V.pending
 	if V.step == "response" and p != null and p.responder == me_seat and p.owner != me_seat and _wins_with(V.opp.bf, p.land):
 		return {"text": "Se entra, %s vince!" % opp, "cls": "danger"}
+	if not Prefs.get_value("info") or mode.kind == "tutorial":
+		return {"text": "", "cls": ""}
 	if V.step == "main":
 		return {"text": "Il tuo turno", "cls": "mine"} if V.active == me_seat else {"text": "Turno di %s" % opp, "cls": ""}
 	if V.step == "response" and p != null:
@@ -813,11 +983,12 @@ func _refresh_status(_task_now: String) -> void:
 	status_label.text = st.text
 	var sb: StyleBox = StyleBoxEmpty.new()
 	var col := Art.TESTO if st.cls != "" else Art.MUTO
+	var pill_r := minf(status_label.size.y, _fs.get("status", 14) * 1.9) / 2
 	if st.cls == "danger":
-		sb = Art.box(Art.CARTA, 999)
+		sb = Art.box(Art.CARTA, pill_r)
 		col = Art.ROSSO
 	elif st.cls == "cap":
-		sb = Art.box(Art.TAVOLO2, 999, Art.RIGA, 1.5)
+		sb = Art.box(Art.TAVOLO2, pill_r, Art.RIGA, 1.5)
 	if sb is StyleBoxFlat:
 		sb.content_margin_left = 14
 		sb.content_margin_right = 14
@@ -877,6 +1048,7 @@ func _counter_plan():
 
 func _hint(text: String) -> Label:
 	var l := W.label(text, int(_fs.status), Art.MUTO, Art.serif())
+	l.visible = Prefs.get_value("info") or mode.kind == "tutorial"
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if lay == "wide" else HORIZONTAL_ALIGNMENT_CENTER
 	l.custom_minimum_size.x = 10
@@ -915,6 +1087,11 @@ func _refresh_actions(task: String) -> void:
 			actions.add_child(_hint("Tocca la terra avversaria da distruggere." if c == "R" else
 				"Tocca nel tuo cimitero la terra da recuperare." if c == "G" else "Tocca la tua terra da riattivare."))
 			return
+		if mode.kind == "tutorial":
+			# nel tutorial si fa sempre la mossa indicata: «Passa» compare solo quando serve
+			if coach != null and coach.wants_pass():
+				actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
+			return
 		actions.add_child(_hint("Trascina una carta al centro per giocarla, oppure toccala e poi tocca il centro."))
 		actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
 		return
@@ -923,6 +1100,9 @@ func _refresh_actions(task: String) -> void:
 		var plan = _counter_plan()
 		var allow_label := "Accetta" if p.owner == me else "Lascia risolvere"
 		if plan == null:
+			if mode.kind == "tutorial":
+				actions.add_child(_row([_btn(allow_label, "primary", func(): act({"type": "allow"}))]))
+				return
 			actions.add_child(_hint(_consequence(p)))
 			return
 		if not counter_mode:
@@ -1178,6 +1358,7 @@ func _on_motion(p: Vector2) -> void:
 			_drag = {"view": c, "idx": i, "grab": c.size / 2}
 			sel = null
 			c.z_index = 100
+			Sound.play("grab")
 			c.rotation_degrees = 0
 			c.scale = Vector2(1.12, 1.12)
 			c.pivot_offset = c.size / 2
@@ -1509,20 +1690,93 @@ func _fit_sheet(v: VBoxContainer) -> void:
 	panel.position = (size - ps * k) / 2
 
 
-func _open_menu() -> void:
-	if overlay_layer.has_node("Menu"):
+func _open_menu(confirm_exit := false) -> void:
+	if overlay_layer.has_node("Menu") and not confirm_exit:
 		_close_overlays()
 		return
+	_close_overlays()
+	Sound.play("click")
 	var v := _sheet("Menu")
+	var t := W.label("Menu", 22, Art.INK, Art.bold())
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if confirm_exit:
+		v.add_child(t)
+		var msg := "Vuoi davvero uscire? " + ("Potrai rifare il tutorial quando vuoi dalla home." if mode.kind == "tutorial" else "La partita verrà chiusa e non conterà nelle statistiche.")
+		v.add_child(Sheets.para(msg, 15))
+		v.add_child(_btn("Esci dalla partita", "exit", func():
+			forget_save()
+			exit_requested.emit()))
+		v.add_child(_btn("Annulla", "ghost_ink", func():
+			_close_overlays()
+			_open_menu()))
+		_fit_sheet(v)
+		return
 	var full := _btn("Schermo intero", "full", func(): fullscreen_requested.emit())
 	full.text = "Esci da schermo intero" if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN else "Schermo intero"
 	v.add_child(full)
-	var t := W.label("Menu", 22, Art.INK, Art.bold())
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
-	v.add_child(_btn("Registro della partita", "ink", _open_log))
-	v.add_child(_btn("Torna al gioco", "ink", _close_overlays))
-	v.add_child(_btn("Esci dalla partita", "exit", func(): exit_requested.emit()))
+	v.add_child(_switch("Info nella plancia", "info"))
+	v.add_child(_switch("Musica", "music"))
+	v.add_child(_switch("Effetti sonori", "sound"))
+	v.add_child(_switch("Vibrazione", "vibrate"))
+	if mode.kind != "tutorial":
+		v.add_child(_switch("Reazioni rapide", "react"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	for x in [["Registro", _open_log], ["Regole", func(): Sheets.rules(overlay_layer)], ["Statistiche", _open_stats]]:
+		var b := _btn(x[0], "ghost_ink", x[1])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	v.add_child(row)
+	v.add_child(_btn("Chiudi", "ink", _close_overlays))
+	v.add_child(_btn("Esci dalla partita", "exit", func(): _open_menu(true)))
+	_fit_sheet(v)
+
+
+## Riga con interruttore per una preferenza.
+func _switch(label: String, key: String) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	b.text = label
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size.y = 40
+	b.add_theme_font_override("font", Art.sans())
+	b.add_theme_font_size_override("font_size", 15)
+	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(c, Art.INK)
+	b.draw.connect(func():
+		var on: bool = Prefs.get_value(key)
+		var r := Rect2(b.size.x - 46, (b.size.y - 24) / 2, 44, 24)
+		b.draw_style_box(Art.box(Art.INK if on else Color(Art.INK, 0.2), 12), r)
+		b.draw_circle(Vector2(r.end.x - 12 if on else r.position.x + 12, r.get_center().y), 9, Art.CARTA))
+	b.pressed.connect(func():
+		var on: bool = not Prefs.get_value(key)
+		if key == "music":
+			Sound.set_music(on)
+		else:
+			Prefs.set_value(key, on)
+		Sound.play("click")
+		b.queue_redraw()
+		_refresh())
+	return b
+
+
+func _open_stats() -> void:
+	_close_overlays()
+	var v := _sheet("Menu")
+	var side := ["cpu"]
+	var holder := VBoxContainer.new()
+	v.add_child(holder)
+	var build := func(rebuild: Callable):
+		for c in holder.get_children():
+			c.queue_free()
+		holder.add_child(Sheets.profile_panel(side[0], func(sd):
+			side[0] = sd
+			rebuild.call(rebuild), func(): Sheets.transfer(overlay_layer, func(): pass)))
+		_fit_sheet.call_deferred(v)
+	build.call(build)
+	v.add_child(_btn("Chiudi", "ink", _close_overlays))
 	_fit_sheet(v)
 
 
@@ -1532,9 +1786,11 @@ func _open_log() -> void:
 	var t := W.label("Registro", 22, Art.INK, Art.bold())
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
-	var lines: Array = g.log_lines
+	var lines: Array = g.log_lines.duplicate()
+	lines.reverse()  # le più recenti in alto
 	var max_lines := int(clampf((size.y - 200) / 20.0, 4, 30))
-	var l := W.label("\n".join(lines.slice(maxi(0, lines.size() - max_lines))), 13, Art.INK, Art.sans())
+	var l := W.label("
+".join(lines.slice(0, max_lines)), 13, Art.INK, Art.sans())
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = minf(400.0, size.x - 28) - 44
 	v.add_child(l)
@@ -1561,18 +1817,45 @@ func _show_over() -> void:
 	_close_overlays()
 	var v := _sheet("Over")
 	var won: bool = g.winner == me
+	if mode.kind == "tutorial":
+		v.add_child(Sheets.title("Tutorial completato", 28))
+		v.add_child(Sheets.para("Hai visto all'opera tutte e cinque le terre e anche il contrasto. Ora prova una partita vera.", 16))
+		v.add_child(_btn("Gioca contro il computer", "ink", func(): start("normal", player_name)))
+		v.add_child(_btn("Torna alla home", "ghost_ink", func(): exit_requested.emit()))
+		_fit_sheet(v)
+		return
 	var title := "Pareggio" if g.winner == null else "Hai vinto!" if won else "Ha vinto %s" % g.name_of(g.winner)
-	var t := W.label(title, 28, Art.INK, Art.bold())
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(t)
-	var p := W.label(g.end_text, 16, Art.INK, Art.serif())
-	p.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p.custom_minimum_size.x = minf(400.0, size.x - 28) - 44
-	v.add_child(p)
-	v.add_child(_btn("Rivincita", "ink", func(): start(level, player_name)))
+	v.add_child(Sheets.title(title, 28))
+	v.add_child(Sheets.para(g.end_text, 15))
+	if won and (mode.kind == "daily" or mode.kind == "challenge"):
+		var a := Profile.load_profile(player_name)
+		var rec = a.get("daily", {}).get(mode.get("daily", ""), null) if mode.kind == "daily" else a.get("challenges", {}).get(mode.get("challenge", ""), null)
+		var what := "Sfida del giorno" if mode.kind == "daily" else "Sfida"
+		var line := "%s vinta al turno %d" % [what, g.turn]
+		if rec != null:
+			line += " · record: turno %d" % rec if rec < g.turn else " · nuovo record"
+		var l := W.label(line, 15, Art.INK, Art.bold())
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
+	for id in new_goals:
+		var gl := Profile.goal(id)
+		var box := PanelContainer.new()
+		var sb := Art.box(Color("#fffaf0"), 10, Art.SEGNALE, 2)
+		for m in ["left", "right", "top", "bottom"]:
+			sb.set("content_margin_" + m, 10)
+		box.add_theme_stylebox_override("panel", sb)
+		var gl_l := W.label("Obiettivo: %s
+%s" % [gl.name, ("Sbloccato: " + gl.reward.name) if gl.has("reward") else gl.desc], 13, Art.INK)
+		gl_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		gl_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(gl_l)
+		v.add_child(box)
+	var again := "Riprova" if mode.kind == "daily" or mode.kind == "challenge" else "Rivincita"
+	v.add_child(_btn(again, "ink", func(): start(level, player_name, {}, mode)))
 	v.add_child(_btn("Torna alla home", "ghost_ink", func(): exit_requested.emit()))
 	_fit_sheet(v)
+	Sound.play("win" if won else "lose")
+	Sound.vibrate(60 if won else 30)
 
 
 func _toast(msg: String) -> void:
@@ -1653,10 +1936,22 @@ func _card_rect_from(w: String, r: Rect2) -> Rect2:
 	return Rect2(r.get_center() - Vector2(cwid, cwid * 1.4) / 2, Vector2(cwid, cwid * 1.4))
 
 
+const EVENT_SOUND := {"draw": "draw", "play": "play", "counter": "counter", "countered": "fizzle", "enter": "land",
+	"destroy": "destroy", "regrow": "regrow", "discard": "discard", "reuse": "reuse", "look": "look", "timeout": "timeout"}
+
+
 func _animate(e: Dictionary) -> void:
 	var ev: Dictionary = e.ev
 	var t: String = ev.get("type", "")
 	var tree := get_tree()
+	if EVENT_SOUND.has(t) and not (t == "draw" and ev.player != me):
+		Sound.play(EVENT_SOUND[t])
+	if t == "turn" and ev.player == me:
+		Sound.play("turn")
+	if t == "destroy" or t == "countered":
+		Sound.vibrate(40)
+	elif t == "counter" or (t == "turn" and ev.player == me):
+		Sound.vibrate(20)
 	match t:
 		"turn":
 			_apply(e)
@@ -1754,3 +2049,209 @@ func _animate(e: Dictionary) -> void:
 		_:
 			_apply(e)
 	caption = ""
+
+
+# =====================================================================
+#  Tempo per turno
+# =====================================================================
+
+func _process(_delta: float) -> void:
+	if g == null or turn_time <= 0 or g.phase != "playing":
+		if timer_bar.visible:
+			timer_bar.visible = false
+		return
+	var actor = g.actor()
+	# il tempo vale solo per me (contro il computer) e parte quando le animazioni sono finite
+	if actor != me or busy:
+		timer_bar.visible = false
+		_timer_key = ""
+		return
+	var key := "%d|%s|%s" % [g.turn, g.step, str(g.pending.counters) if g.pending != null else ""]
+	var now := Time.get_ticks_msec() / 1000.0
+	if key != _timer_key:
+		_timer_key = key
+		_timer_end = now + turn_time
+		_last_tick = -1
+	timer_bar.visible = true
+	timer_bar.queue_redraw()
+	var left := _timer_end - now
+	var sec := int(ceil(left))
+	if sec <= 5 and sec != _last_tick and sec > 0:
+		_last_tick = sec
+		Sound.play("tick")
+	if left <= 0:
+		_timer_key = "scaduto"
+		staged = null
+		sel = null
+		counter_mode = false
+		pick = null
+		_close_overlays()
+		g.auto_act()
+		_pump()
+
+
+func _draw_timer() -> void:
+	var left := maxf(0.0, _timer_end - Time.get_ticks_msec() / 1000.0)
+	var k := clampf(left / maxf(1, turn_time), 0, 1)
+	var r := Rect2(Vector2.ZERO, timer_bar.size)
+	var rad := r.size.y / 2 if lay == "portrait" else 0.0
+	timer_bar.draw_style_box(Art.box(Color(Art.TAVOLO2, 0.6), rad, Art.RIGA, 1.5), r)
+	var col := Art.ROSSO if left <= 5 else Art.SEGNALE
+	if k > 0:
+		timer_bar.draw_style_box(Art.box(col, rad), Rect2(r.position, Vector2(r.size.x * k, r.size.y)))
+	var f := Art.bold()
+	var fs := int(r.size.y * 0.8)
+	var txt := "%d s" % int(ceil(left))
+	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	timer_bar.draw_string(f, Vector2((r.size.x - tw) / 2, r.size.y / 2 + f.get_ascent(fs) * 0.36), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.INK)
+
+
+# =====================================================================
+#  Freccia: chi colpisce cosa
+# =====================================================================
+
+const ARROW_COLOR := {"R": Color("#d9482f"), "W": Color("#e0a92e"), "G": Color("#2f9e6a"), "B": Color("#8a6cc0"), "U": Color("#1f8fb8")}
+
+
+## Il bersaglio della terra in attesa: { rect, color } oppure null.
+func _arrow_target():
+	var p = V.get("pending")
+	if p == null or p.target == null or busy:
+		return null
+	var owner := _who(p.owner)
+	var other := "opp" if owner == "me" else "me"
+	match p.land:
+		"R":
+			return {"rect": _slot_rect(other, p.target), "color": ARROW_COLOR.R}
+		"W":
+			return {"rect": _slot_rect(owner, p.target), "color": ARROW_COLOR.W}
+		"G":
+			return {"rect": _gy_rect(owner), "color": ARROW_COLOR.G}
+	return null
+
+
+func _draw_arrow() -> void:
+	var a = _arrow_target()
+	if a == null or not stack_card.visible:
+		return
+	var c := stack_rect.get_center()
+	var to: Vector2 = a.rect.get_center()
+	var dir := (to - c).normalized()
+	# parte dal bordo della carta e si ferma un po' prima del bersaglio
+	var hx := stack_rect.size.x / 2 / maxf(0.001, absf(dir.x))
+	var hy := stack_rect.size.y / 2 / maxf(0.001, absf(dir.y))
+	var from := c + dir * minf(hx, hy)
+	to -= dir * minf(a.rect.size.x, a.rect.size.y) * 0.45
+	var mid := (from + to) / 2 + Vector2(-dir.y, dir.x) * from.distance_to(to) * 0.18
+	var pts := PackedVector2Array()
+	for i in 25:
+		var k := i / 24.0
+		pts.append(from.lerp(mid, k).lerp(mid.lerp(to, k), k))
+	var col: Color = a.color
+	arrow_layer.draw_polyline(pts, Color(0, 0, 0, 0.35), 7, true)
+	arrow_layer.draw_polyline(pts, col, 4, true)
+	var tip := pts[-1]
+	var back := (pts[-1] - pts[-3]).normalized()
+	var side := Vector2(-back.y, back.x)
+	var head := PackedVector2Array([tip + back * 6, tip - back * 12 + side * 9, tip - back * 12 - side * 9])
+	arrow_layer.draw_colored_polygon(head, col)
+
+
+# =====================================================================
+#  Reazioni rapide (solo frasi predefinite)
+# =====================================================================
+
+func _place_react() -> void:
+	var z = zones.me
+	react_btn.size = Vector2(34, 30)
+	var x: float = z.name.position.x + z.name.size.x + 6
+	if z.near.visible:
+		x = z.near.position.x + z.near.size.x + 6
+	react_btn.position = Vector2(x, z.name.position.y + (z.name.size.y - 30) / 2)
+
+
+func _open_reactions() -> void:
+	if overlay_layer.has_node("Reazioni"):
+		_drop(overlay_layer.get_node("Reazioni"))
+		return
+	var box := PanelContainer.new()
+	box.name = "Reazioni"
+	var sb := Art.box(Art.CARTA, 12)
+	for m in ["left", "right", "top", "bottom"]:
+		sb.set("content_margin_" + m, 6)
+	sb.shadow_color = Art.OMBRA
+	sb.shadow_size = 14
+	box.add_theme_stylebox_override("panel", sb)
+	var flow := HFlowContainer.new()
+	flow.custom_minimum_size.x = 250
+	box.add_child(flow)
+	for i in Modes.REACTIONS.size():
+		var b := W.button(Modes.REACTIONS[i], "ghost_ink", 13)
+		var idx := i
+		b.pressed.connect(func():
+			_drop(box)
+			_react(me, idx))
+		flow.add_child(b)
+	overlay_layer.add_child(box)
+	box.reset_size()
+	var r := react_btn.get_global_rect()
+	box.position = Vector2(clampf(r.position.x, 6, size.x - box.size.x - 6), clampf(r.position.y - box.size.y - 8, 6, size.y - box.size.y - 6))
+
+
+## Una reazione: fumetto accanto al nome di chi la manda. Al «Ciao!» il computer di solito risponde.
+func _react(seat: int, i: int) -> void:
+	if seat == me:
+		var now := Time.get_ticks_msec()
+		if now - _react_last < 1500:
+			_toast("Aspetta un attimo prima della prossima")
+			return
+		_react_last = now
+		if i == 0 and randf() < 0.8:
+			get_tree().create_timer(1.2 + randf() * 0.8).timeout.connect(func(): if is_instance_valid(self): _bubble(bot.p, 0))
+	_bubble(seat, i)
+
+
+func _bubble(seat: int, i: int) -> void:
+	if not Prefs.get_value("react") or mode.kind == "tutorial":
+		return
+	var w := _who(seat)
+	var old := overlay_layer.get_node_or_null("Fumetto" + w)
+	if old:
+		_drop(old)
+	var l := W.label(Modes.REACTIONS[i], 14, Art.INK, Art.bold())
+	l.name = "Fumetto" + w
+	var sb := Art.box(Art.CARTA, 12)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	l.add_theme_stylebox_override("normal", sb)
+	overlay_layer.add_child(l)
+	l.reset_size()
+	var r: Rect2 = zones[w].name.get_global_rect()
+	l.position = Vector2(clampf(r.position.x, 8, size.x - l.size.x - 8), r.end.y + 6 if w == "opp" else r.position.y - l.size.y - 6)
+	if w == "opp":
+		Sound.play("click")
+		Sound.vibrate(10)
+	var tw := l.create_tween()
+	tw.tween_interval(2.4)
+	tw.tween_property(l, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func(): _drop(l))
+
+
+## Il computer ogni tanto reagisce (come botReacts in hub.js), dopo le animazioni.
+func _bot_reacts(evs: Array) -> void:
+	if mode.kind == "tutorial" or evs.is_empty():
+		return
+	var i = null
+	for e in evs:
+		var ev: Dictionary = e.ev
+		if ev.type == "counter" and ev.player != bot.p and randf() < 0.5:
+			i = 1
+		if ev.type == "countered" and ev.player == bot.p and randf() < 0.4:
+			i = 2
+		if ev.type == "end":
+			i = (5 if randf() < 0.7 else null) if ev.winner == bot.p else 5
+	if i != null:
+		var idx: int = i
+		get_tree().create_timer(0.4).timeout.connect(func(): if is_instance_valid(self): _bubble(bot.p, idx))

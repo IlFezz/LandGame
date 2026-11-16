@@ -18,6 +18,10 @@ func tests() -> Array:
 		["Foresta: il cimitero si apre e si sceglie la terra", t_forest],
 		["partita intera contro il computer usando solo il tavolo", t_full_game],
 		["nessuna sovrapposizione e niente fuori schermo, in ogni formato", t_layouts],
+		["tutorial completo seguendo il Maestro, fino alla vittoria", t_tutorial],
+		["partita salvata e ripresa dopo la chiusura", t_resume],
+		["tempo scaduto: il turno passa da solo", t_timer],
+		["freccia verso il bersaglio della terra avversaria", t_arrow],
 	]
 
 
@@ -26,7 +30,9 @@ func _tree() -> SceneTree:
 
 
 ## Nuovo tavolo con una partita in cui inizio io, con mani e campo decisi.
+## Il profilo di prova «Anna» viene cancellato ogni volta: i test non lasciano statistiche.
 func _new_table(o := {}, sz := Vector2(1280, 720)):
+	preload("res://scripts/app/profile.gd").remove("Anna")
 	if t != null and is_instance_valid(t):
 		t.queue_free()
 	t = Table.new()
@@ -34,6 +40,7 @@ func _new_table(o := {}, sz := Vector2(1280, 720)):
 	t.size = sz
 	await _tree().process_frame
 	t.size = sz
+	t.save_enabled = false
 	t.start("normal", "Anna", {"firstPlayer": 0})
 	var g = t.g
 	for i in 2:
@@ -101,8 +108,9 @@ func _tap(p: Vector2) -> void:
 func t_drag():
 	await _new_table({"h0": ["G", "U"], "h1": ["W"]})
 	await _drag_to(_card_center("G"), t.stack_rect.get_center())
-	await _idle()
+	# subito (Bruno ha una carta sola, quindi risolve all'istante): dopo, il computer potrebbe distruggerla
 	eq(t.g.players[0].bf.G, 1, "Foresta in gioco")
+	await _idle()
 	return true
 
 
@@ -111,8 +119,8 @@ func t_tap():
 	await _tap(_card_center("U"))
 	check(t.sel != null and t.sel.card == "U", "carta scelta")
 	await _tap(t.stack_rect.get_center())
-	await _idle()
 	eq(t.g.players[0].bf.U, 1, "Isola in gioco")
+	await _idle()
 	return true
 
 
@@ -280,4 +288,135 @@ func t_layouts():
 				if a.grow(-1).intersects(b.grow(-1)):
 					failures.append("%s: %s si sovrappone a %s" % [sz, keys[i], keys[j]])
 	t.queue_free()
+	return true
+
+
+func _press_button(text: String) -> bool:
+	for b in _all_buttons(t):
+		if b is Button and b.text == text and b.is_visible_in_tree():
+			b.pressed.emit()
+			return true
+	return false
+
+
+func _all_buttons(n: Node) -> Array:
+	var out := []
+	for c in n.get_children():
+		if c is Button:
+			out.append(c)
+		out.append_array(_all_buttons(c))
+	return out
+
+
+## Segue il tutorial come un giocatore nuovo: legge, preme «Avanti», fa la mossa indicata.
+func t_tutorial():
+	const Profile := preload("res://scripts/app/profile.gd")
+	Profile.remove("zz tutorial")
+	if t != null and is_instance_valid(t):
+		t.queue_free()
+	t = Table.new()
+	_tree().root.add_child(t)
+	t.size = Vector2(390, 844)
+	await _tree().process_frame
+	t.save_enabled = false
+	t.start("normal", "zz tutorial", {}, {"kind": "tutorial"})
+	var t0 := Time.get_ticks_msec()
+	while t.g.phase == "playing" and Time.get_ticks_msec() - t0 < 180000:
+		await _tree().process_frame
+		if t.busy or t.coach == null:
+			continue
+		var P = t.coach.shown()
+		if P == null:
+			continue
+		if P.get("info", false) or P.get("go", false) or P.get("review", false):
+			t.coach.next()
+			await _tree().process_frame
+			continue
+		var hl: String = P.get("hl", "")
+		var task: String = t._task()
+		if hl.begins_with("hand:") and task == "main":
+			await _drag_to(_card_center(hl.substr(5)), t.stack_rect.get_center())
+		elif t.staged != null:
+			var c: String = t.staged.card
+			if c == "G":
+				t._gy_target("U")
+			elif c == "W":
+				await _tap(t.zones.me.slots["R"].get_global_rect().get_center())
+			else:
+				var tg: Dictionary = t._board_targets()
+				await _tap(t.zones.opp.slots[tg.opp[0]].get_global_rect().get_center())
+		elif hl.begins_with("btn:"):
+			check(_press_button(hl.substr(4)), "manca il pulsante %s" % hl)
+		elif task == "response" and t.counter_mode and t.pick == null:
+			var plan = t._counter_plan()
+			for i in plan.eligible.size():
+				if plan.eligible[i]:
+					await _tap(t.hand_cards[i].get_global_transform() * (t.hand_cards[i].size / 2))
+					break
+		elif task == "choice" and t.V.choice.kind == "destroy":
+			await _tap(t.zones.opp.slots[t.V.choice.options[0]].get_global_rect().get_center())
+		for k in 3:
+			await _tree().process_frame
+	await _idle(10)
+	eq(t.g.phase, "over", "il tutorial finisce")
+	eq(t.g.winner, 0, "e lo vinci tu")
+	eq(t.g.turn, 13, "al turno 13 come nella versione web")
+	check(Profile.load_profile("zz tutorial").tutorial, "tutorial segnato come completato")
+	Profile.remove("zz tutorial")
+	t.queue_free()
+	return true
+
+
+func t_resume():
+	await _new_table({"h0": ["G", "U", "R"], "h1": ["W", "B"]})
+	t.save_enabled = true
+	await _drag_to(_card_center("G"), t.stack_rect.get_center())
+	await _idle()
+	var saved := Table.saved_game()
+	check(not saved.is_empty(), "partita salvata")
+	var before: Dictionary = t.g.to_dict()
+	t.queue_free()
+	t = Table.new()
+	_tree().root.add_child(t)
+	t.size = Vector2(1280, 720)
+	await _tree().process_frame
+	t.resume(saved)
+	await _idle()
+	eq(t.g.players[0].bf, before.players[0].bf, "stesso campo")
+	eq(t.g.players[0].hand, before.players[0].hand, "stessa mano")
+	eq(t.g.turn, before.turn, "stesso turno")
+	var log_before: int = t.g.log_lines.size()
+	t.act(simple_action(t.g))
+	await _idle()
+	check(t.g.log_lines.size() > log_before, "si continua a giocare")
+	Table.forget_save()
+	t.queue_free()
+	return true
+
+
+func t_timer():
+	await _new_table({"h0": ["G", "U"], "h1": ["W"]})
+	t.turn_time = 2
+	var t0 := Time.get_ticks_msec()
+	while t.g.turn == 1 and Time.get_ticks_msec() - t0 < 6000:
+		await _tree().process_frame
+	check(t.g.turn >= 2, "il turno è passato allo scadere del tempo")
+	check(t.g.log_lines.any(func(l): return l.begins_with("⏱")), "nel registro c'è il tempo scaduto")
+	t.queue_free()
+	return true
+
+
+func t_arrow():
+	await _new_table({"h0": ["G", "U", "B"], "h1": ["R", "W", "W"], "bf0": {"W": 1}})
+	t.g.players[1]["deck"] = ["W", "W", "W"]
+	t.act({"type": "pass"})
+	var t0 := Time.get_ticks_msec()
+	while t._task() != "response" and Time.get_ticks_msec() - t0 < 15000:
+		await _tree().process_frame
+	var a = t._arrow_target()
+	check(a != null, "c'è una freccia")
+	if a != null:
+		eq(a.rect, t._slot_rect("me", "W"), "punta alla mia Pianura")
+	t.queue_free()
+	preload("res://scripts/app/profile.gd").remove("Anna")
 	return true

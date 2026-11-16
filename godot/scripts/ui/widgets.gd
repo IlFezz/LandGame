@@ -78,12 +78,12 @@ static func style_button(b: Button, kind: String, fs: int) -> void:
 	b.add_theme_font_size_override("font_size", fs)
 
 
-static func label(text := "", fs := 15, color := Art.TESTO, font: Font = null) -> Label:
+static func label(text := "", fs := 15, color = null, font: Font = null) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_override("font", font if font != null else Art.sans())
 	l.add_theme_font_size_override("font_size", fs)
-	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_color", color if color != null else Art.TESTO)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
@@ -205,7 +205,7 @@ class Deck extends Control:
 				var o := i * 1.5
 				draw_rect(Rect2(o - 1.5, y + o - 1.5, pw + 3, ph + 3), Art.CARTA if i % 2 == 0 else Art.CARTA2)
 			draw_rect(Rect2(-1.5, y - 1.5, pw + 3, ph + 3), Art.CARTA)
-			Art.draw_cover(self, Art.tex("bk-bussola", pw), Rect2(0, y, pw, ph))
+			Art.draw_cover(self, Art.tex("bk-" + Art.BACK, pw), Rect2(0, y, pw, ph))
 		var f := Art.sans()
 		draw_string(f, Vector2(pw + 12, size.y / 2 + f.get_ascent(fs) * 0.36), str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.MUTO)
 
@@ -241,7 +241,7 @@ class Backs extends Control:
 			draw_set_transform(pivot, ang)
 			var r := Rect2(Vector2(-bw / 2, -bh * 1.6 + bh * 0.6), Vector2(bw, bh))
 			draw_rect(r.grow(1.5), Art.CARTA)
-			Art.draw_cover(self, Art.tex("bk-bussola", bw), r)
+			Art.draw_cover(self, Art.tex("bk-" + Art.BACK, bw), r)
 		draw_set_transform(Vector2.ZERO)
 		var f := Art.bold()
 		var s := str(count)
@@ -343,10 +343,12 @@ class Table extends Control:
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
+		_grad.gradient.set_color(0, Art.TAVOLO)
+		_grad.gradient.set_color(1, Art.TAVOLO2)
 		draw_texture_rect(_grad, Rect2(Vector2.ZERO, size), false)
-		Art.draw_cover(self, Art.tex("topo-n", maxf(size.x, size.y * 0.55)), Rect2(Vector2.ZERO, size))
+		Art.draw_cover(self, Art.tex(Art.TOPO, maxf(size.x, size.y * 0.55)), Rect2(Vector2.ZERO, size))
 		if rose_size > 0:
-			var t := Art.tex("rose-n", rose_size)
+			var t := Art.tex(Art.ROSE, rose_size)
 			draw_set_transform(rose_center, deg_to_rad(rose_angle))
 			draw_texture_rect(t, Rect2(-Vector2(rose_size, rose_size) / 2, Vector2(rose_size, rose_size)), false, Color(1, 1, 1, 0.7))
 			draw_set_transform(Vector2.ZERO)

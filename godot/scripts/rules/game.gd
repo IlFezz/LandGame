@@ -156,6 +156,56 @@ func clone():
 	return c
 
 
+## Tutto lo stato della partita in un dizionario (per salvarla quando si chiude l'app).
+func to_dict() -> Dictionary:
+	return {"players": players.duplicate(true), "copies": copies, "hand_size": hand_size,
+		"only_five": only_five.duplicate(), "turn_limit": turn_limit, "phase": phase, "turn": turn,
+		"active": active, "step": step, "land_played": land_played, "pending": pending, "resolving": resolving,
+		"choice": choice, "pass_streak": pass_streak, "last_land_player": last_land_player, "winner": winner,
+		"end_reason": end_reason, "end_text": end_text, "log": log_lines.duplicate(), "first_player": first_player}
+
+
+## Il JSON trasforma tutti i numeri in decimali: qui tornano interi.
+static func _ints(v):
+	if v is float and v == floor(v):
+		return int(v)
+	if v is Array:
+		return v.map(func(x): return _ints(x))
+	if v is Dictionary:
+		var o := {}
+		for k in v:
+			o[k] = _ints(v[k])
+		return o
+	return v
+
+
+## Ricrea una partita salvata con to_dict() (anche passata per JSON).
+static func from_dict(d: Dictionary):
+	d = _ints(d)
+	var g = load("res://scripts/rules/game.gd").new()
+	g.players = d.players
+	g.copies = d.copies
+	g.hand_size = d.hand_size
+	g.only_five = d.only_five
+	g.turn_limit = d.turn_limit
+	g.phase = d.phase
+	g.turn = d.turn
+	g.active = d.active
+	g.step = d.step
+	g.land_played = d.land_played
+	g.pending = d.pending
+	g.resolving = d.resolving
+	g.choice = d.choice
+	g.pass_streak = d.pass_streak
+	g.last_land_player = d.last_land_player
+	g.winner = d.winner
+	g.end_reason = d.end_reason
+	g.end_text = d.end_text
+	g.log_lines = d.log
+	g.first_player = d.first_player
+	return g
+
+
 func opp(p: int) -> int:
 	return 1 - p
 

@@ -3,7 +3,7 @@
 ## Esce con codice 0 se tutto va bene, 1 se qualcosa fallisce.
 extends SceneTree
 
-const SUITES := ["res://tests/test_game.gd", "res://tests/test_sim.gd", "res://tests/test_bot.gd", "res://tests/test_table.gd"]
+const SUITES := ["res://tests/test_game.gd", "res://tests/test_sim.gd", "res://tests/test_bot.gd", "res://tests/test_modes.gd", "res://tests/test_table.gd"]
 
 
 ## Parte quando il ciclo principale è avviato, così i test possono aspettare i fotogrammi (await).
