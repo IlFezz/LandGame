@@ -87,6 +87,7 @@ Alternative equivalenti: Railway, Fly.io, Glitch, un VPS qualsiasi (`PORT` viene
 - `tools/make_fonts.py`, `tools/make_icons.py` – riducono i caratteri e generano le icone.
 - `preview-stili/` – le anteprime grafiche usate per scegliere lo stile (non fanno parte del gioco).
 - `test/` – test delle regole, test end-to-end con due client, timer, computer e tutorial.
+- `godot/` – la nuova versione in Godot 4 per telefono, tablet e PC (in costruzione): istruzioni in `godot/README.md`.
 
 ## Regole implementate
 
