@@ -544,7 +544,10 @@ void main(){ float d = length(gl_PointCoord - .5) * 2.; float a = kk > .5 ? step
     if (!on) return;
     raf = requestAnimationFrame(tick);
     const inGame = !!document.querySelector('.game');
-    if (inGame !== cv.classList.contains('on')) { cv.classList.toggle('on', inGame); document.body.classList.toggle('gl', inGame && ready); }
+    // la classe va ricontrollata a ogni fotogramma: le texture finiscono di caricarsi anche a partita già aperta
+    if (inGame !== cv.classList.contains('on')) cv.classList.toggle('on', inGame);
+    const gl1 = inGame && ready;
+    if (gl1 !== document.body.classList.contains('gl')) document.body.classList.toggle('gl', gl1);
     if (!inGame || !ready || document.hidden) { lastT = 0; return; }
     // controllo di fluidità: prima si abbassa la risoluzione della scena, poi si torna alla grafica leggera
     if (lastT) { const d = now - lastT; if (d < 250) { seen++; if (d > 24) slow++; } }
