@@ -64,10 +64,11 @@ const Stats = {
       const book = c.mode === 'daily' ? (all.daily = all.daily || {}) : (all.challenges = all.challenges || {});
       const key = c.mode === 'daily' ? c.daily : c.challenge;
       if (won && (!book[key] || game.turn < book[key])) book[key] = game.turn;
-      const got = Goals.check(all, { won, how, fiveOf: five, turn: game.turn, mode: c.mode, cur: c });
       this.store(name, all);
-      return got;
+      return []; // le sfide non valgono per obiettivi, sblocchi e statistiche
     }
+    // contano solo le partite giocate fino in fondo (vinte o perse); la resa in una partita tra giocatori è una sconfitta
+    if (!['combo', 'cards', 'surrender'].includes(game.endReason)) { this.store(name, all); return []; }
     const s = c.mode === 'friend' ? all.pvp : all.cpu;
     const draw = ev.winner == null;
     s.played++;
@@ -80,7 +81,7 @@ const Stats = {
     } else { s.lost++; s.streak = 0; }
     for (const t in c.lands) s.lands[t] += c.lands[t];
     s.counters += c.counters; s.destroyed += c.destroyed;
-    const got = Goals.check(all, { won, how, fiveOf: five, turn: game.turn, mode: c.mode, cur: c });
+    const got = Goals.check(all, { won, how, fiveOf: five, turn: game.turn, mode: c.mode, cur: c, reason: game.endReason });
     this.store(name, all);
     return got;
   },

@@ -18,8 +18,8 @@ const Goals = {
     { id: 'serie5', name: 'Cinque di fila', desc: 'Vinci 5 partite di fila.' },
     { id: 'difficile', name: 'Mente fina', desc: 'Batti il computer difficile.', reward: { kind: 'table', id: 'corallo', name: 'tavolo Corallo' } },
     { id: 'esploratore', name: 'Esploratore', desc: 'Gioca 100 terre in totale.' },
-    { id: 'giorno', name: 'Sfida del giorno', desc: 'Vinci una sfida del giorno.', reward: { kind: 'back', id: 'stelle', name: 'dorso Stelle' } },
-    { id: 'sfide', name: 'Tutte le sfide', desc: 'Completa tutte le sfide a tema.' },
+    { id: 'vittorie10', name: 'Dieci vittorie', desc: 'Vinci 10 partite.', reward: { kind: 'back', id: 'stelle', name: 'dorso Stelle' } },
+    { id: 'difficile3', name: 'Tre volte il difficile', desc: 'Batti 3 volte il computer difficile.' },
     { id: 'amico', name: 'In compagnia', desc: 'Vinci una partita contro un amico.' },
   ],
   byId(id) { return this.LIST.find((g) => g.id === id); },
@@ -27,13 +27,14 @@ const Goals = {
   lockFor(kind, id) { return this.LIST.find((g) => g.reward && g.reward.kind === kind && g.reward.id === id) || null; },
   unlocked(all, kind, id) { const g = this.lockFor(kind, id); return !g || !!(all.goals && all.goals[g.id]); },
 
-  // all: profilo già aggiornato con la partita; x: { won, how, turn, mode, cur }
+  // all: profilo già aggiornato con la partita; x: { won, how, turn, mode, cur }. Le sfide non contano.
   check(all, x) {
     all.goals = all.goals || {};
     const has = (id) => !!all.goals[id], out = [];
+    // una vittoria per resa dell'avversario non vale per gli obiettivi
+    x = { ...x, won: x.won && x.reason !== 'surrender' };
     const c = x.cur, streak = Math.max(all.cpu.streak, all.pvp.streak);
     const lands = TYPES.reduce((n, t) => n + all.cpu.lands[t] + all.pvp.lands[t], 0);
-    const doneAll = BLGHub.CHALLENGES.every((ch) => all.challenges && all.challenges[ch.id]);
     const tests = {
       prima: x.won,
       dominio: x.won && x.how === 'domain',
@@ -43,12 +44,12 @@ const Goals = {
       muro: c.counters >= 3,
       demolitore: c.destroyed >= 3,
       lampo: x.won && x.turn <= 10,
-      serie3: streak >= 3,
-      serie5: streak >= 5,
+      serie3: x.won && streak >= 3,
+      serie5: x.won && streak >= 5,
       difficile: x.won && x.mode === 'hard',
       esploratore: lands >= 100,
-      giorno: x.won && x.mode === 'daily',
-      sfide: doneAll,
+      vittorie10: x.won && all.cpu.won + all.pvp.won >= 10,
+      difficile3: x.won && all.cpu.modes.hard.w >= 3,
       amico: x.won && x.mode === 'friend',
     };
     for (const g of this.LIST) if (!has(g.id) && tests[g.id]) { all.goals[g.id] = Date.now(); out.push(g.id); }

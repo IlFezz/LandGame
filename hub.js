@@ -231,7 +231,7 @@ class Hub {
     const ch = !tutorial && CHALLENGES.find((c) => c.id === m.challenge);
     if (ch) { room.challenge = ch.id; room.botLevel = ch.level; }
     else if (!tutorial && isDay(m.daily)) { room.daily = m.daily; room.botLevel = 'normal'; }
-    room.seats[1].name = tutorial ? 'Maestro' : { easy: 'Computer (facile)', hard: 'Computer (difficile)' }[room.botLevel] || 'Computer';
+    room.seats[1].name = tutorial ? 'Maestro' : 'BOT'; // la difficoltà si legge in alto, non nel nome
     this.rooms.set(room.code, room);
     return room;
   }

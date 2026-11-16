@@ -209,6 +209,7 @@ class Game {
       case 'counter': return this.doCounter(p, a.other);
       case 'allow': return this.doAllow(p);
       case 'choose': return this.doChoose(p, a.choice);
+      case 'surrender': return this.doSurrender(p);
       default: return 'Azione sconosciuta.';
     }
   }
@@ -246,6 +247,13 @@ class Game {
     } else {
       this.resolvePending();
     }
+  }
+
+  // Resa (partite tra giocatori): vince l'altro, in qualunque momento della partita.
+  doSurrender(p) {
+    if (p !== 0 && p !== 1) return 'Azione non valida.';
+    this.endGame(this.opp(p), 'surrender', `${this.name(p)} si arrende.`);
+    return null;
   }
 
   doPass(p) {

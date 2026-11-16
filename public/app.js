@@ -941,9 +941,11 @@ function modeLabel() {
   if (S.daily) return 'Sfida del giorno';
   const ch = S.challenge && BLGHub.CHALLENGES.find((c) => c.id === S.challenge);
   if (ch) return `Sfida: ${ch.name}`;
-  if (S.vsBot) return S.botLevel === 'hard' ? 'Contro il computer difficile' : 'Contro il computer';
-  return `Stanza <b class="code">${S.code}</b>`;
+  if (S.vsBot) return `vs BOT (${({ easy: 'facile', hard: 'difficile' })[S.botLevel] || 'normale'})`;
+  return ''; // tra giocatori niente scritta
 }
+// i nomi lunghi si rimpiccioliscono invece di essere tagliati
+const nameCls = (n) => (n.length > 15 ? 'long2' : n.length > 10 ? 'long1' : '');
 const canReact = () => prefs.react && S && !S.tutorial && G && G.phase === 'playing';
 
 // ---------- Reazioni rapide ----------
@@ -984,15 +986,13 @@ function renderGame() {
 
   const parts = {
     top: `<div class="topbar">
-      <span>${modeLabel()}${wsReady || S.local ? '' : ' · <span class="warn">riconnessione…</span>'}</span>
-      ${canReact() ? `<button class="reactbtn ${ui.reactOpen ? 'on' : ''}" data-act="react-open" aria-label="Reazioni"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/></svg></button>` : ''}
+      <span>${modeLabel()}${wsReady || S.local ? '' : `${S.vsBot ? ' · ' : ''}<span class="warn">riconnessione…</span>`}</span>
       <button class="menubtn" data-act="menu" aria-label="Menu">☰</button>
-      ${canReact() && ui.reactOpen ? `<div class="reactbar">${BLGHub.REACTIONS.map((r, i) => `<button data-act="react" data-v="${i}">${r}</button>`).join('')}</div>` : ''}
     </div>`,
     timer: timerHtml(),
     opp: `<section class="zone opp ${g.active === g.opp.seat && g.phase === 'playing' ? 'active' : ''}">
       <div class="zhead">
-        <span class="pname"><span class="dot ${oppConnected ? '' : 'off'}"></span>${esc(g.opp.name)}${closeToWin(g.opp.bf) ? ' <span class="near">!</span>' : ''}</span>
+        <span class="pname ${nameCls(g.opp.name)}"><span class="dot ${oppConnected ? '' : 'off'}"></span><span class="nm">${esc(g.opp.name)}</span>${closeToWin(g.opp.bf) ? ' <span class="near">!</span>' : ''}</span>
         <div class="backs" id="hand-opp" title="Carte in mano all'avversario">${oppFan(g.opp.handCount)}<small>${g.opp.handCount}</small></div>
         ${deckHtml(g.opp, 'opp')}
         ${gyHtml(g.opp, 'opp')}
@@ -1007,7 +1007,9 @@ function renderGame() {
     me: `<section class="zone me ${g.active === me && g.phase === 'playing' ? 'active' : ''}">
       ${bfHtml(g.me, 'me', tg.me)}
       <div class="zhead">
-        <span class="pname"><span class="dot"></span>${esc(g.me.name)}${closeToWin(g.me.bf) ? ' <span class="near">!</span>' : ''}</span>
+        <span class="pname ${nameCls(g.me.name)}"><span class="dot"></span><span class="nm">${esc(g.me.name)}</span>${closeToWin(g.me.bf) ? ' <span class="near">!</span>' : ''}</span>
+        ${canReact() ? `<span class="reactwrap"><button class="reactbtn ${ui.reactOpen ? 'on' : ''}" data-act="react-open" aria-label="Reazioni"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/></svg></button>
+          ${ui.reactOpen ? `<div class="reactbar">${BLGHub.REACTIONS.map((r, i) => `<button data-act="react" data-v="${i}">${r}</button>`).join('')}</div>` : ''}</span>` : ''}
         ${deckHtml(g.me, 'me')}
         ${gyHtml(g.me, 'me', tg.gyMe)}
       </div>
@@ -1117,16 +1119,21 @@ function overHtml() {
   </div></div>`;
 }
 
+// tra giocatori non si esce: ci si arrende (finché la partita è in corso)
+const surrenders = () => S && !S.vsBot && G && G.phase === 'playing';
 function menuHtml() {
   const tog = (on) => `<span class="tog ${on ? 'on' : ''}"><span></span></span>`;
   const seg = (act, cur, opts) => `<div class="seg small">${opts.map(([v, l]) => `<button data-act="${act}" data-v="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   return `<div class="sheet-bd" data-act="menu-close"></div>
   <div class="sheet">
     <h3>Menu</h3>
-    ${ui.confirmLeave ? `
-      <p>Vuoi davvero uscire? ${S.tutorial ? 'Potrai rifare il tutorial quando vuoi dalla home.' : S.vsBot ? 'La partita contro il computer verrà chiusa.' : 'Non potrai rientrare in questa partita.'}</p>
-      <button class="btn exitbtn" data-act="leave-now">Esci dalla partita</button>
+    ${ui.confirmLeave ? (surrenders() ? `
+      <p>Vuoi arrenderti? La partita finisce e la vittoria va a ${esc(G.opp.name)}.</p>
+      <button class="btn exitbtn" data-act="surrender">Arrenditi</button>
       <button class="btn" data-act="leave-no">Annulla</button>` : `
+      <p>Vuoi davvero uscire? ${S.tutorial ? 'Potrai rifare il tutorial quando vuoi dalla home.' : 'La partita verrà chiusa e non conterà nelle statistiche.'}</p>
+      <button class="btn exitbtn" data-act="leave-now">Esci dalla partita</button>
+      <button class="btn" data-act="leave-no">Annulla</button>`) : `
     <button class="btn fullrow" data-act="toggle-full" data-full>${Full.label()}</button>
     <div class="mrow col"><span>Comandi</span>${seg('set-controls', prefs.controls, [['drag', 'Trascina'], ['tap', 'Tocca']])}</div>
     <div class="mrow col"><span>Effetti grafici</span>${seg('set-fx', prefs.fx, [['high', 'Completi'], ['low', 'Ridotti']])}</div>
@@ -1137,7 +1144,7 @@ function menuHtml() {
     ${S.tutorial ? '' : `<button class="mrow" data-act="toggle-react">Reazioni rapide ${tog(prefs.react)}</button>`}
     <div class="mrow two"><button data-act="open-log">Registro</button><button data-act="open-rules">Regole</button><button data-act="open-stats">Statistiche</button></div>
     <button class="btn" data-act="menu-close">Chiudi</button>
-    <button class="btn exitbtn" data-act="leave-ask">Esci dalla partita</button>`}
+    <button class="btn exitbtn" data-act="leave-ask">${surrenders() ? 'Arrenditi' : 'Esci dalla partita'}</button>`}
   </div>`;
 }
 
@@ -1256,6 +1263,7 @@ app.addEventListener('click', (e) => {
     case 'close-log': ui.log = false; return render();
     case 'open-rules': ui.menu = false; ui.rules = true; return render();
     case 'leave-ask': ui.confirmLeave = true; return render();
+    case 'surrender': ui.menu = false; ui.confirmLeave = false; Sound.play('click'); send({ t: 'action', a: { type: 'surrender' } }); return render();
     case 'leave-no': ui.confirmLeave = false; return render();
     case 'leave-now': return leave();
     case 'open-stats': ui.menu = false; ui.stats = true; return render();
@@ -1309,7 +1317,7 @@ const Peek = {
     if (drag) cancelDrag(true); // la carta torna in mano: si stava solo guardando
     this.hide();
     const el = document.createElement('div');
-    el.className = 'peek';
+    el.className = 'cardpeek'; // non 'peek': è già l'animazione della mano scrutata dalla Palude
     el.innerHTML = `<div class="peekbox">${cardHtml(t, 'peekcard')}<div class="peektext"><b>${NAMES[t]}</b><p>${LONG_FX[t]}${t === 'U' ? ' Dalla mano, scartata con un\'altra terra, contrasta la terra appena giocata.' : ''}</p><small>${esc(where)}</small></div></div>`;
     document.body.appendChild(el);
     this.el = el;

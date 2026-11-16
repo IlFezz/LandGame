@@ -297,6 +297,14 @@ test('Durante la scelta della Palude la terra non è ancora in gioco', () => {
   assert.strictEqual(g.players[0].bf.B, 1);
 });
 
+test('resa: vince l\'altro, anche fuori dal proprio turno', () => {
+  const g = new Game(['Anna', 'Bruno'], { firstPlayer: 0 });
+  ok(g.act(1, { type: 'surrender' }));
+  assert.strictEqual(g.phase, 'over');
+  assert.strictEqual(g.winner, 0);
+  assert.strictEqual(g.endReason, 'surrender');
+});
+
 // ---- Sfide ----
 test('sfida "cinque uguali": le cinque diverse non fanno vincere', () => {
   const g = new Game(['Anna', 'Bruno'], { firstPlayer: 0, onlyFive: [true, false] });

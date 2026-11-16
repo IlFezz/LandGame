@@ -154,7 +154,7 @@ const ATL = (() => {
       for (let i = 0; i < 9; i++) { const y = 74 + i * 7.5; let d = `M-4 ${y}`; for (let x = -4; x <= 104; x += 4) d += `L${x} ${(y + Math.sin(x / 7 + i) * 2).toFixed(2)}`; s += `<path d="${d}" opacity="${(0.25 + i * 0.07).toFixed(2)}"/>`; }
       return s + `</g>`; } },
     // costellazioni su una carta celeste
-    { id: 'stelle', name: 'Stelle', lock: 'giorno', svg() {
+    { id: 'stelle', name: 'Stelle', lock: 'vittorie10', svg() {
       let s = `<rect width="100" height="140" fill="#14182e"/><g fill="#f4eddd">`;
       const q = rng(707);
       for (let i = 0; i < 70; i++) s += `<circle cx="${(q() * 100).toFixed(1)}" cy="${(q() * 140).toFixed(1)}" r="${(q() * 0.6 + 0.2).toFixed(2)}" opacity="${(0.3 + q() * 0.6).toFixed(2)}"/>`;
