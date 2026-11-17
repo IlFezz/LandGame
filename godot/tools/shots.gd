@@ -56,8 +56,15 @@ func _initialize() -> void:
 			await _wait(0.3)
 			await _shot("obiettivi")
 		home.free()
-	# tutorial: la pagina con la carta da giocare
+	# inizio partita: la distribuzione delle carte (a metà)
 	var t := _table()
+	t.deal_anim = true
+	t.start("normal", "Giocatore", {"firstPlayer": 0})
+	await _wait(1.3)
+	await _shot("distribuzione")
+	t.free()
+	# tutorial: la pagina con la carta da giocare
+	t = _table()
 	t.start("normal", "Giocatore", {}, {"kind": "tutorial"})
 	await _wait(0.5)
 	await _shot("tutorial_inizio")
@@ -104,6 +111,9 @@ func _initialize() -> void:
 	await _wait(0.3)
 	await _shot("cimitero")
 	t._close_overlays()
+	t._counter_start()
+	t.pick = {"card": "B", "idx": t.V.hand.find("B")}
+	t._refresh()
 	t._open_menu()
 	await _wait(0.3)
 	await _shot("menu")
@@ -158,6 +168,7 @@ func _table() -> Table:
 	var t := Table.new()
 	t.size = host.size
 	t.save_enabled = false
+	t.deal_anim = false
 	host.add_child(t)
 	return t
 

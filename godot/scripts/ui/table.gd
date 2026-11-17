@@ -98,6 +98,8 @@ var _hover_idx := -1
 var _status_h := 0.0  # altezza fissa della scritta di stato (non deve crescere)
 var tut_idx := -1  # carta da giocare indicata dal tutorial: sta sollevata e dritta
 var _play_from := Rect2()  # da dove parte il volo della carta giocata (dove è stata lasciata)
+var _played_idx := -1  # quale carta della mano è stata giocata (con due carte uguali conta quella giusta)
+var _discard_from := Rect2()  # la carta toccata nella mano rivelata dalla Palude
 
 
 func _ready() -> void:
@@ -147,6 +149,7 @@ func _build() -> void:
 		for t in TYPES:
 			var s := W.Slot.new()
 			s.land = t
+			s.opp = w == "opp"
 			add_child(s)
 			z.slots[t] = s
 		zones[w] = z
@@ -209,10 +212,15 @@ func _build() -> void:
 	peek_layer = Control.new()
 	peek_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(peek_layer)
+	# ordine di disegno sicuro: campo e carte < voli < fumetti < menu e finestre < anteprima
+	fly_layer.z_index = 120
+	overlay_layer.z_index = 200
+	peek_layer.z_index = 210
 	bubble_layer = Control.new()  # i fumetti delle reazioni: sopra a tutto, mai coperti dalle carte
 	bubble_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bubble_layer)
 	move_child(bubble_layer, overlay_layer.get_index())  # sopra le carte, sotto menu e finestre
+	bubble_layer.z_index = 150
 
 
 # =====================================================================
@@ -241,7 +249,7 @@ func start(lvl: String, name := "Tu", opts := {}, m := {}) -> void:
 	g = Game.new([name, "Maestro" if kind == "tutorial" else "BOT"], opts)
 	cur = Profile.fresh(lvl if kind == "bot" else kind, mode.get("challenge"), mode.get("daily"), kind == "tutorial")
 	new_goals = []
-	_begin()
+	_begin(true)
 
 
 ## Riprende una partita salvata alla chiusura dell'app.
@@ -256,7 +264,10 @@ func resume(d: Dictionary) -> void:
 	_begin()
 
 
-func _begin() -> void:
+var deal_anim := true  # i test la spengono: la distribuzione iniziale richiede qualche secondo
+
+
+func _begin(fresh := false) -> void:
 	bot = Bot.new(g, 1, {"level": level})
 	turn_time = 0 if mode.kind == "tutorial" else int(Prefs.get_value("turn_time"))
 	_timer_key = ""
@@ -269,10 +280,90 @@ func _begin() -> void:
 	_close_overlays()
 	V = g.view(me)
 	tutorial_reset()
-	g.take_events()  # la distribuzione iniziale non si anima
+	g.take_events()  # la distribuzione iniziale si anima a parte (_deal)
 	_layout()
 	_refresh()
+	if fresh and deal_anim:
+		await _deal(_game_id)
 	_pump()
+
+
+## Inizio partita: il mazzo si mescola al centro e le carte vengono distribuite una alla volta,
+## alternate tra te e l'avversario; poi le tue carte si girano.
+func _deal(id: int) -> void:
+	busy = true
+	var my_cards: Array = hand_cards.duplicate()
+	var opp_n: int = V.opp.handCount
+	for c in my_cards:
+		c.visible = false
+	zones.opp.backs.set_count(0)
+	var my_deck: int = V.me.deckCount
+	var opp_deck: int = V.opp.deckCount
+	zones.me.deck.set_count(my_deck + my_cards.size())
+	zones.opp.deck.set_count(opp_deck + opp_n)
+	caption = "Si distribuiscono le carte"
+	_refresh_actions("")  # niente spiegazioni né pulsanti mentre si distribuisce
+	for c in hints.get_children():
+		c.queue_free()
+	_refresh_status("")
+	# il mazzo al centro: qualche carta coperta che si apre e si richiude (mescolata)
+	var pile: Array = []
+	var cr := _stack_card_rect()
+	for k in 5:
+		var b := Card.new()
+		b.kind = "back"
+		b.position = cr.position
+		b.size = cr.size
+		b.pivot_offset = cr.size / 2
+		fly_layer.add_child(b)
+		pile.append(b)
+	var tw := create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	for k in 5:
+		var off := (k - 2) * cr.size.x * 0.28
+		tw.tween_property(pile[k], "position:x", cr.position.x + off, 0.28)
+		tw.tween_property(pile[k], "rotation_degrees", (k - 2) * 6.0, 0.28)
+	await tw.finished
+	Sound.play("draw")
+	var tw2 := create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	for k in 5:
+		tw2.tween_property(pile[k], "position:x", cr.position.x, 0.24)
+		tw2.tween_property(pile[k], "rotation_degrees", 0.0, 0.24)
+	await tw2.finished
+	if id != _game_id:
+		return
+	# distribuzione alternata: una a te, una all'avversario
+	var n: int = maxi(my_cards.size(), opp_n)
+	for i in n:
+		if i < my_cards.size():
+			var c: Card = my_cards[i]
+			_fly("back", cr, hand_card_rect(c), FLY * 0.55, c.kind)
+			zones.me.deck.set_count(zones.me.deck.count - 1)
+			Sound.play("draw")
+			await get_tree().create_timer(0.14).timeout
+			if id != _game_id:
+				return
+		if i < opp_n:
+			_fly("back", cr, _card_rect_from("opp", zones.opp.backs.fan_rect()), FLY * 0.55)
+			zones.opp.deck.set_count(zones.opp.deck.count - 1)
+			await get_tree().create_timer(0.14).timeout
+			if id != _game_id:
+				return
+			zones.opp.backs.set_count(i + 1)
+		if i < my_cards.size():
+			my_cards[i].visible = true
+	await get_tree().create_timer(FLY * 0.6).timeout
+	for b in pile:
+		b.queue_free()
+	if id != _game_id:
+		return
+	for c in my_cards:
+		if is_instance_valid(c):
+			c.visible = true
+	zones.opp.backs.set_count(opp_n)
+	caption = ""
+	busy = false
+	V = g.view(me)
+	_refresh()
 
 
 func _task() -> String:
@@ -296,6 +387,9 @@ func act(a: Dictionary) -> void:
 		sel = null
 		_refresh()
 		return
+	if a.type == "play" and staged != null:
+		_play_from = stack_rect  # era già posata al centro in attesa del bersaglio
+		_played_idx = staged.idx
 	var err = g.act(me, a)
 	if err != null:
 		_toast(err)
@@ -398,6 +492,7 @@ func tutorial_reset() -> void:
 		coach = load("res://scripts/ui/coach.gd").new(self)
 		add_child(coach)
 		move_child(coach, overlay_layer.get_index())
+		coach.z_index = 150  # sopra la mano (le carte sollevate), sotto menu e finestre
 
 
 ## Aspetta che il giocatore prema «Avanti» prima della mossa del Maestro.
@@ -1198,8 +1293,10 @@ func _fill_actions(task: String) -> void:
 			hints.add_child(_hint(_consequence(p)))
 			actions.add_child(_row([_btn("Contrasta", "counter", _counter_start), _btn(allow_label, "primary", func(): act({"type": "allow"}))]))
 			return
-		actions.add_child(_formula(p))
-		if pick == null:
+		# la formula sta in alto con le spiegazioni: sotto la carta restano solo i pulsanti,
+		# così non scendono sulle carte del campo
+		hints.add_child(_formula(p))
+		if pick == null and lay != "portrait":
 			hints.add_child(_hint("Tocca in mano la seconda terra da scartare."))
 		var bs := []
 		if pick != null:
@@ -1534,7 +1631,8 @@ func _play_card(idx: int, from := Rect2()) -> void:
 		staged = {"card": card, "idx": idx}
 		_refresh()
 	else:
-		_play_from = from if from.has_area() else Rect2(hand_cards[idx].position, hand_cards[idx].size)
+		_play_from = from if from.has_area() else hand_card_rect(hand_cards[idx])
+		_played_idx = idx
 		act({"type": "play", "card": card})
 
 
@@ -1755,7 +1853,10 @@ func _show_reveal() -> void:
 		c.ring = Art.SEGNALE
 		b.add_child(c)
 		var choice: String = cards[i]
-		b.pressed.connect(func(): act({"type": "choose", "choice": choice}))
+		b.pressed.connect(func():
+			_discard_from = Rect2(b.position, b.size)
+			_drop(overlay_layer.get_node_or_null("Reveal"))
+			act({"type": "choose", "choice": choice}))
 		veil.add_child(b)
 		c.modulate.a = 0
 		c.create_tween().tween_property(c, "modulate:a", 1.0, 0.25).set_delay(i * 0.06)
@@ -2001,7 +2102,7 @@ func _hand_rect_of(w: String, card := "") -> Rect2:
 		return zones.opp.backs.fan_rect()
 	for i in hand_cards.size():
 		if hand_cards[i].kind == card and hand_cards[i].visible:
-			return Rect2(hand_cards[i].position, hand_cards[i].size)
+			return hand_card_rect(hand_cards[i])
 	return Rect2(hand_rect.get_center() - Vector2(hw, hw * 1.4) / 2, Vector2(hw, hw * 1.4))
 
 
@@ -2099,19 +2200,22 @@ func _animate(e: Dictionary) -> void:
 			_set_caption(("Giochi %s" if w == "me" else "%s gioca %%s" % V.opp.name) % Art.NAMES[ev.card])
 			if w == "me":
 				var from := _hand_rect_of("me", ev.card)
-				if staged != null:
-					from = _stack_card_rect()  # era già posata al centro in attesa del bersaglio
-				elif _play_from.has_area():
+				if _play_from.has_area():
 					from = _play_from
 				_play_from = Rect2()
-				for i in hand_cards.size():
-					var c: Card = hand_cards[i]
-					if (staged != null and i == staged.idx) or (staged == null and c.kind == ev.card and c.visible):
-						c.visible = false
-						break
+				var idx := _played_idx
+				_played_idx = -1
+				if idx < 0 or idx >= hand_cards.size() or hand_cards[idx].kind != ev.card:
+					idx = -1
+					for i in hand_cards.size():
+						if hand_cards[i].kind == ev.card and hand_cards[i].visible:
+							idx = i
+							break
+				if idx >= 0:
+					hand_cards[idx].visible = false
 				stack_card.visible = false
-				if from != _stack_card_rect():
-					await _fly(ev.card, from, _stack_card_rect())
+				if not from.is_equal_approx(_stack_card_rect()):
+					await _fly(ev.card, from, _stack_card_rect(), FLY * 0.7)
 			else:
 				await _fly("back", _card_rect_from("opp", zones.opp.backs.fan_rect()), _stack_card_rect(), FLY, ev.card)
 			staged = null
@@ -2150,6 +2254,16 @@ func _animate(e: Dictionary) -> void:
 			_apply(e)
 			_slot_pop(w, ev.card)
 			await tree.create_timer(0.15).timeout
+			# segnale: l'avversario è a una terra dalle cinque uguali
+			if w == "opp" and V.opp.bf[ev.card] == 4 and g.phase == "playing":
+				const PL := {"W": "Pianure", "U": "Isole", "B": "Paludi", "R": "Montagne", "G": "Foreste"}
+				caption = "Attento: %s ha 4 %s" % [V.opp.name, PL[ev.card]]
+				caption_danger = true
+				_refresh_status(_task())
+				Sound.play("deny")
+				Sound.vibrate(60)
+				await tree.create_timer(1.4).timeout
+				caption_danger = false
 		"destroy":
 			var w := _who(ev.player)
 			_set_caption("%s distrutta" % Art.NAMES[ev.card])
@@ -2170,7 +2284,16 @@ func _animate(e: Dictionary) -> void:
 		"discard":
 			var w := _who(ev.player)
 			_set_caption(("Scarti %s" if w == "me" else "%s scarta %%s" % V.opp.name) % Art.NAMES[ev.card])
-			var from := _hand_rect_of("me", ev.card) if w == "me" else _card_rect_from("opp", zones.opp.backs.fan_rect())
+			var from := _card_rect_from("opp", zones.opp.backs.fan_rect())
+			if w == "me":
+				from = _hand_rect_of("me", ev.card)
+				for c in hand_cards:
+					if c.kind == ev.card and c.visible:
+						c.visible = false  # proprio quella carta parte dalla mano
+						break
+			elif _discard_from.has_area():
+				from = _discard_from
+			_discard_from = Rect2()
 			await _fly(ev.card, from, _card_rect_from(w, _gy_rect(w)))
 			_apply(e)
 		"reuse":
@@ -2276,6 +2399,9 @@ func _arrow_target():
 	return null
 
 
+## La freccia nello stile Orizzonti: una scia bianca morbida che si fa più intensa verso il
+## bersaglio, con un puntino all'inizio, una punta a «V» arrotondata e un anello leggero intorno alla
+## carta colpita. Parte sempre dalla carta al centro.
 func _draw_arrow() -> void:
 	var a = _arrow_target()
 	if a == null or not stack_card.visible:
@@ -2283,27 +2409,30 @@ func _draw_arrow() -> void:
 	var c := stack_rect.get_center()
 	var to: Vector2 = a.rect.get_center()
 	var dir := (to - c).normalized()
-	# parte dal bordo della carta e si ferma un po' prima del bersaglio
 	var hx := stack_rect.size.x / 2 / maxf(0.001, absf(dir.x))
 	var hy := stack_rect.size.y / 2 / maxf(0.001, absf(dir.y))
-	var from := c + dir * (minf(hx, hy) + 4)
-	# la punta si ferma appena fuori dal bordo della carta colpita
+	var from := c + dir * (minf(hx, hy) + 6)
 	var tx: float = a.rect.size.x / 2 / maxf(0.001, absf(dir.x))
 	var ty: float = a.rect.size.y / 2 / maxf(0.001, absf(dir.y))
-	to -= dir * (minf(tx, ty) + 4)
-	var mid := (from + to) / 2 + Vector2(-dir.y, dir.x) * from.distance_to(to) * 0.18
+	to -= dir * (minf(tx, ty) + 10)
+	var mid := (from + to) / 2 + Vector2(-dir.y, dir.x) * from.distance_to(to) * 0.16
+	var n := 32
 	var pts := PackedVector2Array()
-	for i in 25:
-		var k := i / 24.0
+	for i in n + 1:
+		var k := float(i) / n
 		pts.append(from.lerp(mid, k).lerp(mid.lerp(to, k), k))
-	var col: Color = a.color
-	arrow_layer.draw_polyline(pts, Color(0, 0, 0, 0.35), 7, true)
-	arrow_layer.draw_polyline(pts, col, 4, true)
-	var tip := pts[-1]
-	var back := (pts[-1] - pts[-3]).normalized()
+	var tint: Color = Color.WHITE.lerp(a.color, 0.25)
+	arrow_layer.draw_polyline(pts, Color(tint, 0.10), 10, true)
+	for i in n:
+		var k := float(i) / n
+		arrow_layer.draw_line(pts[i], pts[i + 1], Color(tint, 0.25 + 0.7 * k), 1.5 + 1.6 * k, true)
+	arrow_layer.draw_circle(from, 3.5, Color(tint, 0.6))
+	var tip := pts[n]
+	var back := (pts[n] - pts[n - 3]).normalized()
 	var side := Vector2(-back.y, back.x)
-	var head := PackedVector2Array([tip + back * 6, tip - back * 12 + side * 9, tip - back * 12 - side * 9])
-	arrow_layer.draw_colored_polygon(head, col)
+	arrow_layer.draw_polyline(PackedVector2Array([tip - back * 10 + side * 8, tip, tip - back * 10 - side * 8]), tint, 3.2, true)
+	var tr: Rect2 = a.rect.grow(5)
+	arrow_layer.draw_style_box(Art.box(Color(0, 0, 0, 0), tr.size.x * 0.24, Color(tint, 0.85), 2.0), tr)
 
 
 # =====================================================================
@@ -2348,8 +2477,16 @@ func _open_reactions() -> void:
 		flow.add_child(b)
 	overlay_layer.add_child(box)
 	box.reset_size()
-	var r := _lr(react_btn)
-	box.position = Vector2(clampf(r.position.x, 6, size.x - box.size.x - 6), clampf(r.position.y - box.size.y - 8, 6, size.y - box.size.y - 6))
+	# si apre sopra il mio campo, nello spazio centrale: non copre né mano né campo.
+	# L'altezza vera si conosce solo dopo un fotogramma (le frasi vanno a capo): si piazza allora.
+	box.modulate.a = 0
+	await get_tree().process_frame
+	if not is_instance_valid(box):
+		return
+	box.reset_size()
+	var field_top: float = _lr(zones.me.slots["W"]).position.y if lay == "portrait" else _lr(react_btn).position.y
+	box.position = Vector2((size.x - box.size.x) / 2, clampf(field_top - box.size.y - 10, 6, size.y - box.size.y - 6))
+	box.modulate.a = 1
 
 
 ## Una reazione: fumetto accanto al nome di chi la manda. Al «Ciao!» il computer di solito risponde.

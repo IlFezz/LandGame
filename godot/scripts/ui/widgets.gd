@@ -116,6 +116,7 @@ class Slot extends Control:
 	var card_mode := "mini"
 	var target := false  # bersaglio valido: alone d'oro che pulsa
 	var missing := false  # l'unica terra che manca per le cinque diverse
+	var opp := false  # casella dell'avversario: con 4 terre uguali il segnale è rosso
 	var pop := 0.0:  # 0–1: la casella si gonfia un attimo quando entra una terra (effetto)
 		set(v):
 			pop = v
@@ -136,7 +137,7 @@ class Slot extends Control:
 		count = n
 		target = tgt
 		missing = miss
-		set_process(tgt or miss)
+		set_process(tgt or miss or n >= 4)
 		queue_redraw()
 
 	func _process(delta: float) -> void:
@@ -176,6 +177,12 @@ class Slot extends Control:
 			Art.draw_tex(self, "tile-%s%s" % [land, "" if count > 0 else "-dim"], r2)
 			if night > 0:
 				draw_style_box(Art.box(Color("#17152e", night * 0.75), rad), r2)
+		var four := count >= 4 and not missing
+		var warn := Color("#ff8a8a") if opp else Color.WHITE
+		if four and not target:
+			# quattro terre uguali: alone che respira piano intorno alla casella
+			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 5, Color(warn, 0.18 + 0.25 * k), 4), tr.grow(4))
+			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 1, Color(warn, 0.85), 2.0), tr.grow(1))
 		if target:
 			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 6, Color(Art.SEGNALE, 0.25 + 0.3 * k), 4), tr.grow(5))
 			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 2, Art.SEGNALE, 2.5), tr.grow(2))
@@ -184,6 +191,12 @@ class Slot extends Control:
 		var y := tr.end.y + (size.y - tr.end.y) / 2 + 1
 		if missing and count == 0:
 			Art.draw_text_centered(self, Art.semi(), Art.NAMES[land], Vector2(size.x / 2, y), int(fs * 0.8), Art.AZZURRO)
+		elif four:
+			# il numero in un cerchio pieno (rosso per l'avversario, bianco per te)
+			var c := Vector2(size.x / 2, y)
+			var r := fs * 0.82
+			draw_circle(c, r, warn)
+			Art.draw_text_centered(self, Art.bold(), str(count), c, fs, Color.WHITE if opp else Art.INK)
 		else:
 			var col := Art.TESTO if count > 0 else Color(Art.TESTO, 0.45)
 			Art.draw_text_centered(self, Art.bold() if count > 0 else Art.sans(), str(count), Vector2(size.x / 2, y), fs, col)

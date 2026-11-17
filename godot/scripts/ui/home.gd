@@ -192,15 +192,18 @@ func _layout() -> void:
 	_build_pane()
 
 
+## Cambio scheda: sempre la stessa animazione. La scheda vecchia scorre fuori da un bordo dello
+## schermo e la nuova entra dall'altro, insieme, con la stessa velocità. La nuova viene misurata
+## prima di partire, così durante lo scorrimento non cambia mai posizione o misura.
 func set_tab(id: String) -> void:
-	if id == tab:
+	if id == tab or _sliding:
 		return
 	var order := TABS.map(func(t): return t[0])
 	var dir := 1 if order.find(id) > order.find(tab) else -1
 	tab = id
 	Prefs.set_value("tab", id)
 	Sound.play("click")
-	# la scheda vecchia esce dal bordo dello schermo e la nuova entra dall'altro bordo
+	_sliding = true
 	var old := _pane
 	_pane = null
 	if old != null:
@@ -209,22 +212,36 @@ func set_tab(id: String) -> void:
 		old.global_position = gp
 	_layout()
 	var p := _pane
-	var w := size.x
-	if old != null:
-		var to := old.position.x - dir * w
-		var tw0 := old.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw0.tween_property(old, "position:x", to, 0.32)
-		tw0.tween_callback(old.queue_free)
-	p.modulate.a = 0
-	await get_tree().process_frame
-	await get_tree().process_frame
+	p.visible = false
+	# misura completa prima di partire (i testi a capo hanno bisogno di qualche fotogramma)
+	for k in 3:
+		await get_tree().process_frame
+		_fit_pane()
 	if not is_instance_valid(p):
+		_sliding = false
 		return
-	p.modulate.a = 1
-	var x := p.position.x
-	p.position.x = x + dir * w
-	var tw := p.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(p, "position:x", x, 0.32)
+	var w := size.x
+	var dur := 0.3
+	p.visible = true
+	_slide_x = dir * w
+	_fit_pane()
+	var tw := create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(v: float):
+		_slide_x = v
+		if is_instance_valid(p):
+			p.position.x = v, dir * w, 0.0, dur)
+	if old != null:
+		tw.tween_property(old, "position:x", old.position.x - dir * w, dur)
+	await tw.finished
+	if old != null:
+		old.queue_free()
+	_slide_x = 0.0
+	_sliding = false
+	_fit_pane()
+
+
+var _sliding := false
+var _slide_x := 0.0  # spostamento della scheda nuova mentre entra
 
 
 ## Scorrendo il dito a destra o a sinistra si passa alla scheda vicina.
@@ -309,7 +326,7 @@ func _fit_pane() -> void:
 		ms.y = real
 	# «Gioca» al centro dello spazio, le altre schede partono dall'alto
 	var free := area.y - ms.y * k
-	_pane.position = Vector2(0, maxf(0, free / 2) if tab == "play" else 0.0)
+	_pane.position = Vector2(_slide_x, maxf(0, free / 2) if tab == "play" else 0.0)
 
 
 func toast(text: String) -> void:

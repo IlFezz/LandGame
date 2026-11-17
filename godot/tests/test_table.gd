@@ -41,6 +41,7 @@ func _new_table(o := {}, sz := Vector2(1280, 720)):
 	await _tree().process_frame
 	t.size = sz
 	t.save_enabled = false
+	t.deal_anim = false
 	t.start("normal", "Anna", {"firstPlayer": 0})
 	var g = t.g
 	for i in 2:
@@ -333,6 +334,7 @@ func t_tutorial():
 	t.size = Vector2(390, 844)
 	await _tree().process_frame
 	t.save_enabled = false
+	t.deal_anim = false
 	t.start("normal", "zz tutorial", {}, {"kind": "tutorial"})
 	var t0 := Time.get_ticks_msec()
 	while t.g.phase == "playing" and Time.get_ticks_msec() - t0 < 180000:
