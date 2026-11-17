@@ -73,6 +73,31 @@ static func style_button(b: Button, kind: String, fs: int) -> void:
 				b.create_tween().tween_property(b, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 
 
+const MENU_ICON := "<path d=\"M5 7h14M5 12h14M5 17h14\"/>"
+
+
+## Pulsante tondo di vetro con un'icona a tratto disegnata esattamente al centro.
+static func icon_button(paths: String, key: String, icon_size := 20.0) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	b.draw.connect(func():
+		var r := minf(b.size.x, b.size.y) / 2
+		var c := b.size / 2
+		var on := b.is_pressed() or b.is_hovered()
+		b.draw_circle(c, r, Color(1, 1, 1, 0.16 if on else 0.10))
+		b.draw_arc(c, r - 0.5, 0, TAU, 64, Color(1, 1, 1, 0.14), 1.0, true)
+		var t := Art.line_icon(key, paths, Art.TESTO, icon_size)
+		b.draw_texture_rect(t, Rect2(c - Vector2(icon_size, icon_size) / 2, Vector2(icon_size, icon_size)), false))
+	b.mouse_entered.connect(b.queue_redraw)
+	b.mouse_exited.connect(b.queue_redraw)
+	b.button_down.connect(b.queue_redraw)
+	b.button_up.connect(b.queue_redraw)
+	return b
+
+
 static func label(text := "", fs := 15, color = null, font: Font = null) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -148,7 +173,7 @@ class Slot extends Control:
 				sh.shadow_size = int(s * 0.1)
 				sh.shadow_offset = Vector2(0, s * 0.05)
 				draw_style_box(sh, r2)
-			draw_texture_rect(Art.tex("tile-%s%s" % [land, "" if count > 0 else "-dim"], r2.size.x), r2, false)
+			Art.draw_tex(self, "tile-%s%s" % [land, "" if count > 0 else "-dim"], r2)
 			if night > 0:
 				draw_style_box(Art.box(Color("#17152e", night * 0.75), rad), r2)
 		if target:
@@ -196,11 +221,20 @@ class Slot extends Control:
 					left = dash if on else gap
 
 
-## Mazzo: una pillola «Mazzo 41».
-class Deck extends Control:
-	var count := 40
-	var pw := 15.0
+const DECK_ICON := "<rect x=\"6\" y=\"3\" width=\"12\" height=\"17\" rx=\"2.5\"/><path d=\"M9 20.5v.5a1.5 1.5 0 0 0 1.5 1.5h7A2.5 2.5 0 0 0 20 20V7\"/>"
+const HAND_ICON := "<rect x=\"3\" y=\"6\" width=\"10\" height=\"14\" rx=\"2\" transform=\"rotate(-12 8 13)\"/><rect x=\"11\" y=\"5\" width=\"10\" height=\"14\" rx=\"2\" transform=\"rotate(10 16 12)\"/>"
+
+
+## Pillola con parola e numero («Mazzo 41»), oppure, se manca spazio, icona e numero.
+class Pill extends Control:
+	var count := 0
 	var fs := 13
+	var word := ""
+	var icon := ""
+	var compact := false:
+		set(v):
+			compact = v
+			queue_redraw()
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -211,48 +245,55 @@ class Deck extends Control:
 			queue_redraw()
 
 	func text() -> String:
-		return "Mazzo %d" % count
+		return ("%d" % count) if compact else ("%s %d" % [word, count])
 
-	func needed_width() -> float:
-		return Art.sans().get_string_size("Mazzo 50", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + fs * 1.8
+	## Larghezza che serve (pensata per i numeri fino a 50, così non cambia durante la partita).
+	func needed_width(small := compact) -> float:
+		var t := "50" if small else "%s 50" % word
+		var w := Art.sans().get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		# compatta: margine, icona, spazio, numero, margine
+		return w + (fs * 0.7 + fs * 1.15 + 4 + fs * 0.75 if small else fs * 1.8)
 
 	func pile_rect() -> Rect2:
 		var h := size.y * 0.8
 		return Rect2(position + Vector2(size.x / 2 - h * 0.36, (size.y - h) / 2), Vector2(h * 0.72, h))
 
+	func fan_rect() -> Rect2:
+		return pile_rect()
+
 	func _draw() -> void:
-		var h := minf(size.y, fs * 2.3)
-		var r := Rect2(Vector2(0, (size.y - h) / 2), Vector2(size.x, h))
-		Art.draw_pill(self, r, text(), fs)
+		var h := minf(size.y, fs * 2.4)
+		var r := Rect2(Vector2(0, (size.y - h) / 2), Vector2(minf(size.x, needed_width()), h))
+		if not compact:
+			Art.draw_pill(self, r, text(), fs)
+			return
+		draw_style_box(Art.box(Color(1, 1, 1, 0.10), h / 2 - 1, Color(1, 1, 1, 0.12), 1.0), r)
+		var isz := fs * 1.15
+		var x := r.position.x + fs * 0.7
+		draw_texture_rect(Art.line_icon(word, icon, Art.TESTO, isz), Rect2(x, r.get_center().y - isz / 2, isz, isz), false)
+		var f := Art.sans()
+		draw_string(f, Vector2(x + isz + 4, r.get_center().y + (f.get_ascent(fs) - f.get_descent(fs)) / 2), str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
 
 
-## La mano dell'avversario: una pillola «Mano 4».
-class Backs extends Control:
-	signal width_changed
-	var count := 5
-	var bw := 13.0
-	var fs := 12
+## Mazzo: «Mazzo 41».
+class Deck extends Pill:
+	var pw := 15.0
 
 	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		super()
+		word = "Mazzo"
+		icon = DECK_ICON
 
-	func set_count(n: int) -> void:
-		if n != count:
-			count = n
-			queue_redraw()
-			width_changed.emit()
 
-	func needed_width() -> float:
-		return Art.sans().get_string_size("Mano %d" % count, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + fs * 1.8
+## La mano dell'avversario: «Mano 4».
+class Backs extends Pill:
+	signal width_changed
+	var bw := 13.0
 
-	func fan_rect() -> Rect2:
-		var h := size.y * 0.8
-		return Rect2(position + Vector2(size.x / 2 - h * 0.36, (size.y - h) / 2), Vector2(h * 0.72, h))
-
-	func _draw() -> void:
-		var h := minf(size.y, fs * 2.3)
-		var r := Rect2(Vector2(0, (size.y - h) / 2), Vector2(minf(size.x, needed_width()), h))
-		Art.draw_pill(self, r, "Mano %d" % count, fs)
+	func _init() -> void:
+		super()
+		word = "Mano"
+		icon = HAND_ICON
 
 
 ## Il cimitero: una pillola «✝ 3» che si tocca per aprire il dettaglio.
@@ -285,6 +326,11 @@ class GyBadge extends Control:
 			pressed.emit()
 			accept_event()
 
+	## Larghezza che serve: icona e numero (fino a due cifre).
+	func needed_width() -> float:
+		var h := fs / 0.42
+		return h * 0.16 + h * 0.56 + 4 + Art.semi().get_string_size("50", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + h * 0.24
+
 	func _draw() -> void:
 		var h := size.y
 		var r := Rect2(Vector2.ZERO, size)
@@ -292,10 +338,10 @@ class GyBadge extends Control:
 			var k := 0.5 + 0.5 * sin(_t * TAU)
 			draw_style_box(Art.box(Color(0, 0, 0, 0), h / 2 + 4, Color(Art.SEGNALE, 0.35 + 0.4 * k), 3), r.grow(4))
 		draw_style_box(Art.box(Color(1, 1, 1, 0.18 if open else 0.10), h / 2 - 1, Color(Art.SEGNALE, 0.9) if target else Color(1, 1, 1, 0.12), 1.0), r)
-		var d := h * 0.62
-		Art.draw_contain(self, Art.tex("ico-T", d), Rect2(h * 0.2, (h - d) / 2, d, d))
+		var d := h * 0.56
+		Art.draw_contain(self, Art.tex("ico-T", d), Rect2(h * 0.16, (h - d) / 2, d, d))
 		var f := Art.semi()
-		draw_string(f, Vector2(h * 0.2 + d + 6, h / 2 + (f.get_ascent(fs) - f.get_descent(fs)) / 2), str(total), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
+		draw_string(f, Vector2(h * 0.16 + d + 4, h / 2 + (f.get_ascent(fs) - f.get_descent(fs)) / 2), str(total), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
 
 
 ## Puntino accanto al nome: d'oro quando è il turno di quel giocatore.
@@ -368,8 +414,7 @@ class Table extends Control:
 		# colline: larghe quanto lo schermo, alte un terzo della larghezza
 		var hw := maxf(size.x * 1.15, 400.0)
 		var hh := hw * 0.3
-		var ht := Art.tex("hills-" + Art.THEME, hw)
-		draw_texture_rect(ht, Rect2(-size.x * 0.075 + hills_shift, size.y - hh, hw, hh), false)
+		Art.draw_tex(self, "hills-" + Art.THEME, Rect2(-size.x * 0.075 + hills_shift, size.y - hh, hw, hh))
 		if rose_size > 0:
 			# l'orizzonte: un cerchio leggero, con un anello appena più chiaro
 			var r := rose_size / 2

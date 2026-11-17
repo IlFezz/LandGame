@@ -58,9 +58,9 @@ func _draw() -> void:
 		draw_style_box(Art.box(Color(ring, 0.28), rad + rw * 2.2), r.grow(rw * 2.2))
 		draw_style_box(Art.box(ring, rad + rw), r.grow(rw))
 	if kind == "back":
-		draw_texture_rect(Art.tex("bk-" + (back_id if back_id != "" else Art.BACK), w), r, false)
+		Art.draw_tex(self, "bk-" + (back_id if back_id != "" else Art.BACK), r)
 	else:
-		draw_texture_rect(Art.tex("card-" + kind, w), r, false)
+		Art.draw_tex(self, "card-" + kind, r)
 		_draw_text(w, h)
 	if dim > 0:
 		draw_style_box(Art.box(Color(Art.TAVOLO, dim), rad), r)
@@ -107,7 +107,6 @@ func _draw_disc(d: float) -> void:
 		draw_circle(c, r + r * 0.045, ring)
 	else:
 		draw_circle(c, r + r * 0.04, Color(1, 1, 1, 0.16))
-	var t := Art.tex("ico-" + kind, r * 2)
-	draw_texture_rect(t, Rect2(c - Vector2(r, r), Vector2(r, r) * 2), false)
+	Art.draw_tex(self, "ico-" + kind, Rect2(c - Vector2(r, r), Vector2(r, r) * 2))
 	if dim > 0:
 		draw_circle(c, r, Color(Art.TAVOLO, dim))

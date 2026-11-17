@@ -150,9 +150,26 @@ static func tex(key: String, width: float) -> Texture2D:
 	var svg := svg_of(key)
 	var img := Image.new()
 	img.load_svg_from_string(svg, float(w) / _viewbox(svg).x)
-	var t := ImageTexture.create_from_image(img)
+	# bordo trasparente tutto intorno: anche le carte inclinate hanno i bordi lisci, senza scalini
+	var padded := Image.create(img.get_width() + PAD * 2, img.get_height() + PAD * 2, true, Image.FORMAT_RGBA8)
+	img.convert(Image.FORMAT_RGBA8)
+	padded.blit_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(PAD, PAD))
+	padded.generate_mipmaps()
+	var t := ImageTexture.create_from_image(padded)
 	_tex[k] = t
 	return t
+
+
+## Pixel trasparenti aggiunti intorno a ogni disegno di tex().
+const PAD := 3
+
+
+## Disegna il disegno `key` esattamente dentro `r` (tenendo conto del bordo trasparente).
+static func draw_tex(ci: CanvasItem, key: String, r: Rect2, modulate := Color.WHITE) -> void:
+	var t := tex(key, r.size.x)
+	var inner := float(t.get_width() - PAD * 2)
+	var k := r.size.x / inner
+	ci.draw_texture_rect(t, r.grow(PAD * k), false, modulate)
 
 
 ## Un disegno SVG qualunque (icone, lucchetto, paesaggi con il sole spostato), largo `width` unità logiche.
@@ -185,10 +202,10 @@ static func draw_cover(ci: CanvasItem, t: Texture2D, r: Rect2, modulate := Color
 
 ## Disegna `t` dentro `r` senza tagliare, centrato (come "contain").
 static func draw_contain(ci: CanvasItem, t: Texture2D, r: Rect2, modulate := Color.WHITE) -> void:
-	var ts := t.get_size()
+	var ts := t.get_size() - Vector2(PAD, PAD) * 2  # senza il bordo trasparente
 	var k := minf(r.size.x / ts.x, r.size.y / ts.y)
 	var s := ts * k
-	ci.draw_texture_rect(t, Rect2(r.position + (r.size - s) / 2, s), false, modulate)
+	ci.draw_texture_rect(t, Rect2(r.position + (r.size - s) / 2, s).grow(PAD * k), false, modulate)
 
 
 ## Riquadro arrotondato pieno, con bordo e ombra facoltativi.

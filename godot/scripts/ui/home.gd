@@ -19,9 +19,18 @@ const Modes := preload("res://scripts/app/modes.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 
 const TABS := [["play", "Gioca"], ["challenges", "Sfide"], ["profile", "Profilo"], ["collection", "Collezione"], ["learn", "Impara"]]
+const TAB_ICON := {
+	"play": "<path d=\"M8 5.5v13l10.5-6.5z\"/>",
+	"challenges": "<path d=\"M6 21V4\"/><path d=\"M6 4.5c4-2 7 2 12 0v9c-5 2-8-2-12 0\"/>",
+	"profile": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5\"/>",
+	"collection": "<rect x=\"8\" y=\"3\" width=\"11\" height=\"15\" rx=\"2\"/><path d=\"M5 7v12a2 2 0 0 0 2 2h9\"/>",
+	"learn": "<path d=\"M3.5 5.5c3-1.5 5.8-1 8.5 1 2.7-2 5.5-2.5 8.5-1V19c-3-1.5-5.8-1-8.5 1-2.7-2-5.5-2.5-8.5-1z\"/><path d=\"M12 6.5V20\"/>",
+}
 const LOCK := "<rect x=\"5\" y=\"11\" width=\"14\" height=\"10\" rx=\"2\"/><path d=\"M8 11V8a4 4 0 0 1 8 0v3\"/>"
 const FULL_ICON := "<path d=\"M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5\"/>"
 const NOTE_ICON := "<path d=\"M9 18V5l11-2v13\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"17\" cy=\"16\" r=\"3\"/>"
+const NOTE_OFF_ICON := "<path d=\"M9 18V5l11-2v13\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"17\" cy=\"16\" r=\"3\"/><path d=\"M3 3l18 18\"/>"
+const FULL_EXIT_ICON := "<path d=\"M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5\"/>"
 const LEVELS := [["easy", "Facile"], ["normal", "Normale"], ["hard", "Difficile"]]
 const TURN_TIMES := [30, 45, 60, 90, 0]
 
@@ -66,16 +75,9 @@ func _ready() -> void:
 	_layout()
 
 
-func _round_button(icon: String, key: String, on: bool, cb: Callable) -> Button:
-	var b := Button.new()
-	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(44, 44)
-	b.icon = Art.line_icon(key, icon, Art.TESTO, 22)
-	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.add_theme_constant_override("icon_max_width", 22)
-	for st in ["normal", "hover", "pressed"]:
-		b.add_theme_stylebox_override(st, Art.box(Color(1, 1, 1, 0.16 if on else 0.08), 21, Color(1, 1, 1, 0.14), 1))
-	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+func _round_button(icon: String, key: String, _on: bool, cb: Callable) -> Button:
+	var b := W.icon_button(icon, key, 22)
+	b.custom_minimum_size = Vector2(46, 46)
 	b.pressed.connect(cb)
 	return b
 
@@ -86,36 +88,47 @@ func _layout() -> void:
 		return
 	_overlays.size = S
 	_side = S.x / S.y >= 1.1 and S.y <= 520
-	# in alto a destra: schermo intero (sempre presente) e musica
+	# in alto a destra, solo nella scheda Gioca: musica e (su PC e nel browser) schermo intero.
+	# Nell'app del telefono lo schermo è già intero: il pulsante non serve.
 	for c in _corner.get_children():
 		c.queue_free()
-	var full: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-	var fb := _round_button(FULL_ICON, "full", full, func(): fullscreen_toggled.emit())
-	fb.tooltip_text = "Esci da schermo intero" if full else "Schermo intero"
-	_corner.add_child(fb)
-	var music_on: bool = Prefs.get_value("music")
-	_corner.add_child(_round_button(NOTE_ICON, "note" + str(music_on), music_on, func():
-		Sound.set_music(not Prefs.get_value("music"))
-		_layout()))
+	var corner := tab == "play"
+	if corner:
+		var music_on: bool = Prefs.get_value("music")
+		var mb := _round_button(NOTE_ICON if music_on else NOTE_OFF_ICON, "note" + str(music_on), music_on, func():
+			Sound.set_music(not Prefs.get_value("music"))
+			_layout())
+		mb.modulate.a = 1.0 if music_on else 0.6
+		_corner.add_child(mb)
+		if not OS.has_feature("mobile"):
+			var full: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+			var fb := _round_button(FULL_EXIT_ICON if full else FULL_ICON, "full" + str(full), full, func(): fullscreen_toggled.emit())
+			fb.tooltip_text = "Esci da schermo intero" if full else "Schermo intero"
+			_corner.add_child(fb)
 	_corner.reset_size()
 	_corner.position = Vector2(S.x - _corner.size.x - 16, 16)
+	var top_room := 74.0 if corner else 22.0
 	# schede
 	for c in _tabs.get_children():
 		c.queue_free()
 	var margin := 16.0 if S.x < 500 else 28.0
 	var content_w := minf(S.x - margin * 2, 520.0)
 	if _side:
-		var tw := 110.0
+		var tw := 150.0
 		_tabs.position = Vector2(margin, 16)
 		_tabs.size = Vector2(tw, S.y - 32)
-		_pane_box.position = Vector2(margin + tw + 16, 70)
-		_pane_box.size = Vector2(S.x - margin * 2 - tw - 16, S.y - 86)
+		_pane_box.position = Vector2(margin + tw + 18, top_room if corner else 18.0)
+		_pane_box.size = Vector2(S.x - margin * 2 - tw - 18 - (_corner.size.x + 10 if corner else 0.0), S.y - _pane_box.position.y - 16)
+		if corner:
+			_pane_box.position.y = 18
 	else:
-		var th := 54.0
-		_tabs.position = Vector2((S.x - content_w) / 2, S.y - th - 8)
-		_tabs.size = Vector2(content_w, th)
-		_pane_box.position = Vector2((S.x - content_w) / 2, 72)
-		_pane_box.size = Vector2(content_w, S.y - 72 - th - 16)
+		var th := 70.0
+		var bottom := 14.0 if OS.has_feature("mobile") else 8.0
+		var tabs_w := minf(S.x - 12, 560.0)  # la barra delle schede usa quasi tutta la larghezza
+		_tabs.position = Vector2((S.x - tabs_w) / 2, S.y - th - bottom)
+		_tabs.size = Vector2(tabs_w, th)
+		_pane_box.position = Vector2((S.x - content_w) / 2, top_room)
+		_pane_box.size = Vector2(content_w, S.y - top_room - th - bottom - 14)
 	var line := ColorRect.new()
 	line.color = Color(1, 1, 1, 0.14)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -129,29 +142,38 @@ func _layout() -> void:
 	for i in n:
 		var t: Array = TABS[i]
 		var on: bool = t[0] == tab
+		# la scheda è disegnata a mano: icona e scritta in posizioni esatte, mai fuori dal suo spazio
 		var b := Button.new()
 		b.flat = true
 		b.focus_mode = Control.FOCUS_NONE
-		b.text = t[1]
-		b.add_theme_font_override("font", Art.semi() if on else Art.sans())
-		# la scritta deve stare nella sua scheda: se è lunga si rimpicciolisce
+		for st in ["normal", "hover", "pressed", "focus"]:
+			b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 		var tab_w: float = (_tabs.size.x - 8) if _side else _tabs.size.x / n
 		# stessa misura per tutte le schede: quella che fa stare la più lunga
 		var fs := 15
-		while fs > 10 and TABS.any(func(x): return Art.semi().get_string_size(x[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > tab_w - 6):
+		while fs > 10 and TABS.any(func(x): return Art.semi().get_string_size(x[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > tab_w - 6 - (34.0 if _side else 0.0)):
 			fs -= 1
-		b.add_theme_font_size_override("font_size", fs)
-		b.clip_text = true
 		var col := Art.TESTO if on else Color(Art.TESTO, 0.6)
-		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-			b.add_theme_color_override(c, col)
+		var label: String = t[1]
+		var ico := Art.line_icon("tab-" + t[0], TAB_ICON[t[0]], col, 24)
+		var side := _side
+		b.draw.connect(func():
+			var f := Art.semi() if on else Art.sans()
+			if side:
+				var cy := b.size.y / 2
+				b.draw_texture_rect(ico, Rect2(4, cy - 12, 24, 24), false)
+				b.draw_string(f, Vector2(38, cy + (f.get_ascent(fs) - f.get_descent(fs)) / 2), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+			else:
+				var block := 24 + 6 + fs * 1.1
+				var top := (b.size.y - block) / 2
+				b.draw_texture_rect(ico, Rect2(b.size.x / 2 - 12, top, 24, 24), false)
+				Art.draw_text_centered(b, f, label, Vector2(b.size.x / 2, top + 30 + fs * 0.55), fs, col))
 		if _side:
-			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.position = Vector2(0, i * (_tabs.size.y / n))
 			b.size = Vector2(_tabs.size.x - 8, _tabs.size.y / n)
 		else:
-			b.position = Vector2(i * _tabs.size.x / n, 2)
-			b.size = Vector2(_tabs.size.x / n, _tabs.size.y - 2)
+			b.position = Vector2(i * _tabs.size.x / n, 4)
+			b.size = Vector2(_tabs.size.x / n, _tabs.size.y - 4)
 		var id: String = t[0]
 		b.pressed.connect(func(): set_tab(id))
 		_tabs.add_child(b)
@@ -216,6 +238,8 @@ func _build_pane() -> void:
 	_fit_pane.call_deferred()
 	# i testi a capo conoscono la loro altezza solo dopo aver avuto la larghezza: seconda misura
 	get_tree().process_frame.connect(_fit_pane, CONNECT_ONE_SHOT)
+	# i testi lunghi (RichTextLabel) a volte si misurano un attimo dopo: terza misura
+	get_tree().create_timer(0.08).timeout.connect(_fit_pane)
 
 
 ## Il contenuto prende tutta la larghezza; se è più alto dello spazio si rimpicciolisce.
@@ -245,9 +269,9 @@ func _fit_pane() -> void:
 		_pane.scale = Vector2(k, k)
 		_pane.size = Vector2(area.x / k, real)
 		ms.y = real
-	# «Gioca» sta in fondo (come nell'immagine dello stile), le altre schede partono dall'alto
+	# «Gioca» al centro dello spazio, le altre schede partono dall'alto
 	var free := area.y - ms.y * k
-	_pane.position = Vector2(0, maxf(0, free) if tab == "play" else 0.0)
+	_pane.position = Vector2(0, maxf(0, free / 2) if tab == "play" else 0.0)
 
 
 func toast(text: String) -> void:
@@ -310,7 +334,7 @@ func _logo_tiles(s: float) -> Control:
 			sh.shadow_size = int(s * 0.18)
 			sh.shadow_offset = Vector2(0, s * 0.08)
 			c.draw_style_box(sh, r)
-			c.draw_texture_rect(Art.tex("tile-" + lands[i], s), r, false)
+			Art.draw_tex(c, "tile-" + lands[i], r)
 		c.draw_set_transform(Vector2.ZERO))
 	c.resized.connect(c.queue_redraw)
 	return c
@@ -332,7 +356,7 @@ func _play_pane() -> Control:
 	b.alignment = BoxContainer.ALIGNMENT_END
 	top.add_child(a)
 	top.add_child(b)
-	a.add_child(_logo_tiles(46))
+	a.add_child(_logo_tiles(34.0 if _side else 46.0))
 	var title := W.label("Atlas", 64, Art.TESTO, Art.bold())
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	a.add_child(title)
@@ -492,19 +516,19 @@ func _collection_pane() -> Control:
 			# anteprima: il cielo sfumato con le colline
 			Art.draw_vgrad(ci, r, Color(sky[0]), Color(sky[1]))
 			var hh := r.size.x * 0.3
-			ci.draw_texture_rect(Art.tex("hills-" + id, r.size.x), Rect2(r.position.x, r.end.y - hh, r.size.x, hh), false),
+			Art.draw_tex(ci, "hills-" + id, Rect2(r.position.x, r.end.y - hh, r.size.x, hh)),
 			func(): _pick("table", id, lk)))
 	v.add_child(g1)
 	v.add_child(W.label("Dorso delle carte", 14, Color(Art.TESTO, 0.7), Art.semi()))
 	var g2 := GridContainer.new()
-	g2.columns = 4
+	g2.columns = 7 if _side else 4  # in orizzontale tutti i dorsi su una riga
 	for bk in Art.BACKS:
 		var id: String = bk[0]
 		var lk := not Profile.unlocked(a, "back", id)
 		g2.add_child(_tile(bk[1], Art.back_id(Prefs.get_value("back")) == id, lk, func(ci: CanvasItem, r: Rect2):
 			var h := r.size.y
 			var cr := Rect2(r.get_center().x - h / 2.8, r.position.y, h / 1.4, h)
-			ci.draw_texture_rect(Art.tex("bk-" + id, cr.size.x), cr, false),
+			Art.draw_tex(ci, "bk-" + id, cr),
 			func(): _pick("back", id, lk)))
 	v.add_child(g2)
 	var n := 0
@@ -561,7 +585,12 @@ func _learn_pane() -> Control:
 	go.pressed.connect(func(): play_tutorial.emit())
 	cv.add_child(go)
 	v.add_child(card)
-	v.add_child(W.label("Le cinque terre", 14, Color(Art.TESTO, 0.7), Art.semi()))
+	# in orizzontale le cinque terre vanno in una seconda colonna: il testo resta grande
+	var v2 := v
+	if _side:
+		v2 = VBoxContainer.new()
+		v2.add_theme_constant_override("separation", 10)
+	v2.add_child(W.label("Le cinque terre", 14, Color(Art.TESTO, 0.7), Art.semi()))
 	for t in ["W", "U", "B", "R", "G"]:
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 12)
@@ -581,12 +610,20 @@ func _learn_pane() -> Control:
 		fx.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		fx.custom_minimum_size.x = 120
 		h.add_child(fx)
-		v.add_child(h)
+		v2.add_child(h)
 	var win := W.label("Si vince con cinque terre diverse in gioco, oppure cinque uguali.", 14, Color(Art.TESTO, 0.85))
 	win.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	win.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(win)
+	v2.add_child(win)
 	var r := W.button("Regole complete", "dark", 15)
 	r.pressed.connect(func(): Sheets.rules(_overlays))
-	v.add_child(r)
+	v2.add_child(r)
+	if _side:
+		var cols := HBoxContainer.new()
+		cols.add_theme_constant_override("separation", 22)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cols.add_child(v)
+		cols.add_child(v2)
+		return cols
 	return v

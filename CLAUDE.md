@@ -29,7 +29,8 @@ Il collegamento con l'editor è il server MCP `godot` (`@coding-solo/godot-mcp`:
 ## Preferenze già espresse (valgono anche per Godot)
 - Nessuno scorrimento: tutto deve stare nello schermo, su telefono verticale, orizzontale, tablet e PC.
 - Nessuna sovrapposizione tra carte, scritte e pulsanti.
-- Pulsante schermo intero sempre presente (entra ed esce).
+- Pulsante schermo intero (entra ed esce) su PC e nel browser; nell'app del telefono non c'è, lo schermo è già intero. Musica e schermo intero solo nella scheda Gioca della home, non in tutte le schermate.
+- Stile grafico Godot: «Orizzonti» (stile H, immagine in Download «Atlas – nuovi stili grafici»): deve essere super pulito come quell'immagine. Testi grandi e allineati, icone centrate, bordi delle carte lisci, al centro del tavolo la carta (non un cerchio), niente ammassato in basso.
 - Effetti visibili ma non invadenti: la grafica avanzata web era "esagerata, distraeva, carte sgranate" ed è stata tolta.
 - Su tablet il campo resta al centro; sul telefono in orizzontale la rosa dei venti va a destra.
 - Prestazioni prima di tutto: niente scatti nel trascinamento delle carte.
