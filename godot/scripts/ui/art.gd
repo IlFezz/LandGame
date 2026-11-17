@@ -238,3 +238,11 @@ static func draw_pill(ci: CanvasItem, r: Rect2, text: String, fs: int, highlight
 static func draw_vgrad(ci: CanvasItem, r: Rect2, top: Color, bottom: Color) -> void:
 	ci.draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
 		PackedColorArray([top, top, bottom, bottom]))
+
+
+## Numero in un cerchietto (sopra il mazzo e la mano coperta).
+static func draw_count(ci: CanvasItem, c: Vector2, n: int, fs: int) -> void:
+	var r := fs * 0.9
+	ci.draw_circle(c, r + 1.5, Color(TAVOLO, 0.9))
+	ci.draw_circle(c, r, CARTA)
+	draw_text_centered(ci, bold(), str(n), c, fs, INK)

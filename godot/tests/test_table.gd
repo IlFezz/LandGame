@@ -272,6 +272,14 @@ func t_layouts():
 			boxes[w + " campo"] = z.slots["W"].get_global_rect().merge(z.slots["G"].get_global_rect())
 		boxes["carta al centro"] = t.stack_rect
 		boxes["menu"] = t.menu_btn.get_global_rect()
+		boxes["reazioni"] = t.react_btn.get_global_rect()
+		if sz.x < sz.y:
+			# telefono in verticale: anche la striscia del tempo e le azioni (scritte e pulsanti)
+			t.turn_time = 30
+			boxes["tempo"] = t.timer_bar.get_global_rect()
+			var ar: Rect2 = t.actions.get_global_rect()
+			ar.size *= t.actions.scale
+			boxes["azioni"] = Rect2(ar.position, Vector2(ar.size.x, t.actions.get_combined_minimum_size().y * t.actions.scale.y))
 		var hand := Rect2()
 		for c in t.hand_cards:
 			var hr := Rect2(c.position, c.size)

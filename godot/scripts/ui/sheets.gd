@@ -147,38 +147,85 @@ static func rules(host: Control) -> void:
 
 # ---------------------------------------------------------------- obiettivi
 
+## Gli obiettivi: tutta la larghezza dello schermo, una riga per obiettivo con il nome in grande, la
+## descrizione sotto e, accanto, in piccolo, l'oggetto che sblocca (il dorso o il cielo del tavolo).
 static func goals(host: Control) -> void:
 	var a := Profile.load_profile(Prefs.player_name())
 	var got: Dictionary = a.get("goals", {})
-	var v := sheet(host, "Obiettivi", 460)
-	v.add_child(title("Obiettivi"))
+	var v := sheet(host, "Obiettivi", minf(host.size.x - 16, 620.0))
+	v.add_theme_constant_override("separation", 8)
 	var n := 0
 	for g in Profile.GOALS:
 		if got.has(g.id):
 			n += 1
-	v.add_child(para("%d di %d raggiunti. Alcuni sbloccano dorsi e tavoli nella Collezione." % [n, Profile.GOALS.size()], 14))
+	var head := HBoxContainer.new()
+	var t := W.label("Obiettivi", 24, Art.TESTO, Art.bold())
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(W.label("%d / %d" % [n, Profile.GOALS.size()], 18, Art.SEGNALE, Art.semi()))
+	v.add_child(head)
+	var cols := 2 if host.size.x >= 700 else 1
 	var grid := GridContainer.new()
-	grid.columns = 2 if host.size.x >= 480 else 1
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 6)
+	grid.columns = cols
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 4)
 	for g in Profile.GOALS:
+		var ok: bool = got.has(g.id)
 		var row := HBoxContainer.new()
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_theme_constant_override("separation", 6)
-		var mark := W.label("✓" if got.has(g.id) else "·", 15, Art.LAND.G if got.has(g.id) else Color(Art.TESTO, 0.3), Art.bold())
-		mark.custom_minimum_size.x = 14
+		row.add_theme_constant_override("separation", 10)
+		var mark := Control.new()
+		mark.custom_minimum_size = Vector2(22, 22)
+		mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mark.draw.connect(func():
+			var c := Vector2(11, 11)
+			if ok:
+				mark.draw_circle(c, 11, Art.LAND.G)
+				mark.draw_polyline(PackedVector2Array([c + Vector2(-5, 0), c + Vector2(-1, 4), c + Vector2(6, -4)]), Color.WHITE, 2.2, true)
+			else:
+				mark.draw_arc(c, 10, 0, TAU, 32, Color(1, 1, 1, 0.3), 1.5, true))
 		row.add_child(mark)
-		# nome in grassetto, sotto la descrizione e l'eventuale premio
-		var txt := rich("[b]%s[/b]\n%s%s" % [g.name, g.desc, ("  [i]Premio: %s[/i]" % g.reward.name) if g.has("reward") else ""], 12)
-		txt.modulate.a = 1.0 if got.has(g.id) else 0.6
+		var txt := VBoxContainer.new()
+		txt.add_theme_constant_override("separation", 0)
 		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		txt.custom_minimum_size.x = 160
+		txt.add_child(W.label(g.name, 15, Art.TESTO if ok else Color(Art.TESTO, 0.85), Art.semi()))
+		var d := W.label(g.desc, 13, Color(Art.TESTO, 0.65))
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size.x = 120
+		txt.add_child(d)
 		row.add_child(txt)
+		if g.has("reward"):
+			row.add_child(_reward_preview(g.reward, ok))
 		grid.add_child(row)
 	v.add_child(grid)
 	var veil: Node = v.get_meta("panel").get_parent()
 	v.add_child(button("Chiudi", "ink", func(): close(veil)))
 	fit(v)
+
+
+## L'oggetto sbloccato da un obiettivo, in piccolo: un dorso di carta o un cielo con le colline.
+static func _reward_preview(reward: Dictionary, unlocked: bool) -> Control:
+	var c := Control.new()
+	var is_back: bool = reward.kind == "back"
+	c.custom_minimum_size = Vector2(30, 42) if is_back else Vector2(48, 34)
+	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	c.tooltip_text = reward.name
+	c.draw.connect(func():
+		var r := Rect2(Vector2.ZERO, c.size)
+		if is_back:
+			Art.draw_tex(c, "bk-" + reward.id, r)
+		else:
+			var sky: Array = Art.Scenery.SKIES[reward.id]
+			var sb := Art.box(Color(sky[1]), 6)
+			c.draw_style_box(sb, r)
+			Art.draw_vgrad(c, r.grow(-2), Color(sky[0]), Color(sky[1]))
+			var hh := r.size.x * 0.3
+			Art.draw_tex(c, "hills-" + reward.id, Rect2(r.position.x + 2, r.end.y - hh - 2, r.size.x - 4, hh))
+		if not unlocked:
+			c.draw_style_box(Art.box(Color(Art.TAVOLO, 0.55), 6), r)
+			var lt := Art.line_icon("lock", "<rect x=\"5\" y=\"11\" width=\"14\" height=\"10\" rx=\"2\"/><path d=\"M8 11V8a4 4 0 0 1 8 0v3\"/>", Art.TESTO, 14)
+			c.draw_texture_rect(lt, Rect2(r.get_center() - Vector2(7, 7), Vector2(14, 14)), false))
+	return c
 
 
 # ---------------------------------------------------------------- profilo

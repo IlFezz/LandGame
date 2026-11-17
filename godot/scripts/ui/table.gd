@@ -92,6 +92,7 @@ var peek_layer: Control
 var _press = null  # { card(view), idx, pos, t, moved, from }
 var _drag = null  # { view, idx, grab }
 var _hover_idx := -1
+var _status_h := 0.0  # altezza fissa della scritta di stato (non deve crescere)
 var tut_idx := -1  # carta da giocare indicata dal tutorial: sta sollevata e dritta
 var _play_from := Rect2()  # da dove parte il volo della carta giocata (dove è stata lasciata)
 
@@ -491,10 +492,10 @@ func _layout() -> void:
 	arrow_layer.size = S
 	# barra del tempo: sotto la barra in alto (telefono verticale) o lungo il bordo superiore
 	if lay == "portrait":
-		# nella barra in alto, tra la modalità e il menu
-		var bx := top_mode.position.x + top_mode.get_theme_font("font").get_string_size(top_mode.text if top_mode.text != "" else "vs BOT (difficile)", HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.small)).x + 12
-		timer_bar.position = Vector2(bx, menu_btn.position.y + (menu_btn.size.y - 14) / 2)
-		timer_bar.size = Vector2(maxf(40, menu_btn.position.x - 10 - bx), 14)
+		# in cima allo spazio centrale, tra il campo dell'avversario e la carta: lì non c'è nulla
+		var tw := minf(center_rect.size.x * 0.7, 260.0)
+		timer_bar.position = Vector2(center_rect.get_center().x - tw / 2, center_rect.position.y + 2)
+		timer_bar.size = Vector2(tw, 16)
 	else:
 		timer_bar.position = Vector2(0, 0)
 		timer_bar.size = Vector2(S.x, maxf(12, 1.8 * vh))
@@ -530,39 +531,44 @@ func _place_bf(w: String, x0: float, width: float, y: float, gap: float) -> void
 		x += sw + gap
 
 
-## Intestazione del giocatore in riga: nome a sinistra, poi dorsi, mazzo, cimitero a destra.
-## Intestazione in riga: nome a sinistra; a destra, allineate, le pillole (mano dell'avversario,
-## mazzo, cimitero). Se le pillole con le parole non ci stanno, diventano icona + numero.
+## Intestazione in riga: nome a sinistra; a destra il mazzo (carte coperte) e il cimitero.
 func _place_head_row(w: String, r: Rect2) -> void:
 	var z = zones[w]
 	var h := r.size.y
 	var gyh: float = _fs.gy_h
-	var gap := 6.0
 	var gyw: float = z.gy.needed_width()
-	var name_w: float = z.name.get_theme_font("font").get_string_size(z.name.text if z.name.text != "" else "Giocatore", HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.name)).x
-	var react_w: float = gyh + 8 if w == "me" else 0.0
-	var pills_full: float = z.deck.needed_width(false) + gap + gyw
-	if w == "opp":
-		pills_full += z.backs.needed_width(false) + gap
-	var compact := 16 + minf(name_w, 110) + 30 + react_w + 10 + pills_full > r.size.x
-	z.deck.compact = compact
-	if w == "opp":
-		z.backs.compact = compact
-	var y := r.position.y + (h - gyh) / 2
 	var x := r.end.x - gyw
-	z.gy.position = Vector2(x, y)
+	z.gy.position = Vector2(x, r.position.y + (h - gyh) / 2)
 	z.gy.size = Vector2(gyw, gyh)
+	z.deck.size = Vector2(0, h)
 	var dw: float = z.deck.needed_width()
-	x -= dw + gap
-	z.deck.position = Vector2(x, y)
-	z.deck.size = Vector2(dw, gyh)
-	if w == "opp":
-		var bw: float = z.backs.needed_width()
-		x -= bw + gap
-		z.backs.position = Vector2(x, y)
-		z.backs.size = Vector2(bw, gyh)
+	x -= dw + 10
+	z.deck.position = Vector2(x, r.position.y)
+	z.deck.size = Vector2(dw, h)
 	z.row = true
 	_place_name(w, Vector2(r.position.x + 2, r.position.y), x - r.position.x - 10, h)
+
+
+## Avversario sul telefono in verticale, su due righe:
+## in alto il nome (a sinistra; il centro resta libero per il foro della fotocamera),
+## sotto la mano coperta a ventaglio, il mazzo e il cimitero.
+func _place_opp_portrait(top_row: Rect2, row: Rect2) -> void:
+	var z = zones.opp
+	z.row = true
+	_place_name("opp", top_row.position, top_row.size.x * 0.44, top_row.size.y)
+	var h := row.size.y
+	var gyh: float = _fs.gy_h
+	z.backs.size = Vector2(0, h)
+	var bw: float = z.backs.needed_width()
+	z.backs.position = Vector2(row.position.x + 4, row.position.y)
+	z.backs.size = Vector2(bw, h)
+	var gyw: float = z.gy.needed_width()
+	z.gy.position = Vector2(row.end.x - gyw, row.position.y + (h - gyh) / 2)
+	z.gy.size = Vector2(gyw, gyh)
+	z.deck.size = Vector2(0, h)
+	var dw: float = z.deck.needed_width()
+	z.deck.position = Vector2(z.gy.position.x - 12 - dw, row.position.y)
+	z.deck.size = Vector2(dw, h)
 
 
 func _place_name(w: String, pos: Vector2, width: float, h: float) -> void:
@@ -574,6 +580,8 @@ func _place_name(w: String, pos: Vector2, width: float, h: float) -> void:
 	var nearw: float = _fs.small * 1.45
 	# spazio per il nome: tolti il segnale «!» e (per me) il pulsante delle reazioni
 	z.name_max = maxf(10, width - 16 - nearw - 6 - (_fs.gy_h + 8 if w == "me" and z.get("row", false) else 0.0))
+	if w == "opp" and lay == "portrait":
+		z.name_max = maxf(10, width - 16 - nearw - 6)
 	z.name.size = Vector2(z.name_max, nh)
 	z.near.size = Vector2(nearw, nearw)
 	z.near.position.y = pos.y + (h - nearw) / 2
@@ -671,7 +679,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 		_fonts(18, 12.5, 15, 15, 30)
 	else:
 		_fonts(19, 13.5, 16, 16, 32)
-	var top := 10.0
+	var top := 4.0
 	var bottom_pad := 14.0 if OS.has_feature("mobile") else 8.0  # sul telefono: lontano dal bordo curvo
 	var k := 1.0
 	# rimpicciolisce carte e campo finché tutto sta nello schermo senza sovrapporsi
@@ -680,7 +688,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 		hw = minf(19 * vw, 12.5 * vh) * k
 		cw = (minf(26 * vw, 16 * vh) if tablet else minf(28 * vw, 15 * vh)) * k
 		var hand_h := hw * 1.4 + 22
-		var fixed := top + zh + 4 + sw * 1.32 + gap + gap + sw * 1.32 + 4 + zh + gap + hand_h + bottom_pad
+		var fixed := top + 40 + zh + 12 + 4 + sw * 1.32 + gap + gap + sw * 1.32 + 4 + zh + gap + hand_h + bottom_pad
 		var need: float = cw * 1.4 + _fs.status * 2.6 + _fs.btn * 5.5
 		if S.y - fixed >= need or k < 0.55:
 			break
@@ -690,8 +698,11 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	menu_btn.size = Vector2(mb, mb)
 	menu_btn.position = Vector2(x0 + inner - mb, top + (zh - mb) / 2)
 	var y := top
-	_place_head_row("opp", Rect2(x0, y, inner - mb - 8, zh))
-	y += zh + 4
+	var row_a := 40.0
+	var row_b := zh + 12  # la mano coperta dell'avversario: carte abbastanza grandi da vedere il dorso
+	_place_opp_portrait(Rect2(x0, y, inner - mb - 8, row_a), Rect2(x0, y + row_a, inner, row_b))
+	menu_btn.position.y = y + (row_a - mb) / 2
+	y += row_a + row_b + 4
 	_place_bf("opp", x0, inner, y, 1.8 * vw)
 	y += sw * 1.32 + gap
 	var hand_h := hw * 1.4 + 22
@@ -705,10 +716,12 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	# carta, stato e azioni in colonna, centrati nello spazio libero tra i due campi
 	var st_h: float = _fs.status * 2.6
 	var block := cw * 1.4 + 10 + st_h + 6 + _actions_min_h()
-	var start := center_rect.position.y + maxf(4, (center_rect.size.y - block) / 2)
+	# sopra la carta resta la striscia del tempo (20 punti)
+	var start := center_rect.position.y + maxf(24, (center_rect.size.y - block) / 2)
 	stack_rect = Rect2(center_rect.get_center().x - cw / 2, start, cw, cw * 1.4)
 	status_label.position = Vector2(x0, stack_rect.end.y + 10)
 	status_label.size = Vector2(inner, st_h)
+	_status_h = st_h
 	actions.position = Vector2(x0, status_label.position.y + st_h + 6)
 	actions.size = Vector2(inner, center_rect.end.y - actions.position.y)
 	actions.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -753,6 +766,7 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	stack_rect = Rect2(cc.x - cw / 2, sy, cw, cw * 1.4)
 	status_label.position = Vector2(center_rect.position.x, stack_rect.position.y - st_h - 4)
 	status_label.size = Vector2(center_rect.size.x, st_h)
+	_status_h = st_h
 	var ax := cc.x + cw * 0.5 + 3.5 * vw
 	var aw := minf(minf(30 * vw, 420.0), S.x - ax - side)
 	actions.position = Vector2(ax, center_rect.position.y)
@@ -803,6 +817,7 @@ func _layout_side(S: Vector2, vw: float, vh: float) -> void:
 	stack_rect = Rect2(cc.x - cw / 2, sy, cw, cw * 1.4)
 	status_label.position = Vector2(center_rect.position.x, stack_rect.end.y + 2 * vh)
 	status_label.size = Vector2(center_rect.size.x, st_h)
+	_status_h = st_h
 	actions.position = Vector2(center_rect.position.x, status_label.position.y + st_h + vh)
 	actions.size = Vector2(center_rect.size.x, center_rect.end.y - actions.position.y)
 	actions.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -914,6 +929,7 @@ func _refresh() -> void:
 	_refresh_stack()
 	_refresh_status(task)
 	_refresh_actions(task)
+	_fit_actions.call_deferred()
 	_sync_hand(task)
 	center_frame.queue_redraw()
 	if task == "choice" and V.choice.kind == "discard":
@@ -937,6 +953,7 @@ func _refresh_stack() -> void:
 	stack_card.size = stack_rect.size
 	stack_card.mode = _stack_mode()
 	stack_card.ring = Color(0, 0, 0, 0)
+	stack_card.stamp = ""
 	unstage_btn.visible = false
 	ctr_label.text = ""
 	if staged != null:
@@ -955,9 +972,12 @@ func _refresh_stack() -> void:
 		if p.owner != me:
 			stack_card.ring = Art.ROSSO
 		if p.counters > 0:
+			# timbro sulla carta: «Contrastata» (azzurro, con le onde dell'Isola) oppure, se il
+			# contrasto è stato a sua volta contrastato, «Torna in gioco» (oro)
 			var neg: bool = p.counters % 2 == 1
-			ctr_label.text = ("Annullata" if neg else "Torna in gioco") + " · %d contrast%s" % [p.counters, "o" if p.counters == 1 else "i"]
-			ctr_label.add_theme_color_override("font_color", Art.ROSSO if neg else Art.SEGNALE)
+			stack_card.stamp = "Contrastata" if neg else "Torna in gioco"
+			stack_card.stamp_color = Art.LAND.U if neg else Art.SEGNALE2
+			stack_card.stamp_n = p.counters
 	else:
 		stack_card.visible = false
 	ctr_label.position = Vector2(stack_rect.position.x - 60, stack_rect.position.y - _fs.get("status", 14) * 1.5)
@@ -965,17 +985,14 @@ func _refresh_stack() -> void:
 
 
 func _draw_center_frame() -> void:
-	# il centro si illumina quando una carta ci può essere posata
+	# niente posto per la carta: tutto il campo centrale è libero. Quando si trascina o si sceglie
+	# una carta, il centro si illumina appena: la carta si può lasciare in qualunque punto.
 	var drop: bool = _task() == "main" and staged == null and (sel != null or _drag != null)
-	var r := Rect2(stack_rect.position - center_frame.position, stack_rect.size)
-	var rad := stack_rect.size.x * 0.11
-	if not stack_card.visible and not drop:
-		# posto vuoto per la carta: un riquadro appena accennato
-		center_frame.draw_style_box(Art.box(Color(1, 1, 1, 0.04), rad, Color(1, 1, 1, 0.12), 1.5), r)
-	if drop:
-		# il posto si accende: qui si posa la carta
-		var over := _drag != null and _over_center(get_local_mouse_position())
-		center_frame.draw_style_box(Art.box(Color(Art.SEGNALE, 0.16 if over else 0.06), rad + 6, Color(Art.SEGNALE, 0.95 if over else 0.6), 2.5), r.grow(6))
+	if not drop:
+		return
+	var over := _drag != null and _over_center(get_local_mouse_position())
+	var r := Rect2(Vector2.ZERO, center_frame.size).grow(-2)
+	center_frame.draw_style_box(Art.box(Color(Art.SEGNALE, 0.10 if over else 0.04), 24, Color(Art.SEGNALE, 0.7 if over else 0.35), 2.0), r)
 
 
 func _status() -> Dictionary:
@@ -1012,6 +1029,8 @@ func _refresh_status(_task_now: String) -> void:
 	var col := Art.TESTO if st.cls != "" else Art.MUTO
 	# «Tocca a te», «Turno di BOT»: grandi e in grassetto; le didascalie restano in una pillola
 	var big: bool = st.cls == "mine" or st.cls == ""
+	if _status_h > 0:
+		status_label.size.y = _status_h  # dopo una scritta grande l'etichetta non torna piccola da sola
 	status_label.add_theme_font_size_override("font_size", int(_fs.get("status", 14) * (1.55 if big else 1.0)))
 	status_label.add_theme_font_override("font", Art.bold() if big else Art.semi())
 	var pill_r := minf(status_label.size.y, _fs.get("status", 14) * 1.9) / 2
@@ -1104,6 +1123,19 @@ func _btn(text: String, kind: String, cb: Callable) -> Button:
 	return b
 
 
+## Le azioni (scritte e pulsanti) devono stare nel loro spazio: se non ci stanno si rimpiccioliscono.
+func _fit_actions() -> void:
+	actions.scale = Vector2.ONE
+	var need := actions.get_combined_minimum_size().y
+	# lo spazio vero fino al campo (il contenitore si allunga da solo se il contenuto è più alto)
+	var room := center_rect.end.y - actions.position.y if lay != "side" else actions.size.y
+	actions.size.y = room
+	if need > room and room > 10:
+		var k := room / need
+		actions.pivot_offset = Vector2(actions.size.x / 2, 0)
+		actions.scale = Vector2(k, k)
+
+
 func _refresh_actions(task: String) -> void:
 	for c in actions.get_children():
 		actions.remove_child(c)
@@ -1141,7 +1173,8 @@ func _refresh_actions(task: String) -> void:
 		if not counter_mode:
 			actions.add_child(_hint(_consequence(p)))
 			actions.add_child(_row([_btn("Contrasta", "counter", _counter_start), _btn(allow_label, "primary", func(): act({"type": "allow"}))]))
-			actions.add_child(_hint("Contrastare costa un'Isola e un'altra terra dalla tua mano."))
+			if lay != "portrait":
+				actions.add_child(_hint("Contrastare costa un'Isola e un'altra terra dalla tua mano."))
 			return
 		actions.add_child(_formula(p))
 		if pick == null:
@@ -2322,6 +2355,19 @@ func _bubble(seat: int, i: int) -> void:
 	l.reset_size()
 	var r: Rect2 = _lr(zones[w].name)
 	l.position = Vector2(clampf(r.position.x, 8, size.x - l.size.x - 8), r.end.y + 6 if w == "opp" else r.position.y - l.size.y - 6)
+	if lay == "portrait":
+		# accanto alla carta al centro, dove non copre nulla: l'avversario a sinistra in alto, io a destra
+		var room := stack_rect.position.x - center_rect.position.x - 8
+		var text_w := Art.bold().get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 24
+		if text_w > room:
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = minf(room, text_w)
+		l.size = Vector2(l.custom_minimum_size.x, 0)
+		l.reset_size()
+		if w == "opp":
+			l.position = Vector2(stack_rect.position.x - 8 - l.size.x, stack_rect.position.y + 4)
+		else:
+			l.position = Vector2(stack_rect.end.x + 8, stack_rect.end.y - l.size.y - 4)
 	if w == "opp":
 		Sound.play("click")
 		Sound.vibrate(10)

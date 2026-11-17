@@ -46,6 +46,11 @@ func _initialize() -> void:
 			Sheets.rules(home._overlays)
 			await _wait(0.3)
 			await _shot("regole")
+		if tab == "challenges":
+			home._open_challenge = "corsa"
+			home._layout()
+			await _wait(0.4)
+			await _shot("sfida_aperta")
 		if tab == "collection":
 			Sheets.goals(home._overlays)
 			await _wait(0.3)
@@ -73,15 +78,28 @@ func _initialize() -> void:
 	g.act(1, {"type": "play", "card": "R", "target": "G"})
 	g.take_events()
 	t.V = g.view(0)
+	t.turn_time = 30
 	t._refresh()
 	await _wait(0.5)
 	await _shot("risposta")
+	t._bubble(1, 1)
+	t._bubble(0, 5)
+	await _wait(0.3)
+	await _shot("fumetti")
 	t._counter_start()
 	t.pick = {"card": "B", "idx": t.V.hand.find("B")}
 	t._refresh()
 	await _wait(0.4)
 	await _shot("contrasto")
 	t._counter_cancel()
+	# contrasto vero: la Montagna del BOT resta al centro con il timbro «Contrastata»
+	var g0 = t.g
+	g0.act(0, {"type": "counter", "other": "B"})
+	g0.take_events()
+	t.V = g0.view(0)
+	t._refresh()
+	await _wait(0.4)
+	await _shot("contrastata")
 	t._open_gy("opp")
 	await _wait(0.3)
 	await _shot("cimitero")

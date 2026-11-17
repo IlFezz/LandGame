@@ -275,25 +275,102 @@ class Pill extends Control:
 		draw_string(f, Vector2(x + isz + 4, r.get_center().y + (f.get_ascent(fs) - f.get_descent(fs)) / 2), str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
 
 
-## Mazzo: «Mazzo 41».
-class Deck extends Pill:
+## Mazzo: una pila di carte coperte (si vede il dorso scelto nella Collezione), più alta quante
+## più carte ha, con il numero accanto.
+class Deck extends Control:
+	var count := 40
+	var fs := 13
 	var pw := 15.0
+	var compact := false  # (non serve più: resta per compatibilità)
 
 	func _init() -> void:
-		super()
-		word = "Mazzo"
-		icon = DECK_ICON
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func set_count(n: int) -> void:
+		if n != count:
+			count = n
+			queue_redraw()
+
+	func card_w() -> float:
+		return (size.y - 6) / 1.4
+
+	func needed_width(_small := false) -> float:
+		var cw := (size.y - 6) / 1.4 if size.y > 0 else fs * 2.0
+		return cw + 6 + 6 + fs * 1.0 + 4
+
+	func pile_rect() -> Rect2:
+		var cw := card_w()
+		return Rect2(position + Vector2(0, 3), Vector2(cw, cw * 1.4))
+
+	func _draw() -> void:
+		var cw := card_w()
+		if cw < 4:
+			return
+		var layers := 0 if count == 0 else (3 if count > 30 else 2 if count > 12 else 1)
+		if count == 0:
+			draw_style_box(Art.box(Color(0, 0, 0, 0), cw * 0.11, Color(1, 1, 1, 0.2), 1.5), Rect2(0, 3, cw, cw * 1.4))
+		for i in range(layers, 0, -1):
+			var o := (i - 1) * 3.0
+			var r := Rect2(o, 3 + (layers - i) * 0.0, cw, cw * 1.4)
+			var sh := Art.box(Color(0, 0, 0, 0), cw * 0.11)
+			sh.shadow_color = Color(0, 0, 0, 0.3)
+			sh.shadow_size = 4
+			draw_style_box(sh, r)
+			Art.draw_tex(self, "bk-" + Art.BACK, r, Color(0.8, 0.8, 0.85) if i > 1 else Color.WHITE)
+		Art.draw_count(self, Vector2(cw + 6 + 6 + fs * 0.2, size.y - fs * 0.9), count, int(fs * 0.9))
 
 
-## La mano dell'avversario: «Mano 4».
-class Backs extends Pill:
+## La mano dell'avversario: le sue carte coperte aperte a ventaglio, con il numero.
+class Backs extends Control:
 	signal width_changed
+	var count := 5
+	var fs := 12
 	var bw := 13.0
+	var compact := false
 
 	func _init() -> void:
-		super()
-		word = "Mano"
-		icon = HAND_ICON
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func set_count(n: int) -> void:
+		if n != count:
+			count = n
+			queue_redraw()
+			width_changed.emit()
+
+	func card_w() -> float:
+		return (size.y - 8) / 1.4
+
+	## Larghezza che serve per il ventaglio (pensata per 8 carte: non cambia durante la partita).
+	func needed_width(_small := false) -> float:
+		var cw := (size.y - 8) / 1.4 if size.y > 0 else fs * 2.0
+		return cw + 7 * cw * 0.5 + fs * 1.2
+
+	func fan_rect() -> Rect2:
+		var cw := card_w()
+		var k := maxi(mini(count, 8), 1)
+		return Rect2(position + Vector2(0, 4), Vector2(cw + (k - 1) * cw * 0.5, cw * 1.4))
+
+	func _draw() -> void:
+		var cw := card_w()
+		if cw < 4:
+			return
+		var k := mini(count, 8)
+		var mid := (k - 1) / 2.0
+		for i in k:
+			var ang := deg_to_rad((i - mid) * 5.0)
+			var c := Vector2(cw / 2 + i * cw * 0.5, 4 + cw * 0.7 + absf(i - mid) * 1.2)
+			draw_set_transform(c, ang)
+			var r := Rect2(-Vector2(cw, cw * 1.4) / 2, Vector2(cw, cw * 1.4))
+			var sh := Art.box(Color(0, 0, 0, 0), cw * 0.11)
+			sh.shadow_color = Color(0, 0, 0, 0.3)
+			sh.shadow_size = 3
+			draw_style_box(sh, r)
+			Art.draw_tex(self, "bk-" + Art.BACK, r)
+		draw_set_transform(Vector2.ZERO)
+		var end_x := cw + maxi(k - 1, 0) * cw * 0.5
+		Art.draw_count(self, Vector2(end_x - fs * 0.3, size.y - fs * 0.85), count, int(fs * 0.9))
 
 
 ## Il cimitero: una pillola «✝ 3» che si tocca per aprire il dettaglio.

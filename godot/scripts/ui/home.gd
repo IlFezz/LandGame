@@ -36,6 +36,7 @@ const TURN_TIMES := [30, 45, 60, 90, 0]
 
 var tab := "play"
 var stats_side := "cpu"
+var _open_challenge := ""  # la sfida a tema aperta (a tendina) nella scheda Sfide
 var _pane_box: Control
 var _tabs: Control
 var _pane: Control
@@ -50,7 +51,7 @@ func _ready() -> void:
 	if not TABS.any(func(t): return t[0] == tab):
 		tab = "play"
 	_pane_box = Control.new()
-	_pane_box.clip_contents = true
+	_pane_box.clip_contents = false  # le schede entrano dal bordo vero dello schermo
 	add_child(_pane_box)
 	_tabs = Control.new()
 	add_child(_tabs)
@@ -199,19 +200,56 @@ func set_tab(id: String) -> void:
 	tab = id
 	Prefs.set_value("tab", id)
 	Sound.play("click")
+	# la scheda vecchia esce dal bordo dello schermo e la nuova entra dall'altro bordo
+	var old := _pane
+	_pane = null
+	if old != null:
+		var gp := old.global_position
+		old.reparent(self)
+		old.global_position = gp
 	_layout()
-	# la nuova scheda arriva scorrendo di lato e sfumando
 	var p := _pane
+	var w := size.x
+	if old != null:
+		var to := old.position.x - dir * w
+		var tw0 := old.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw0.tween_property(old, "position:x", to, 0.32)
+		tw0.tween_callback(old.queue_free)
 	p.modulate.a = 0
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not is_instance_valid(p):
 		return
+	p.modulate.a = 1
 	var x := p.position.x
-	p.position.x = x + 26 * dir
-	var tw := p.create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(p, "position:x", x, 0.3)
-	tw.tween_property(p, "modulate:a", 1.0, 0.3)
+	p.position.x = x + dir * w
+	var tw := p.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(p, "position:x", x, 0.32)
+
+
+## Scorrendo il dito a destra o a sinistra si passa alla scheda vicina.
+var _swipe_from := Vector2.ZERO
+var _swipe_t := 0
+var _swipe_on := false
+
+
+func _input(e: InputEvent) -> void:
+	if not is_visible_in_tree() or _overlays.get_child_count() > 0:
+		return
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		if e.pressed:
+			_swipe_from = e.position
+			_swipe_t = Time.get_ticks_msec()
+			_swipe_on = true
+		elif _swipe_on:
+			_swipe_on = false
+			var d: Vector2 = e.position - _swipe_from
+			if absf(d.x) > 60 and absf(d.x) > absf(d.y) * 1.6 and Time.get_ticks_msec() - _swipe_t < 700:
+				var order := TABS.map(func(t): return t[0])
+				var i := order.find(tab) + (1 if d.x < 0 else -1)
+				if i >= 0 and i < order.size():
+					get_viewport().set_input_as_handled()
+					set_tab(order[i])
 
 
 func refresh() -> void:
@@ -451,27 +489,46 @@ func _challenges_pane() -> Control:
 			n += 1
 	v.add_child(W.label("Sfide a tema   %d/%d" % [n, Modes.CHALLENGES.size()], 14, Color(Art.TESTO, 0.7), Art.semi()))
 	for c in Modes.CHALLENGES:
-		# riquadro che cresce con il testo (un Button non si allarga per i figli)
-		var b := _glass(12)
+		# toccandola si apre (a tendina) con la descrizione e il pulsante «Gioca la sfida»
+		var opened: bool = _open_challenge == c.id
+		var b := _glass(14)
 		b.mouse_filter = Control.MOUSE_FILTER_STOP
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 8)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 10)
 		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var mark := W.label("✓" if done.has(c.id) else "", 16, Art.LAND.G.lightened(0.3), Art.bold())
 		mark.custom_minimum_size.x = 14
 		h.add_child(mark)
-		var txt := Sheets.rich("[b]%s[/b]\n%s" % [c.name, c.desc], 13)
-		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		txt.custom_minimum_size.x = 150
-		h.add_child(txt)
-		var right := W.label("turno %d" % done[c.id] if done.has(c.id) else "›", 14, Color(Art.TESTO, 0.7), Art.semi())
-		right.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		h.add_child(right)
-		b.add_child(h)
+		var nm := W.label(c.name, 16, Art.TESTO, Art.semi())
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(nm)
+		if done.has(c.id):
+			h.add_child(W.label("turno %d" % done[c.id], 13, Art.SEGNALE, Art.semi()))
+		var chev := W.label("⌃" if opened else "⌄", 16, Color(Art.TESTO, 0.7), Art.semi())
+		chev.text = "–" if opened else "+"
+		h.add_child(chev)
+		col.add_child(h)
+		if opened:
+			var desc := W.label(c.desc, 14, Color(Art.TESTO, 0.85))
+			desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			desc.custom_minimum_size.x = 150
+			col.add_child(desc)
+			var lvl := W.label("Contro il computer %s" % {"hard": "difficile", "easy": "facile"}.get(c.level, "normale"), 12, Color(Art.TESTO, 0.6))
+			col.add_child(lvl)
+			var play := W.button("Gioca la sfida", "primary", 15)
+			var cid: String = c.id
+			play.pressed.connect(func(): play_challenge.emit(cid))
+			col.add_child(play)
+		b.add_child(col)
 		var id: String = c.id
 		b.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and not e.pressed:
-				play_challenge.emit(id))
+				Sound.play("click")
+				_open_challenge = "" if _open_challenge == id else id
+				_layout())
 		v.add_child(b)
 	return v
 

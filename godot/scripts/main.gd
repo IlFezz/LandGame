@@ -19,6 +19,10 @@ var _table: Table
 
 func _ready() -> void:
 	get_tree().quit_on_go_back = false  # il tasto Indietro lo gestiamo noi
+	if OS.has_feature("mobile"):
+		# telefono: sempre in verticale e a schermo intero (niente barra delle notifiche)
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_PORTRAIT)
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	Prefs.load_all()
 	Art.apply_theme(Prefs.get_value("theme"))
 	Art.BACK = Art.back_id(Prefs.get_value("back"))
@@ -102,15 +106,13 @@ func _fit_window() -> void:
 
 ## Sul telefono la zona sicura esclude fotocamera e barre di sistema: home e tavolo stanno lì dentro,
 ## lo sfondo del tavolo invece arriva fino ai bordi.
+## Schermo intero vero: le barre di sistema sono nascoste, quindi si lascia spazio solo al foro
+## della fotocamera (in alto), e solo per l'altezza del foro.
 func _safe_margins() -> Array:
 	if not OS.has_feature("mobile"):
 		return [0.0, 0.0, 0.0, 0.0]
-	var safe := DisplayServer.get_display_safe_area()
-	var full := DisplayServer.screen_get_size()
-	if safe.size.x <= 0 or full.x <= 0:
-		return [0.0, 0.0, 0.0, 0.0]
-	var k := _factor
-	return [safe.position.x / k, safe.position.y / k, (full.x - safe.end.x) / k, (full.y - safe.end.y) / k]
+	# niente margine: il tavolo e la home tengono libero il centro in alto, dove sta il foro
+	return [0.0, 0.0, 0.0, 0.0]
 
 
 func _fit_safe() -> void:
