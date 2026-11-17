@@ -1,27 +1,29 @@
-## Grafica di Atlas: colori, caratteri e disegni SVG (presi da public/art.js) trasformati in
-## immagini alla misura esatta in cui compaiono sullo schermo, così restano sempre nitidi.
+## Grafica di Atlas, stile «Orizzonti»: colori, caratteri (Sora) e disegni (paesaggi piatti di
+## scenery.gd) trasformati in immagini alla misura esatta in cui compaiono, così restano nitidi.
 extends RefCounted
 
-const Data := preload("res://scripts/ui/art_data.gd")
+const Scenery := preload("res://scripts/ui/scenery.gd")
 
-# colori del tavolo: cambiano con il tema scelto nella Collezione (vedi apply_theme)
-static var TAVOLO := Color("#12363f")
-static var TAVOLO2 := Color("#0a232b")
-static var TESTO := Color("#e9f1ec")
-static var MUTO := Color("#93b3b0")
-static var RIGA := Color("#d6e8e04d")
-static var OMBRA := Color(0, 0, 0, 0.53)
-static var TOPO := "topo-n"
-static var ROSE := "rose-n"
-static var THEME := "notte"
-static var BACK := "bussola"  # dorso delle carte
-const CARTA := Color("#f4eddd")
-const CARTA2 := Color("#e2d6bd")
-const INK := Color("#17262d")
-const SEGNALE := Color("#f6c453")
-const SEGNALE2 := Color("#c9962e")
-const ROSSO := Color("#c8402b")
-const LAND := {"W": Color("#e0a92e"), "U": Color("#1f8fb8"), "B": Color("#7557a6"), "R": Color("#d9482f"), "G": Color("#23855a")}
+# colori del cielo (cambiano con il tavolo scelto nella Collezione, vedi apply_theme)
+static var TAVOLO := Color("#1d1f47")  # cielo in alto
+static var TAVOLO2 := Color("#5b3f6e")  # cielo in basso
+static var TESTO := Color("#fcf1e3")  # testo chiaro
+static var MUTO := Color("#c9bcdc")  # testo secondario
+static var RIGA := Color(1, 1, 1, 0.16)  # bordi sottili e caselle vuote
+static var OMBRA := Color(0.05, 0.03, 0.15, 0.5)
+static var THEME := "crepuscolo"
+static var BACK := "sole"  # dorso delle carte
+const CARTA := Color("#fcf1e3")  # crema: pulsanti principali e fogli
+const CARTA2 := Color("#e9d9c6")
+const INK := Color("#1d1b3a")  # testo scuro sul crema
+const VETRO := Color(1, 1, 1, 0.10)
+const FOGLIO := Color("#2a2452")  # finestre e pannelli: viola scuro, testo chiaro
+const FOGLIO_BORDO := Color(1, 1, 1, 0.12)  # pillole e pulsanti secondari, semitrasparenti
+const SEGNALE := Color("#ffd27a")  # oro: ciò che si può usare adesso
+const SEGNALE2 := Color("#e0a64a")
+const ROSSO := Color("#ff6f6f")
+const AZZURRO := Color("#9fe3ff")  # la terra che manca per vincere
+const LAND := {"W": Color("#f2a541"), "U": Color("#4fa3d9"), "B": Color("#8a6fd1"), "R": Color("#e2566a"), "G": Color("#3fae6e")}
 
 const NAMES := {"W": "Pianura", "U": "Isola", "B": "Palude", "R": "Montagna", "G": "Foresta"}
 const FXTXT := {
@@ -39,56 +41,73 @@ const LONG_FX := {
 	"G": "Riprendi in mano una terra dal tuo cimitero.",
 }
 
-## Tavoli (style.css): [tavolo, tavolo2, testo, muto, riga, ombra, curve di livello, rosa]
-const THEMES := {
-	"notte": ["#12363f", "#0a232b", "#e9f1ec", "#93b3b0", "#d6e8e04d", "#00000088", "topo-n", "rose-n"],
-	"giorno": ["#e3ebe7", "#cbd8d4", "#17262d", "#54707a", "#17262d47", "#17262d47", "topo-d", "rose-d"],
-	"pergamena": ["#ecdfc2", "#d6c299", "#3a2a18", "#7a6446", "#3a2a1847", "#3a2a1852", "topo-p", "rose-p"],
-	"corallo": ["#4c201c", "#2c1110", "#f6e7dc", "#c9a092", "#f4d9cc45", "#00000099", "topo-c", "rose-c"],
-}
-const THEME_NAMES := [["notte", "Notte"], ["giorno", "Giorno"], ["pergamena", "Pergamena"], ["corallo", "Corallo"]]
-const BACKS := [["bussola", "Bussola"], ["meridiani", "Meridiani"], ["correnti", "Correnti"], ["sestante", "Sestante"],
-	["radici", "Radici"], ["maree", "Maree"], ["stelle", "Stelle"]]
+## Tavoli = cieli (Collezione). I colori stanno in Scenery.SKIES.
+const THEME_NAMES := [["crepuscolo", "Crepuscolo"], ["alba", "Alba"], ["stellata", "Notte stellata"], ["aurora", "Aurora"]]
+const BACKS := [["sole", "Sole"], ["luna", "Luna"], ["colline", "Colline"], ["monti", "Monti"],
+	["pini", "Pini"], ["onde", "Onde"], ["stelle", "Stelle"]]
+## Nomi dello stile precedente → nuovi (preferenze già salvate).
+const OLD_THEME := {"notte": "crepuscolo", "giorno": "alba", "pergamena": "stellata", "corallo": "aurora"}
+const OLD_BACK := {"bussola": "sole", "meridiani": "luna", "correnti": "colline", "sestante": "monti",
+	"radici": "pini", "maree": "onde"}
+
+
+static func theme_id(id: String) -> String:
+	if Scenery.SKIES.has(id):
+		return id
+	return OLD_THEME.get(id, "crepuscolo")
+
+
+static func back_id(id: String) -> String:
+	if Scenery.BACKS.has(id):
+		return id
+	return OLD_BACK.get(id, "sole")
 
 
 static func apply_theme(id: String) -> void:
-	var t: Array = THEMES.get(id, THEMES.notte)
-	THEME = id if THEMES.has(id) else "notte"
-	TAVOLO = Color(t[0])
-	TAVOLO2 = Color(t[1])
-	TESTO = Color(t[2])
-	MUTO = Color(t[3])
-	RIGA = Color(t[4])
-	OMBRA = Color(t[5])
-	TOPO = t[6]
-	ROSE = t[7]
+	THEME = theme_id(id)
+	var k: Array = Scenery.SKIES[THEME]
+	TAVOLO = Color(k[0])
+	TAVOLO2 = Color(k[1])
 
 
 static var _tex := {}
 static var _fonts := {}
-## Pixel veri per unità logica (lo imposta screen.gd): serve a disegnare le immagini nitide.
+## Pixel veri per unità logica (lo imposta main.gd): serve a disegnare le immagini nitide.
 static var px := 1.0
 
 
-static func _font(path: String) -> Font:
-	if not _fonts.has(path):
-		var f = load(path)
-		if f is FontFile:
-			f.fallbacks = [ThemeDB.fallback_font]
-		_fonts[path] = f if f != null else ThemeDB.fallback_font
-	return _fonts[path]
+## Sora a peso variabile: 300 leggero, 400 normale, 600 semi-grassetto, 700 grassetto.
+static func _sora(weight: int) -> Font:
+	if not _fonts.has(weight):
+		var base = load("res://assets/fonts/sora.ttf")
+		if base is FontFile:
+			base.fallbacks = [ThemeDB.fallback_font]  # simboli che Sora non ha (✕ ✓ →)
+		if base == null:
+			_fonts[weight] = ThemeDB.fallback_font
+		else:
+			var v := FontVariation.new()
+			v.base_font = base
+			v.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
+			v.fallbacks = [ThemeDB.fallback_font]
+			_fonts[weight] = v
+	return _fonts[weight]
 
 
 static func sans() -> Font:
-	return _font("res://assets/fonts/adventor.woff")
+	return _sora(400)
 
 
 static func bold() -> Font:
-	return _font("res://assets/fonts/adventor-bold.woff")
+	return _sora(700)
 
 
+static func semi() -> Font:
+	return _sora(600)
+
+
+## Testi di spiegazione: Sora leggero (lo stile Orizzonti non usa il corsivo).
 static func serif() -> Font:
-	return _font("res://assets/fonts/lora-italic.woff")
+	return _sora(300)
 
 
 static func _viewbox(svg: String) -> Vector2:
@@ -99,14 +118,36 @@ static func _viewbox(svg: String) -> Vector2:
 	return Vector2(float(parts[2]), float(parts[3]))
 
 
-## Il disegno `key` (es. "art-W", "ico-R", "bk-bussola", "rose-n") largo `width` unità logiche.
-## Le misure vengono arrotondate a gradini, così le immagini già pronte si riusano.
+## Il codice SVG di un disegno: "card-W" (carta), "tile-W" e "tile-W-dim" (casella),
+## "ico-W" (cerchio), "bk-sole" (dorso), "hills-crepuscolo", "stars", "ico-T" (cimitero).
+static func svg_of(key: String) -> String:
+	var parts := key.split("-")
+	match parts[0]:
+		"card", "art":
+			return Scenery.card(parts[1])
+		"tile":
+			return Scenery.tile(parts[1], parts.size() > 2)
+		"ico":
+			if parts[1] == "T":
+				return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"12\" fill=\"#ffffff\" fill-opacity=\".16\"/><path d=\"M12 6v12M8 10h8\" stroke=\"#fcf1e3\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>"
+			return Scenery.disc(parts[1])
+		"bk":
+			return Scenery.back(parts[1])
+		"hills":
+			return Scenery.hills(parts[1])
+		"stars":
+			return Scenery.stars()
+	return Scenery.disc("W")
+
+
+## Il disegno `key` largo `width` unità logiche. Le misure vengono arrotondate a gradini,
+## così le immagini già pronte si riusano.
 static func tex(key: String, width: float) -> Texture2D:
 	var w := maxi(16, int(ceil(width * px / 24.0)) * 24)
 	var k := "%s@%d" % [key, w]
 	if _tex.has(k):
 		return _tex[k]
-	var svg: String = Data.SVG[key]
+	var svg := svg_of(key)
 	var img := Image.new()
 	img.load_svg_from_string(svg, float(w) / _viewbox(svg).x)
 	var t := ImageTexture.create_from_image(img)
@@ -114,7 +155,7 @@ static func tex(key: String, width: float) -> Texture2D:
 	return t
 
 
-## Un disegno SVG scritto a mano (icone delle schede, lucchetto), largo `width` unità logiche.
+## Un disegno SVG qualunque (icone, lucchetto, paesaggi con il sole spostato), largo `width` unità logiche.
 static func svg_tex(key: String, svg: String, width: float) -> Texture2D:
 	var w := maxi(8, int(ceil(width * px)))
 	var k := "svg:%s@%d" % [key, w]
@@ -155,9 +196,28 @@ static func box(fill: Color, radius: float, border := Color(0, 0, 0, 0), bw := 0
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = fill
 	sb.set_corner_radius_all(int(round(radius)))
-	sb.corner_detail = 6
+	sb.corner_detail = 8
 	sb.anti_aliasing = true
 	if bw > 0:
 		sb.border_color = border
 		sb.set_border_width_all(int(ceil(bw)))
 	return sb
+
+
+## Testo centrato in un punto (comodo nei _draw).
+static func draw_text_centered(ci: CanvasItem, f: Font, text: String, center: Vector2, fs: int, color: Color) -> void:
+	var tw := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	ci.draw_string(f, center + Vector2(-tw / 2, (f.get_ascent(fs) - f.get_descent(fs)) / 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, color)
+
+
+## Pillola semitrasparente con un testo (es. «Mazzo 41»), disegnata in `r`.
+static func draw_pill(ci: CanvasItem, r: Rect2, text: String, fs: int, highlight := false, open := false) -> void:
+	var fill := Color(1, 1, 1, 0.16 if open else 0.10)
+	ci.draw_style_box(box(fill, r.size.y / 2 - 1, Color(SEGNALE, 0.9) if highlight else Color(1, 1, 1, 0.12), 2.0 if highlight else 1.0), r)
+	draw_text_centered(ci, sans(), text, r.get_center(), fs, TESTO)
+
+
+## Rettangolo sfumato dall'alto in basso (disegnato subito, senza aspettare una texture).
+static func draw_vgrad(ci: CanvasItem, r: Rect2, top: Color, bottom: Color) -> void:
+	ci.draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
+		PackedColorArray([top, top, bottom, bottom]))

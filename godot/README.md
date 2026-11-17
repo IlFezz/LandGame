@@ -14,14 +14,15 @@ Premendo ▶ nell'editor si apre la home a schede, come nella versione web (sul 
 - **Gioca**: schermo intero (giallo, sempre in cima), musica ♪, nome, difficoltà, tempo per turno (30/45/60/90 secondi o illimitato), «Inizia la partita».
 - **Sfide**: la sfida del giorno (stesso mescolamento della versione web per la stessa data: stesse mani nel browser e nell'app) e le sei sfide a tema, con i record.
 - **Profilo**: statistiche contro il computer e contro giocatori; «Profili e trasferimento» con il codice, che ha lo stesso formato del web (un profilo si copia dal browser all'app e viceversa).
-- **Collezione**: tavoli Notte, Giorno, Pergamena, Corallo e sette dorsi, con i lucchetti degli obiettivi; elenco dei 15 obiettivi.
+- **Collezione**: cieli del tavolo Crepuscolo, Alba, Notte stellata, Aurora e sette dorsi (Sole, Luna, Colline, Monti, Pini, Onde, Stelle), con i lucchetti degli obiettivi; elenco dei 15 obiettivi.
 - **Impara**: tutorial con il Maestro (13 turni, stessi testi, «Avanti»/«Indietro», l'elemento di cui si parla è cerchiato e la carta da usare porta «Gioca questa»), le cinque terre, le regole complete.
 
 Se l'app viene chiusa a metà partita, alla riapertura la partita riprende da dove era. Le sfide non contano per statistiche, obiettivi e sblocchi.
 
 ### Il tavolo (passo 2, prima parte)
 - Stesse misure della versione web in tutti i formati: telefono verticale, telefono orizzontale (rosa dei venti a destra), tablet e PC (campo al centro). Le misure sono in "punti" come i px del browser: su un telefono ad alta densità tutto viene ingrandito in proporzione. Niente scorrimento e niente sovrapposizioni (c'è un test che lo controlla in 9 formati).
-- Carte disegnate da codice con i disegni di `public/art.js` (esportati da `tools/export_art.js`), trasformati in immagini alla misura esatta dello schermo: sempre nitide.
+- **Stile «Orizzonti»** (scelto dal proprietario il 17/11/2026, al posto dell'Atlante della versione web): ogni terra è un paesaggio piatto a strati con cielo sfumato e sole o luna (Pianura dune dorate, Isola mare e isolotti, Palude crepuscolo con alberi spogli, Montagna picchi rossi, Foresta pini). Sfondo: cielo che sfuma dal blu notte al viola con colline in fondo. Carte con il paesaggio in alto e la fascia del nome in basso; campo a caselle quadrate con il numero sotto (spente se vuote); la terra che manca per vincere è tratteggiata in azzurro con «+». Al centro la terra giocata compare in un grande cerchio. Carattere Sora (licenza SIL OFL, in `assets/fonts/`). Tutti i disegni sono SVG generati da `scripts/ui/scenery.gd`, trasformati in immagini alla misura esatta dello schermo: sempre nitidi.
+- Effetti coerenti con lo stile, leggeri: il paesaggio entra nel cerchio con un rimbalzo; la casella della terra che entra si gonfia con un'onda dorata; il contrasto manda onde azzurre dal cerchio; la terra annullata si spegne e il cerchio si richiude; sulla terra distrutta scende la notte; nel tuo turno il cielo si scalda appena e le colline scivolano; la vittoria accende raggi dorati che girano piano. I pulsanti si abbassano un poco quando li premi.
 - Le carte si giocano al centro: trascinandole (la presa è immediata) oppure toccando la carta e poi il centro. Montagna, Foresta e Pianura restano al centro finché non si tocca il bersaglio (che lampeggia); ✕ annulla. La Foresta apre da sola il cimitero.
 - Contrasto guidato: «Contrasta» segna l'Isola da scartare, si tocca in mano la seconda carta, la formula mostra cosa succede («Isola + Foresta → Montagna ✕»), poi «Conferma». Se non puoi contrastare, la terra avversaria risolve da sola dopo una pausa casuale.
 - Palude: la mano avversaria a tutto schermo, si tocca la carta da far scartare.
@@ -75,7 +76,8 @@ Altri due script, da lanciare allo stesso modo:
 - `scripts/app/` – `modes.gd` (sfide, sfida del giorno, tutorial: da hub.js), `profile.gd` (statistiche e obiettivi: da stats.js e goals.js), `prefs.gd` (preferenze), `sound.gd` (suoni, musica, vibrazione).
 - `scripts/ui/home.gd` (home a schede), `scripts/ui/sheets.gd` (regole, obiettivi, profilo, trasferimento), `scripts/ui/coach.gd` (il Maestro del tutorial).
 - `scripts/ui/table.gd` – il tavolo: disposizione, input, animazioni, partita contro il computer.
-- `scripts/ui/card_view.gd`, `scripts/ui/widgets.gd`, `scripts/ui/art.gd` – carta, piccoli elementi del tavolo, colori e caratteri; `scripts/ui/art_data.gd` sono i disegni (generato, non toccarlo).
+- `scripts/ui/card_view.gd`, `scripts/ui/widgets.gd`, `scripts/ui/art.gd`, `scripts/ui/scenery.gd` – carta, elementi del tavolo ed effetti, colori e caratteri, paesaggi/dorsi/cieli in SVG.
+- `tools/shots.gd` – foto di tutte le schermate in situazioni precise: `godot --path godot -s res://tools/shots.gd -- <cartella> 354 792 1.25` (telefono del proprietario; 792 354 per l'orizzontale, 1280 720 1 per il PC).
 - `tests/` – i test di `test/game.test.js` e `test/bot.test.js` tradotti, i test della simulazione veloce, di sfide/statistiche/obiettivi/trasferimento (`test_modes.gd`) e del tavolo (si gioca con il mouse simulato: trascinare, toccare, bersagli, contrasto, Palude, Foresta, una partita intera, il tutorial completo seguendo il Maestro, partita salvata e ripresa, tempo scaduto, freccia, nessuna sovrapposizione in 9 formati). `tests/only.gd -- test_table` esegue una serie sola.
 
 Differenze dalla versione web, tutte interne:

@@ -156,10 +156,15 @@ func _build() -> void:
 	stack_card = Card.new()
 	stack_card.visible = false
 	add_child(stack_card)
-	unstage_btn = W.button("✕", "ink", 13)
+	unstage_btn = W.button("", "ink", 13)
+	unstage_btn.icon = Art.line_icon("chiudi", "<path d=\"M7 7l10 10M17 7L7 17\"/>", Art.TESTO, 16)
+	unstage_btn.add_theme_constant_override("icon_max_width", 16)
+	unstage_btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unstage_btn.visible = false
 	unstage_btn.pressed.connect(_unstage)
-	var ub := Art.box(Art.INK, 14, Art.CARTA, 2)
+	var ub := Art.box(Art.FOGLIO, 14, Art.TESTO, 2)
+	for m in ["left", "right", "top", "bottom"]:
+		ub.set("content_margin_" + m, 0)
 	for st in ["normal", "hover", "pressed"]:
 		unstage_btn.add_theme_stylebox_override(st, ub)
 	add_child(unstage_btn)
@@ -487,11 +492,12 @@ func _layout() -> void:
 			_layout_wide(S, vw, vh)
 		"side":
 			_layout_side(S, vw, vh)
-	# la rosa dei venti sta dietro la carta al centro, senza invadere il campo
+	# al centro un cerchio (l'«orizzonte»): la terra giocata vi compare con il suo paesaggio
 	var sc := stack_rect.get_center()
+	var D := minf(stack_rect.size.y, stack_rect.size.x * 1.3)
+	stack_rect = Rect2(sc - Vector2(D, D) / 2, Vector2(D, D))
 	bg.rose_center = sc
-	var room := 2 * minf(sc.y - center_rect.position.y, center_rect.end.y - sc.y) + 24
-	bg.rose_size = minf(room, center_rect.size.x * (0.95 if lay == "side" else 0.9))
+	bg.rose_size = D + 16
 	bg.rose_angle = rose_angle
 	bg.queue_redraw()
 	center_frame.position = center_rect.position
@@ -547,7 +553,7 @@ func _place_head_row(w: String, r: Rect2) -> void:
 	var x := r.end.x - gyw
 	z.gy.position = Vector2(x, r.position.y + (h - gyh) / 2)
 	z.gy.size = Vector2(gyw, gyh)
-	var dw: float = z.deck.pw + 12 + _fs.small * 1.8
+	var dw: float = z.deck.needed_width()
 	x -= dw + 12
 	z.deck.position = Vector2(x, r.position.y)
 	z.deck.size = Vector2(dw, h)
@@ -621,7 +627,7 @@ func _place_head_col(w: String, r: Rect2) -> void:
 		y += rows[i] + gap
 		i += 1
 	z.deck.position = Vector2(r.position.x + 2, y)
-	z.deck.size = Vector2(minf(r.size.x, z.deck.pw + 12 + _fs.small * 2), rows[i])
+	z.deck.size = Vector2(minf(r.size.x, z.deck.needed_width()), rows[i])
 	y += rows[i] + gap
 	z.gy.position = Vector2(r.position.x, y)
 	z.gy.size = Vector2(_fs.gy_h * 1.9, _fs.gy_h)
@@ -631,10 +637,16 @@ func _place_head_col(w: String, r: Rect2) -> void:
 func _place_head_compact(w: String, r: Rect2) -> void:
 	var z = zones[w]
 	z.row = false
+	var gyw: float = _fs.gy_h * 1.9
+	var dw: float = z.deck.needed_width()
+	# mazzo e cimitero affiancati se c'è posto, altrimenti uno sotto l'altro
+	var two_rows := dw + 10 + gyw > r.size.x
 	var rows: Array = [_fs.name * 1.5]
 	if w == "opp":
 		rows.append(_fs.small * 2.2)
 	rows.append(_fs.gy_h)
+	if two_rows:
+		rows.append(_fs.gy_h)
 	var gap := 3.0
 	var total := gap * (rows.size() - 1)
 	for h in rows:
@@ -646,11 +658,13 @@ func _place_head_compact(w: String, r: Rect2) -> void:
 		z.backs.position = Vector2(r.position.x, y)
 		z.backs.size = Vector2(minf(r.size.x, z.backs.bw * 7.5 + _fs.small * 2.5), rows[1])
 		y += rows[1] + gap
-	var gyw: float = _fs.gy_h * 1.9
-	var dw: float = z.deck.pw + 12 + _fs.small * 2
 	z.deck.position = Vector2(r.position.x + 2, y)
-	z.deck.size = Vector2(dw, _fs.gy_h)
-	z.gy.position = Vector2(r.position.x + dw + 10, y)
+	z.deck.size = Vector2(minf(dw, r.size.x - 2), _fs.gy_h)
+	if two_rows:
+		y += _fs.gy_h + gap
+		z.gy.position = Vector2(r.position.x + 2, y)
+	else:
+		z.gy.position = Vector2(r.position.x + dw + 10, y)
 	z.gy.size = Vector2(gyw, _fs.gy_h)
 
 
@@ -699,7 +713,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	var me_bf_y := me_head_y - 6 - sw * 1.4
 	_place_bf("me", x0, inner, me_bf_y, 1.8 * vw)
 	center_rect = Rect2(x0, y, inner, me_bf_y - gap - y)
-	var st_h: float = _fs.status * 1.6
+	var st_h: float = _fs.status * 2.3
 	var c_top := center_rect.position.y + 4
 	stack_rect = Rect2(center_rect.get_center().x - cw / 2, c_top, cw, cw * 1.4)
 	# carta, stato e azioni in colonna, centrati nello spazio libero
@@ -747,7 +761,7 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	center_rect = Rect2(maxf(side, (S.x - 150 * vh) / 2), y + zh + gap, minf(S.x - side * 2, 150 * vh), me_y - gap - (y + zh + gap))
 	var cc := center_rect.get_center()
 	# scritta di stato in alto, sotto la carta al centro: mai una sopra l'altra
-	var st_h: float = _fs.status * 1.9
+	var st_h: float = _fs.status * 2.4
 	var room := center_rect.size.y - st_h - 10
 	cw = minf(cw, room / 1.4)
 	var sy := center_rect.position.y + st_h + 6 + maxf(0, (room - cw * 1.4) / 2 - st_h / 2)
@@ -777,8 +791,10 @@ func _layout_side(S: Vector2, vw: float, vh: float) -> void:
 	hw = minf(17.5 * vh, 8.4 * vw)
 	cw = minf(22 * vh, 11 * vw)
 	_fonts(13, 11, 12, 13, 26)
-	var head_w := 15 * vw
+	# l'intestazione deve contenere mazzo e cimitero affiancati; se manca spazio il campo si stringe
+	var head_w := maxf(15 * vw, zones.me.deck.needed_width() + 10 + _fs.gy_h * 1.9 + 4)
 	var bf_gap := 1.2 * vw
+	sw = minf(sw, (left_w - head_w - 2 * vw - bf_gap * 4) / 5)
 	var bf_w := sw * 5 + bf_gap * 4
 	var rowgap := 1.6 * vh
 	var zh := sw * 1.4
@@ -904,7 +920,7 @@ func _refresh() -> void:
 		for t in TYPES:
 			tot += pl.gy[t]
 			var targ: bool = tg[w].has(t)
-			z.slots[t].set_state(pl.bf[t], targ, slot_mode)
+			z.slots[t].set_state(pl.bf[t], targ, slot_mode, w == "me" and _missing_for_me() == t)
 		z.gy.set_state(tot, gy_open == w, w == "me" and not tg.gy.is_empty() and gy_open != "me")
 	# il nome può essere cambiato di lunghezza: riposiziona il segnale "vicino alla vittoria"
 	if not _fs.is_empty():
@@ -934,7 +950,7 @@ func _refresh_stack() -> void:
 	var p = V.pending
 	stack_card.position = stack_rect.position
 	stack_card.size = stack_rect.size
-	stack_card.mode = _stack_mode()
+	stack_card.mode = "disc"
 	stack_card.ring = Color(0, 0, 0, 0)
 	unstage_btn.visible = false
 	ctr_label.text = ""
@@ -944,7 +960,7 @@ func _refresh_stack() -> void:
 		stack_card.ring = Art.SEGNALE
 		unstage_btn.visible = true
 		unstage_btn.size = Vector2(28, 28)
-		unstage_btn.position = stack_rect.position + Vector2(stack_rect.size.x - 17, -11)
+		unstage_btn.position = stack_rect.position + Vector2(stack_rect.size.x * 0.854 - 14, stack_rect.size.y * 0.146 - 14)
 	elif p == null and V.resolving != null:
 		stack_card.visible = true
 		stack_card.kind = V.resolving.land
@@ -966,13 +982,14 @@ func _refresh_stack() -> void:
 func _draw_center_frame() -> void:
 	# il centro si illumina quando una carta ci può essere posata
 	var drop: bool = _task() == "main" and staged == null and (sel != null or _drag != null)
-	if not stack_card.visible:
-		var r := Rect2(stack_rect.position - center_frame.position, stack_rect.size).grow(-stack_rect.size.x * 0.1)
-		center_frame.draw_style_box(Art.box(Color(0, 0, 0, 0), cw * 0.06, Color(Art.RIGA, 0.6), 1.5), r)
 	if drop:
+		# il cerchio si accende: qui si posa la carta
 		var over := _drag != null and _over_center(get_local_mouse_position())
-		var r2 := Rect2(Vector2.ZERO, center_frame.size)
-		center_frame.draw_style_box(Art.box(Color(Art.SEGNALE, 0.12) if over else Color(0, 0, 0, 0), 16, Art.SEGNALE, 1.5), r2)
+		var c := stack_rect.get_center() - center_frame.position
+		var rr := stack_rect.size.x / 2 + 8
+		if over:
+			center_frame.draw_circle(c, rr, Color(Art.SEGNALE, 0.14))
+		center_frame.draw_arc(c, rr, 0, TAU, 96, Color(Art.SEGNALE, 0.9 if over else 0.6), 2.5, true)
 
 
 func _status() -> Dictionary:
@@ -988,7 +1005,7 @@ func _status() -> Dictionary:
 	if not Prefs.get_value("info") or mode.kind == "tutorial":
 		return {"text": "", "cls": ""}
 	if V.step == "main":
-		return {"text": "Il tuo turno", "cls": "mine"} if V.active == me_seat else {"text": "Turno di %s" % opp, "cls": ""}
+		return {"text": "Tocca a te", "cls": "mine"} if V.active == me_seat else {"text": "Turno di %s" % opp, "cls": ""}
 	if V.step == "response" and p != null:
 		if p.responder != me_seat:
 			return {"text": "%s può contrastare…" % opp, "cls": ""}
@@ -1007,6 +1024,10 @@ func _refresh_status(_task_now: String) -> void:
 	status_label.text = st.text
 	var sb: StyleBox = StyleBoxEmpty.new()
 	var col := Art.TESTO if st.cls != "" else Art.MUTO
+	# «Tocca a te», «Turno di BOT»: grandi e in grassetto; le didascalie restano in una pillola
+	var big: bool = st.cls == "mine" or st.cls == ""
+	status_label.add_theme_font_size_override("font_size", int(_fs.get("status", 14) * (1.55 if big else 1.0)))
+	status_label.add_theme_font_override("font", Art.bold() if big else Art.semi())
 	var pill_r := minf(status_label.size.y, _fs.get("status", 14) * 1.9) / 2
 	if st.cls == "danger":
 		sb = Art.box(Art.CARTA, pill_r)
@@ -1079,10 +1100,12 @@ func _hint(text: String) -> Label:
 	return l
 
 
-func _row(buttons: Array) -> HBoxContainer:
-	var h := HBoxContainer.new()
-	h.alignment = BoxContainer.ALIGNMENT_BEGIN if lay == "wide" else BoxContainer.ALIGNMENT_CENTER
-	h.add_theme_constant_override("separation", 10)
+## Fila di pulsanti: se non stanno affiancati vanno a capo (colonna stretta del telefono in orizzontale).
+func _row(buttons: Array) -> HFlowContainer:
+	var h := HFlowContainer.new()
+	h.alignment = FlowContainer.ALIGNMENT_BEGIN if lay == "wide" else FlowContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("h_separation", 10)
+	h.add_theme_constant_override("v_separation", 8)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for b in buttons:
 		h.add_child(b)
@@ -1116,7 +1139,7 @@ func _refresh_actions(task: String) -> void:
 			if coach != null and coach.wants_pass():
 				actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
 			return
-		actions.add_child(_hint("Trascina una carta al centro per giocarla, oppure toccala e poi tocca il centro."))
+		actions.add_child(_hint(_win_hint() if _win_hint() != "" else "Trascina una carta al centro per giocarla, oppure toccala e poi tocca il centro."))
 		actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
 		return
 	if task == "response":
@@ -1573,7 +1596,7 @@ func _open_gy(w: String) -> void:
 	var pl: Dictionary = V[w]
 	var panel := PanelContainer.new()
 	panel.name = "GyPop"
-	var sb := Art.box(Art.CARTA, 14)
+	var sb := Art.box(Art.FOGLIO, 14, Art.FOGLIO_BORDO, 1)
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
 	sb.content_margin_top = 10
@@ -1586,7 +1609,7 @@ func _open_gy(w: String) -> void:
 	v.add_theme_constant_override("separation", 2)
 	panel.add_child(v)
 	var fs := int(clampf(_fs.status, 13, 17))
-	v.add_child(W.label("Cimitero" if w == "me" else "Cimitero di %s" % pl.name, fs, Art.INK, Art.bold()))
+	v.add_child(W.label("Cimitero" if w == "me" else "Cimitero di %s" % pl.name, fs, Art.TESTO, Art.bold()))
 	var any := false
 	for t in TYPES:
 		if pl.gy[t] == 0:
@@ -1603,7 +1626,7 @@ func _open_gy(w: String) -> void:
 		b.add_theme_font_override("font", Art.sans())
 		b.add_theme_font_size_override("font_size", fs)
 		for c in ["font_color", "font_hover_color", "font_pressed_color"]:
-			b.add_theme_color_override(c, Art.INK)
+			b.add_theme_color_override(c, Art.TESTO)
 		var bs := Art.box(Color("#fffaf0") if is_t else Color(0, 0, 0, 0), 8, Art.SEGNALE if is_t else Color(0, 0, 0, 0), 2.5 if is_t else 0.0)
 		bs.content_margin_left = 6
 		bs.content_margin_right = 10
@@ -1617,7 +1640,7 @@ func _open_gy(w: String) -> void:
 			b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(b)
 	if not any:
-		v.add_child(W.label("Vuoto", fs, Color(Art.INK, 0.6), Art.serif()))
+		v.add_child(W.label("Vuoto", fs, Color(Art.TESTO, 0.6), Art.serif()))
 	overlay_layer.add_child(panel)
 	panel.reset_size()
 	var badge: Control = zones[w].gy
@@ -1704,7 +1727,7 @@ func _sheet(name: String) -> VBoxContainer:
 	veil.size = size
 	overlay_layer.add_child(veil)
 	var panel := PanelContainer.new()
-	var sb := Art.box(Art.CARTA, 16)
+	var sb := Art.box(Art.FOGLIO, 22, Art.FOGLIO_BORDO, 1)
 	for m in ["left", "right", "top", "bottom"]:
 		sb.set("content_margin_" + m, 22)
 	sb.shadow_color = Art.OMBRA
@@ -1730,7 +1753,7 @@ func _open_menu(confirm_exit := false) -> void:
 	_close_overlays()
 	Sound.play("click")
 	var v := _sheet("Menu")
-	var t := W.label("Menu", 22, Art.INK, Art.bold())
+	var t := W.label("Menu", 22, Art.TESTO, Art.bold())
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if confirm_exit:
 		v.add_child(t)
@@ -1777,11 +1800,11 @@ func _switch(label: String, key: String) -> Button:
 	b.add_theme_font_override("font", Art.sans())
 	b.add_theme_font_size_override("font_size", 15)
 	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
-		b.add_theme_color_override(c, Art.INK)
+		b.add_theme_color_override(c, Art.TESTO)
 	b.draw.connect(func():
 		var on: bool = Prefs.get_value(key)
 		var r := Rect2(b.size.x - 46, (b.size.y - 24) / 2, 44, 24)
-		b.draw_style_box(Art.box(Art.INK if on else Color(Art.INK, 0.2), 12), r)
+		b.draw_style_box(Art.box(Art.SEGNALE if on else Color(1, 1, 1, 0.16), 12), r)
 		b.draw_circle(Vector2(r.end.x - 12 if on else r.position.x + 12, r.get_center().y), 9, Art.CARTA))
 	b.pressed.connect(func():
 		var on: bool = not Prefs.get_value(key)
@@ -1816,14 +1839,14 @@ func _open_stats() -> void:
 func _open_log() -> void:
 	_close_overlays()
 	var v := _sheet("Menu")
-	var t := W.label("Registro", 22, Art.INK, Art.bold())
+	var t := W.label("Registro", 22, Art.TESTO, Art.bold())
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
 	var lines: Array = g.log_lines.duplicate()
 	lines.reverse()  # le più recenti in alto
 	var max_lines := int(clampf((size.y - 200) / 20.0, 4, 30))
 	var l := W.label("
-".join(lines.slice(0, max_lines)), 13, Art.INK, Art.sans())
+".join(lines.slice(0, max_lines)), 13, Art.TESTO, Art.sans())
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = minf(400.0, size.x - 28) - 44
 	v.add_child(l)
@@ -1850,6 +1873,16 @@ func _show_over() -> void:
 	_close_overlays()
 	var v := _sheet("Over")
 	var won: bool = g.winner == me
+	if won:
+		# vittoria: raggi dorati che girano piano dietro il foglio
+		var veil: ColorRect = v.get_meta("panel").get_parent()
+		veil.color = Color(Art.TAVOLO2, 0.6)
+		var rays := W.Rays.new()
+		rays.position = Vector2(size.x / 2, size.y * 0.42)
+		rays.radius = maxf(size.x, size.y) * 0.7
+		veil.add_child(rays)
+		veil.move_child(rays, 0)
+		rays.create_tween().tween_property(rays, "strength", 1.0, 1.2)
 	if mode.kind == "tutorial":
 		v.add_child(Sheets.title("Tutorial completato", 28))
 		v.add_child(Sheets.para("Hai visto all'opera tutte e cinque le terre e anche il contrasto. Ora prova una partita vera.", 16))
@@ -1867,18 +1900,18 @@ func _show_over() -> void:
 		var line := "%s vinta al turno %d" % [what, g.turn]
 		if rec != null:
 			line += " · record: turno %d" % rec if rec < g.turn else " · nuovo record"
-		var l := W.label(line, 15, Art.INK, Art.bold())
+		var l := W.label(line, 15, Art.TESTO, Art.bold())
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
 	for id in new_goals:
 		var gl := Profile.goal(id)
 		var box := PanelContainer.new()
-		var sb := Art.box(Color("#fffaf0"), 10, Art.SEGNALE, 2)
+		var sb := Art.box(Color(1, 1, 1, 0.08), 14, Art.SEGNALE, 1.5)
 		for m in ["left", "right", "top", "bottom"]:
 			sb.set("content_margin_" + m, 10)
 		box.add_theme_stylebox_override("panel", sb)
 		var gl_l := W.label("Obiettivo: %s
-%s" % [gl.name, ("Sbloccato: " + gl.reward.name) if gl.has("reward") else gl.desc], 13, Art.INK)
+%s" % [gl.name, ("Sbloccato: " + gl.reward.name) if gl.has("reward") else gl.desc], 13, Art.TESTO)
 		gl_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		gl_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(gl_l)
@@ -1932,7 +1965,17 @@ func _gy_rect(w: String) -> Rect2:
 
 
 func _slot_rect(w: String, t: String) -> Rect2:
-	return _lr(zones[w].slots[t])
+	var s: W.Slot = zones[w].slots[t]
+	var r := _lr(s)
+	var tr := s.tile_rect()
+	return Rect2(r.position + tr.position, tr.size)
+
+
+## Una carta (in proporzione) dentro il cerchio centrale: da qui partono e qui arrivano i voli.
+func _stack_card_rect() -> Rect2:
+	var d := stack_rect.size.x
+	var cw2 := d * 0.6
+	return Rect2(stack_rect.get_center() - Vector2(cw2, cw2 * 1.4) / 2, Vector2(cw2, cw2 * 1.4))
 
 
 func _deck_rect(w: String) -> Rect2:
@@ -1995,7 +2038,8 @@ func _animate(e: Dictionary) -> void:
 	match t:
 		"turn":
 			_apply(e)
-			_set_caption("Il tuo turno" if ev.player == me else "Turno di %s" % V.opp.name)
+			_sky_turn(ev.player == me)
+			_set_caption("Tocca a te" if ev.player == me else "Turno di %s" % V.opp.name)
 			await tree.create_timer(0.55).timeout
 		"draw":
 			var w := _who(ev.player)
@@ -2013,7 +2057,7 @@ func _animate(e: Dictionary) -> void:
 			if w == "me":
 				var from := _hand_rect_of("me", ev.card)
 				if staged != null:
-					from = stack_rect  # era già posata al centro in attesa del bersaglio
+					from = _stack_card_rect()  # era già posata al centro in attesa del bersaglio
 				elif _play_from.has_area():
 					from = _play_from
 				_play_from = Rect2()
@@ -2023,22 +2067,21 @@ func _animate(e: Dictionary) -> void:
 						c.visible = false
 						break
 				stack_card.visible = false
-				if from != stack_rect:
-					await _fly(ev.card, from, stack_rect)
+				if from != _stack_card_rect():
+					await _fly(ev.card, from, _stack_card_rect())
 			else:
-				await _fly("back", _card_rect_from("opp", zones.opp.backs.fan_rect()), stack_rect, FLY, ev.card)
+				await _fly("back", _card_rect_from("opp", zones.opp.backs.fan_rect()), _stack_card_rect(), FLY, ev.card)
 			staged = null
 			_apply(e)
-			rose_angle += 72
-			var tw := bg.create_tween()
-			tw.tween_property(bg, "rose_angle", rose_angle, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-			await tree.create_timer(0.35).timeout
+			_disc_in()
+			await tree.create_timer(0.4).timeout
 		"counter":
 			var w := _who(ev.player)
 			_set_caption("Contrasti!" if w == "me" else "%s contrasta!" % V.opp.name)
 			var a := _hand_rect_of(w, "U")
 			var b := _hand_rect_of(w, ev.other)
 			var g1 := _card_rect_from(w, _gy_rect(w))
+			_ripple(stack_rect.get_center(), Art.LAND.U.lightened(0.3), stack_rect.size.x * 0.55)
 			_fly("U", _card_rect_from(w, a) if w == "opp" else a, g1)
 			await _fly(ev.other, _card_rect_from(w, b) if w == "opp" else b, g1)
 			_apply(e)
@@ -2046,21 +2089,34 @@ func _animate(e: Dictionary) -> void:
 		"countered":
 			var w := _who(ev.player)
 			_set_caption("%s annullata" % Art.NAMES[ev.card])
+			# il paesaggio si spegne e il cerchio si richiude, poi la carta va nel cimitero
+			var tw2 := stack_card.create_tween().set_parallel()
+			tw2.tween_property(stack_card, "dim", 0.75, 0.3)
+			tw2.tween_property(stack_card, "scale", Vector2(0.85, 0.85), 0.3)
+			await tw2.finished
 			stack_card.visible = false
-			await _fly(ev.card, stack_rect, _card_rect_from(w, _gy_rect(w)))
+			stack_card.scale = Vector2.ONE
+			stack_card.dim = 0.0
+			await _fly(ev.card, _stack_card_rect(), _card_rect_from(w, _gy_rect(w)))
 			_apply(e)
 		"enter":
 			var w := _who(ev.player)
 			_set_caption("%s entra in gioco" % Art.NAMES[ev.card])
 			stack_card.visible = false
-			await _fly(ev.card, stack_rect, _slot_rect(w, ev.card))
+			await _fly(ev.card, _stack_card_rect(), _slot_rect(w, ev.card))
 			_apply(e)
+			_slot_pop(w, ev.card)
 			await tree.create_timer(0.15).timeout
 		"destroy":
 			var w := _who(ev.player)
 			_set_caption("%s distrutta" % Art.NAMES[ev.card])
-			await tree.create_timer(0.2).timeout
+			# sulla terra colpita scende la notte, poi la carta va nel cimitero
+			var sl: W.Slot = zones[w].slots[ev.card]
+			var tw3 := sl.create_tween()
+			tw3.tween_property(sl, "night", 1.0, 0.35)
+			await tw3.finished
 			await _fly(ev.card, _slot_rect(w, ev.card), _card_rect_from(w, _gy_rect(w)))
+			sl.night = 0.0
 			_apply(e)
 		"regrow":
 			var w := _who(ev.player)
@@ -2178,9 +2234,7 @@ func _draw_arrow() -> void:
 	var to: Vector2 = a.rect.get_center()
 	var dir := (to - c).normalized()
 	# parte dal bordo della carta e si ferma un po' prima del bersaglio
-	var hx := stack_rect.size.x / 2 / maxf(0.001, absf(dir.x))
-	var hy := stack_rect.size.y / 2 / maxf(0.001, absf(dir.y))
-	var from := c + dir * minf(hx, hy)
+	var from := c + dir * (stack_rect.size.x / 2 + 4)
 	# la punta si ferma appena fuori dal bordo della carta colpita
 	var tx: float = a.rect.size.x / 2 / maxf(0.001, absf(dir.x))
 	var ty: float = a.rect.size.y / 2 / maxf(0.001, absf(dir.y))
@@ -2223,7 +2277,7 @@ func _open_reactions() -> void:
 		return
 	var box := PanelContainer.new()
 	box.name = "Reazioni"
-	var sb := Art.box(Art.CARTA, 12)
+	var sb := Art.box(Art.FOGLIO, 14, Art.FOGLIO_BORDO, 1)
 	for m in ["left", "right", "top", "bottom"]:
 		sb.set("content_margin_" + m, 6)
 	sb.shadow_color = Art.OMBRA
@@ -2318,3 +2372,71 @@ func hand_card_rect(c: Control) -> Rect2:
 			out = out.expand(piv + (q - piv).rotated(deg_to_rad(f.rot)))
 		return out
 	return r
+
+
+## La terra che mi manca per le cinque diverse (o "" se non sono a un passo).
+func _missing_for_me() -> String:
+	if V.is_empty() or V.get("onlyFive", false):
+		return ""
+	var bf: Dictionary = V.me.bf
+	var miss := []
+	for t in TYPES:
+		if bf[t] == 0:
+			miss.append(t)
+	return miss[0] if miss.size() == 1 else ""
+
+
+## Frase che spiega quanto manca alla vittoria («Ti manca solo un'Isola per vincere»).
+func _win_hint() -> String:
+	if V.is_empty():
+		return ""
+	const ART := {"W": "una Pianura", "U": "un'Isola", "B": "una Palude", "R": "una Montagna", "G": "una Foresta"}
+	var m := _missing_for_me()
+	if m != "":
+		return ("Gioca %s e vinci!" if V.hand.has(m) else "Ti manca solo %s per vincere") % ART[m]
+	for t in TYPES:
+		if V.me.bf[t] == 4:
+			return ("Gioca %s e fai cinque uguali!" if V.hand.has(t) else "Ti manca solo %s per le cinque uguali") % ART[t]
+	return ""
+
+
+# =====================================================================
+#  Effetti (leggeri: pochi nodi, niente disegni ripetuti ogni fotogramma se non servono)
+# =====================================================================
+
+## La terra giocata compare nel cerchio con un piccolo rimbalzo.
+func _disc_in() -> void:
+	if not stack_card.visible:
+		return
+	stack_card.pivot_offset = stack_card.size / 2
+	stack_card.scale = Vector2(0.8, 0.8)
+	stack_card.modulate.a = 0.0
+	var tw := stack_card.create_tween().set_parallel()
+	tw.tween_property(stack_card, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(stack_card, "modulate:a", 1.0, 0.2)
+
+
+## Onde che si allargano da un punto.
+func _ripple(at: Vector2, col: Color, radius: float) -> void:
+	var r := W.Ripple.new()
+	r.position = at
+	r.color = col
+	r.radius = radius
+	fly_layer.add_child(r)
+
+
+## La casella della terra appena entrata si gonfia un attimo, con un'onda dorata.
+func _slot_pop(w: String, t: String) -> void:
+	var sl: W.Slot = zones[w].slots[t]
+	var tw := sl.create_tween()
+	sl.pop = 1.0
+	tw.tween_property(sl, "pop", 0.0, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var r := _slot_rect(w, t)
+	_ripple(r.get_center(), Art.SEGNALE, r.size.x * 0.6)
+
+
+## Nel mio turno il cielo si scalda appena e le colline scivolano un poco: si sente di chi è il turno.
+func _sky_turn(mine: bool) -> void:
+	var tw := bg.create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(bg, "warmth", 1.0 if mine else 0.0, 1.2)
+	tw.tween_property(bg, "hills_shift", 10.0 if mine else -10.0, 1.6)

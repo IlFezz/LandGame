@@ -42,7 +42,7 @@ func _init(table) -> void:
 
 func _ready() -> void:
 	_panel = PanelContainer.new()
-	var sb := Art.box(Art.CARTA, 14)
+	var sb := Art.box(Art.FOGLIO, 18, Color(Art.SEGNALE, 0.55), 1.5)
 	for m in ["left", "right", "top", "bottom"]:
 		sb.set("content_margin_" + m, 14)
 	sb.shadow_color = Art.OMBRA
@@ -53,7 +53,7 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	_panel.add_child(v)
-	_note = W.label("Stai rileggendo un passaggio precedente", 11, Color(Art.INK, 0.6))
+	_note = W.label("Stai rileggendo un passaggio precedente", 11, Color(Art.TESTO, 0.6))
 	v.add_child(_note)
 	_text = RichTextLabel.new()
 	_text.bbcode_enabled = true
@@ -62,19 +62,19 @@ func _ready() -> void:
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_text.add_theme_font_override("normal_font", Art.sans())
 	_text.add_theme_font_override("bold_font", Art.bold())
-	_text.add_theme_color_override("default_color", Art.INK)
+	_text.add_theme_color_override("default_color", Art.TESTO)
 	_text.add_theme_constant_override("line_separation", 4)
 	_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(_text)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	_back_btn = W.button("Indietro", "ghost_ink", 13)
+	_back_btn = W.button("Indietro", "dark", 13)
 	_back_btn.pressed.connect(prev)
 	row.add_child(_back_btn)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(sp)
-	_fwd_btn = W.button("Avanti", "ink", 13)
+	_fwd_btn = W.button("Avanti", "primary", 13)
 	_fwd_btn.pressed.connect(next)
 	row.add_child(_fwd_btn)
 	v.add_child(row)

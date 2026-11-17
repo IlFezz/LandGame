@@ -6,8 +6,8 @@ const DEFAULTS := {
 	"name": "",  # il nome con cui giochi: statistiche e obiettivi lo seguono
 	"level": "normal",
 	"turn_time": 0,  # secondi per turno contro il computer (0: illimitato)
-	"theme": "notte",
-	"back": "bussola",
+	"theme": "crepuscolo",
+	"back": "sole",
 	"music": true,
 	"sound": true,
 	"vibrate": true,

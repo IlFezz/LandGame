@@ -84,8 +84,8 @@ func t_stats():
 	eq(s.cpu.winBy.five, 1)
 	eq(s.cpu.fastest, 9)
 	eq(s.cpu.lands.G, 1)
-	check(Profile.unlocked(s, "table", "corallo"), "tavolo Corallo sbloccato")
-	check(not Profile.unlocked(s, "table", "pergamena"), "Pergamena ancora chiusa")
+	check(Profile.unlocked(s, "table", "aurora"), "cielo Aurora sbloccato")
+	check(not Profile.unlocked(s, "table", "stellata"), "Notte stellata ancora chiusa")
 	# una sconfitta azzera la serie
 	Profile.finish(Profile.fresh("normal"), {"name": TEST_NAME, "won": false, "winner_null": false,
 		"bf": Game.empty_count(), "reason": "combo", "turn": 20})

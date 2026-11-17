@@ -18,7 +18,7 @@ static func sheet(host: Control, name: String, width := 400.0) -> VBoxContainer:
 	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # copre il genitore, qualunque misura abbia
 	host.add_child(veil)
 	var panel := PanelContainer.new()
-	var sb := Art.box(Art.CARTA, 16)
+	var sb := Art.box(Art.FOGLIO, 22, Art.FOGLIO_BORDO, 1)
 	for m in ["left", "right", "top", "bottom"]:
 		sb.set("content_margin_" + m, 22)
 	sb.shadow_color = Art.OMBRA
@@ -79,14 +79,14 @@ static func close(n: Node) -> void:
 
 
 static func title(text: String, fs := 22) -> Label:
-	var t := W.label(text, fs, Art.INK, Art.bold())
+	var t := W.label(text, fs, Art.TESTO, Art.bold())
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return t
 
 
 static func para(text: String, fs := 15, color := Color(0, 0, 0, 0), center := true) -> Label:
-	var l := W.label(text, fs, color if color.a > 0 else Color(Art.INK, 0.75), Art.serif())
+	var l := W.label(text, fs, color if color.a > 0 else Color(Art.TESTO, 0.75), Art.serif())
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if center:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -94,7 +94,7 @@ static func para(text: String, fs := 15, color := Color(0, 0, 0, 0), center := t
 
 
 static func h4(text: String) -> Label:
-	var l := W.label(text, 13, Color(Art.INK, 0.6), Art.bold())
+	var l := W.label(text, 13, Color(Art.TESTO, 0.6), Art.bold())
 	return l
 
 
@@ -109,7 +109,7 @@ static func rich(bbcode: String, fs := 14) -> RichTextLabel:
 	r.add_theme_font_override("italics_font", Art.serif())
 	for f in ["normal_font_size", "bold_font_size", "italics_font_size"]:
 		r.add_theme_font_size_override(f, fs)
-	r.add_theme_color_override("default_color", Art.INK)
+	r.add_theme_color_override("default_color", Art.TESTO)
 	r.add_theme_constant_override("line_separation", 3)
 	r.text = bbcode
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -165,7 +165,7 @@ static func goals(host: Control) -> void:
 		var row := HBoxContainer.new()
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_theme_constant_override("separation", 6)
-		var mark := W.label("✓" if got.has(g.id) else "·", 15, Art.LAND.G if got.has(g.id) else Color(Art.INK, 0.3), Art.bold())
+		var mark := W.label("✓" if got.has(g.id) else "·", 15, Art.LAND.G if got.has(g.id) else Color(Art.TESTO, 0.3), Art.bold())
 		mark.custom_minimum_size.x = 14
 		row.add_child(mark)
 		# nome in grassetto, sotto la descrizione e l'eventuale premio
@@ -198,18 +198,18 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	av.draw.connect(func():
 		av.draw_circle(Vector2(27, 27), 27, Art.SEGNALE)
 		av.draw_circle(Vector2(27, 27), 25, Art.CARTA)
-		av.draw_circle(Vector2(27, 27), 22, Art.INK)
+		av.draw_circle(Vector2(27, 27), 22, Color("#3d3577"))
 		var f := Art.bold()
 		var tw := f.get_string_size(initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25).x
 		av.draw_string(f, Vector2(27 - tw / 2, 27 + f.get_ascent(25) * 0.36), initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Art.CARTA))
 	head.add_child(av)
 	var who := VBoxContainer.new()
 	who.add_theme_constant_override("separation", 0)
-	who.add_child(W.label(a.name, 20, Art.INK, Art.bold()))
+	who.add_child(W.label(a.name, 20, Art.TESTO, Art.bold()))
 	var total := int(a.cpu.played) + int(a.pvp.played)
 	var sub := "Ancora nessuna partita: le statistiche si riempiono giocando." if total == 0 else \
 		"%d %s%s" % [total, "partita giocata" if total == 1 else "partite giocate", " · tutorial completato" if a.tutorial else ""]
-	var sl := W.label(sub, 12, Color(Art.INK, 0.65))
+	var sl := W.label(sub, 12, Color(Art.TESTO, 0.65))
 	sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sl.custom_minimum_size.x = 200
 	who.add_child(sl)
@@ -231,25 +231,25 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	var ring := Control.new()
 	ring.custom_minimum_size = Vector2(80, 80)
 	ring.draw.connect(func():
-		ring.draw_arc(Vector2(40, 40), 34, 0, TAU, 64, Color(Art.INK, 0.12), 8, true)
+		ring.draw_arc(Vector2(40, 40), 34, 0, TAU, 64, Color(Art.TESTO, 0.12), 8, true)
 		if pct > 0:
-			ring.draw_arc(Vector2(40, 40), 34, -PI / 2, -PI / 2 + TAU * pct / 100.0, 64, Art.INK, 8, true)
+			ring.draw_arc(Vector2(40, 40), 34, -PI / 2, -PI / 2 + TAU * pct / 100.0, 64, Art.TESTO, 8, true)
 		var f := Art.bold()
 		var t := "%d%%" % pct
 		var tw := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
-		ring.draw_string(f, Vector2(40 - tw / 2, 44), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Art.INK)
+		ring.draw_string(f, Vector2(40 - tw / 2, 44), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Art.TESTO)
 		var f2 := Art.sans()
 		var tw2 := f2.get_string_size("vinte", HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-		ring.draw_string(f2, Vector2(40 - tw2 / 2, 57), "vinte", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(Art.INK, 0.6)))
+		ring.draw_string(f2, Vector2(40 - tw2 / 2, 57), "vinte", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(Art.TESTO, 0.6)))
 	top.add_child(ring)
 	for k in [[s.played, "partite"], [s.best, "serie migliore"], [s.fastest if s.fastest else "–", "turni, vittoria più rapida"]]:
 		var box := VBoxContainer.new()
 		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 0)
-		var n := W.label(str(int(k[0])) if not k[0] is String else k[0], 24, Art.INK, Art.bold())
+		var n := W.label(str(int(k[0])) if not k[0] is String else k[0], 24, Art.TESTO, Art.bold())
 		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(n)
-		var l := W.label(k[1], 11, Color(Art.INK, 0.7))
+		var l := W.label(k[1], 11, Color(Art.TESTO, 0.7))
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = 60
@@ -275,11 +275,11 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 		var k2: float = float(s.lands[t]) / maxl
 		bar.draw.connect(func():
 			var r := Rect2(0, 5, bar.size.x, 10)
-			bar.draw_style_box(Art.box(Color(Art.INK, 0.08), 5), r)
+			bar.draw_style_box(Art.box(Color(Art.TESTO, 0.08), 5), r)
 			if k2 > 0:
-				bar.draw_style_box(Art.box(Art.INK, 5), Rect2(0, 5, maxf(10, bar.size.x * k2), 10)))
+				bar.draw_style_box(Art.box(Art.TESTO, 5), Rect2(0, 5, maxf(10, bar.size.x * k2), 10)))
 		row.add_child(bar)
-		var num := W.label(str(int(s.lands[t])), 13, Art.INK, Art.bold())
+		var num := W.label(str(int(s.lands[t])), 13, Art.TESTO, Art.bold())
 		num.custom_minimum_size.x = 34
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row.add_child(num)
@@ -292,7 +292,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	cols.add_child(_rows("Vittorie" if side == "cpu" else "Risultati", res))
 	cols.add_child(_rows("Come vinci", [["Cinque diverse", str(int(s.winBy.domain))], ["Cinque uguali", str(int(s.winBy.five))], ["Carte finite", str(int(s.winBy.cards))]]))
 	v.add_child(cols)
-	var more := W.label("Contrasti fatti  %d      Terre distrutte  %d" % [s.counters, s.destroyed], 13, Color(Art.INK, 0.75))
+	var more := W.label("Contrasti fatti  %d      Terre distrutte  %d" % [s.counters, s.destroyed], 13, Color(Art.TESTO, 0.75))
 	more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(more)
 	v.add_child(button("Profili e trasferimento", "ghost_ink", on_transfer, 13))
@@ -306,10 +306,10 @@ static func _rows(head: String, rows: Array) -> VBoxContainer:
 	v.add_child(h4(head))
 	for r in rows:
 		var h := HBoxContainer.new()
-		var a := W.label(r[0], 13, Art.INK)
+		var a := W.label(r[0], 13, Art.TESTO)
 		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(a)
-		h.add_child(W.label(r[1], 13, Art.INK, Art.bold()))
+		h.add_child(W.label(r[1], 13, Art.TESTO, Art.bold()))
 		v.add_child(h)
 	return v
 
@@ -343,8 +343,8 @@ static func transfer(host: Control, on_change: Callable) -> void:
 	var code := LineEdit.new()
 	code.placeholder_text = "Incolla un codice"
 	code.add_theme_font_size_override("font_size", 13)
-	code.add_theme_color_override("font_color", Art.INK)
-	var es := Art.box(Color("#fffaf0"), 10, Art.INK, 1.5)
+	code.add_theme_color_override("font_color", Art.TESTO)
+	var es := Art.box(Color(1, 1, 1, 0.08), 12, Color(1, 1, 1, 0.2), 1)
 	es.content_margin_left = 10
 	es.content_margin_right = 10
 	es.content_margin_top = 8

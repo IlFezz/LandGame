@@ -21,7 +21,7 @@ func _ready() -> void:
 	get_tree().quit_on_go_back = false  # il tasto Indietro lo gestiamo noi
 	Prefs.load_all()
 	Art.apply_theme(Prefs.get_value("theme"))
-	Art.BACK = Prefs.get_value("back")
+	Art.BACK = Art.back_id(Prefs.get_value("back"))
 	if Prefs.get_value("fullscreen") and not OS.has_feature("mobile"):
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_factor = _screen_factor()

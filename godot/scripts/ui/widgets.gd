@@ -1,13 +1,14 @@
-## Piccoli elementi del tavolo disegnati da codice: casella del campo, mazzo, dorsi
-## dell'avversario, cimitero, pulsanti. Come card_view.gd, si ridisegnano solo quando cambiano.
+## Elementi del tavolo nello stile «Orizzonti», disegnati da codice: caselle del campo (paesaggi
+## quadrati con il numero sotto), pillole (mano, mazzo, cimitero), pulsanti, sfondo con il cielo e
+## le colline. Come card_view.gd, si ridisegnano solo quando cambiano.
 extends RefCounted
 
 const Art := preload("res://scripts/ui/art.gd")
 const Card := preload("res://scripts/ui/card_view.gd")
 
 
-## Pulsante nello stile della versione web. kind: "pass", "primary", "counter", "ghost", "dark",
-## "exit", "full" (giallo).
+## Pulsante a pillola. kind: "pass"/"primary"/"ink" (crema), "counter" (azzurro Isola),
+## "ghost" (solo testo), "dark"/"ghost_ink" (vetro), "exit" (rosso), "full" (oro).
 static func button(text: String, kind := "dark", fs := 15) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -17,65 +18,59 @@ static func button(text: String, kind := "dark", fs := 15) -> Button:
 
 
 static func style_button(b: Button, kind: String, fs: int) -> void:
-	var fill := Art.TAVOLO2
+	var fill := Art.VETRO
 	var fg := Art.TESTO
-	var border := Art.TESTO
-	var lip := Color(0, 0, 0, 0)
+	var border := Color(1, 1, 1, 0.14)
 	match kind:
-		"pass", "primary":
+		"pass", "primary", "ink":
 			fill = Art.CARTA
 			fg = Art.INK
 			border = Art.CARTA
-			lip = Art.CARTA2
 		"counter":
 			fill = Art.LAND.U
 			fg = Color.WHITE
 			border = Art.LAND.U
-			lip = Color("#14506e")
 		"ghost":
 			fill = Color(0, 0, 0, 0)
-			fg = Color(Art.TESTO, 0.8)
+			fg = Color(Art.TESTO, 0.85)
 			border = Color(0, 0, 0, 0)
 		"exit":
 			fill = Art.ROSSO
 			fg = Color.WHITE
 			border = Art.ROSSO
-			lip = Color("#7d2416")
 		"full":
 			fill = Art.SEGNALE
 			fg = Art.INK
 			border = Art.SEGNALE
-			lip = Art.SEGNALE2
-		"ink":
-			fill = Art.INK
-			fg = Art.CARTA
-			border = Art.INK
-		"ghost_ink":
-			fill = Color(0, 0, 0, 0)
-			fg = Art.INK
-			border = Color(Art.INK, 0.25)
-	var pad_x := fs * 1.3
-	var pad_y := fs * 0.75
+	var pad_x := fs * 1.4
+	var pad_y := fs * 0.8
+	var rad := fs * 1.36  # pillola: angoli tondi poco meno di metà altezza (se no si vede una giuntura)
 	for state in ["normal", "hover", "pressed", "disabled"]:
-		var sb := Art.box(fill if state != "hover" else fill.lightened(0.06), 10, border, 1.5)
+		var f := fill
+		if state == "hover":
+			f = fill.lightened(0.08) if fill.a > 0.5 else Color(1, 1, 1, fill.a + 0.06)
+		elif state == "pressed":
+			f = fill.darkened(0.08) if fill.a > 0.5 else Color(1, 1, 1, fill.a + 0.1)
+		var sb := Art.box(f, rad, border, 1.2 if border.a > 0 else 0.0)
 		sb.content_margin_left = pad_x
 		sb.content_margin_right = pad_x
 		sb.content_margin_top = pad_y
 		sb.content_margin_bottom = pad_y
-		if lip.a > 0 and state != "pressed":
-			sb.shadow_color = lip
-			sb.shadow_size = 0
-			sb.shadow_offset = Vector2(0, 3)
-			sb.expand_margin_bottom = 0
-		if state == "pressed":
-			sb.content_margin_top = pad_y + 1
-			sb.content_margin_bottom = pad_y - 1
 		b.add_theme_stylebox_override(state, sb)
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		b.add_theme_color_override(c, fg)
-	b.add_theme_font_override("font", Art.bold() if kind != "ghost" else Art.sans())
+	b.add_theme_font_override("font", Art.semi() if kind != "ghost" else Art.sans())
 	b.add_theme_font_size_override("font_size", fs)
+	# un piccolo "respiro" quando si preme: il pulsante si abbassa di poco
+	if not b.has_meta("respiro"):
+		b.set_meta("respiro", true)
+		b.button_down.connect(func():
+			b.pivot_offset = b.size / 2
+			b.create_tween().tween_property(b, "scale", Vector2(0.96, 0.96), 0.06))
+		b.button_up.connect(func():
+			if is_instance_valid(b):
+				b.create_tween().tween_property(b, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 
 
 static func label(text := "", fs := 15, color = null, font: Font = null) -> Label:
@@ -88,95 +83,120 @@ static func label(text := "", fs := 15, color = null, font: Font = null) -> Labe
 	return l
 
 
-## Casella del campo per un tipo di terra: vuota (tratteggiata, col simbolo) o con la carta e il numero.
+## Casella del campo: il paesaggio della terra (spento se vuota) e sotto il numero.
+## Se è la terra che manca per vincere: contorno tratteggiato azzurro con «+».
 class Slot extends Control:
 	var land := "W"
 	var count := 0
 	var card_mode := "mini"
-	var target := false  # bersaglio valido: bordo giallo che pulsa
-	var _card: Control
+	var target := false  # bersaglio valido: alone d'oro che pulsa
+	var missing := false  # l'unica terra che manca per le cinque diverse
+	var pop := 0.0:  # 0–1: la casella si gonfia un attimo quando entra una terra (effetto)
+		set(v):
+			pop = v
+			queue_redraw()
+	var night := 0.0:  # 0–1: la casella si spegne (effetto della distruzione)
+		set(v):
+			night = v
+			queue_redraw()
 	var _t := 0.0
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_card = Card.new()
-		_card.mode = "mini"
-		_card.visible = false
-		_card.shadow = false
-		add_child(_card)
-		resized.connect(_fit)
+		resized.connect(queue_redraw)
 
-	func _fit() -> void:
-		_card.size = size
-		queue_redraw()
-
-	func set_state(n: int, tgt: bool, cmode: String) -> void:
-		if n == count and tgt == target and cmode == card_mode and _card.kind == land:
+	func set_state(n: int, tgt: bool, _cmode: String, miss := false) -> void:
+		if n == count and tgt == target and miss == missing:
 			return
 		count = n
 		target = tgt
-		card_mode = cmode
-		_card.kind = land
-		_card.mode = cmode
-		_card.visible = n > 0
-		set_process(tgt)
+		missing = miss
+		set_process(tgt or miss)
 		queue_redraw()
 
 	func _process(delta: float) -> void:
 		_t += delta
 		queue_redraw()
 
+	## Il quadrato del paesaggio (la parte alta della casella).
+	func tile_rect() -> Rect2:
+		var s := minf(size.x, size.y / 1.32)
+		return Rect2(Vector2((size.x - s) / 2, 0), Vector2(s, s))
+
 	func card_rect() -> Rect2:
-		return Rect2(position, size)
+		var t := tile_rect()
+		return Rect2(position + t.position, t.size)
 
 	func _draw() -> void:
-		var w := size.x
-		var rad := w * 0.055
-		if count == 0:
-			var sb := Art.box(Color(0, 0, 0, 0), rad, Art.RIGA, 1.5)
-			draw_style_box(sb, Rect2(Vector2.ZERO, size))
-			var d := w * 0.34
-			Art.draw_contain(self, Art.tex("ico-" + land, d), Rect2((size - Vector2(d, d)) / 2, Vector2(d, d)), Color(1, 1, 1, 0.38))
+		var tr := tile_rect()
+		var s := tr.size.x
+		var rad := s * 0.22
+		var k := 0.5 + 0.5 * sin(_t * TAU)
+		if missing and count == 0:
+			# tratteggio azzurro con il «+»: la terra che serve per vincere
+			_dashed(tr.grow(-1), rad, Color(Art.AZZURRO, 0.65 + 0.35 * k), 2.0)
+			var c := tr.get_center()
+			var a := s * 0.13
+			draw_line(c - Vector2(a, 0), c + Vector2(a, 0), Art.AZZURRO, 2.2, true)
+			draw_line(c - Vector2(0, a), c + Vector2(0, a), Art.AZZURRO, 2.2, true)
+		else:
+			var g := 1.0 + pop * 0.12
+			var r2 := Rect2(tr.get_center() - tr.size * g / 2, tr.size * g)
+			if count > 0:
+				var sh := Art.box(Color(0, 0, 0, 0), rad)
+				sh.shadow_color = Color(Art.OMBRA, 0.6)
+				sh.shadow_size = int(s * 0.1)
+				sh.shadow_offset = Vector2(0, s * 0.05)
+				draw_style_box(sh, r2)
+			draw_texture_rect(Art.tex("tile-%s%s" % [land, "" if count > 0 else "-dim"], r2.size.x), r2, false)
+			if night > 0:
+				draw_style_box(Art.box(Color("#17152e", night * 0.75), rad), r2)
 		if target:
-			var k := 0.5 + 0.5 * sin(_t * TAU)
-			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 6, Color(Art.SEGNALE, 0.25 + 0.2 * k), 3), Rect2(-6, -6, w + 12, size.y + 12))
-			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 3, Art.SEGNALE, 3), Rect2(-3, -3, w + 6, size.y + 6))
+			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 6, Color(Art.SEGNALE, 0.25 + 0.3 * k), 4), tr.grow(5))
+			draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 2, Art.SEGNALE, 2.5), tr.grow(2))
+		# sotto: il numero, oppure il nome della terra che manca
+		var fs := int(clampf(s * 0.24, 11, 22))
+		var y := tr.end.y + (size.y - tr.end.y) / 2 + 1
+		if missing and count == 0:
+			Art.draw_text_centered(self, Art.semi(), Art.NAMES[land], Vector2(size.x / 2, y), int(fs * 0.8), Art.AZZURRO)
+		else:
+			var col := Art.SEGNALE if count >= 4 else (Art.TESTO if count > 0 else Color(Art.TESTO, 0.45))
+			Art.draw_text_centered(self, Art.bold() if count > 0 else Art.sans(), str(count), Vector2(size.x / 2, y), fs, col)
 
-	## Il numero sopra la carta va disegnato sopra di lei: lo fa un figlio aggiunto per ultimo.
-	func _notification(what: int) -> void:
-		if what == NOTIFICATION_READY:
-			var c := CountBadge.new()
-			c.slot = self
-			add_child(c)
+	func _dashed(r: Rect2, rad: float, col: Color, w: float) -> void:
+		# contorno a trattini con gli angoli tondi
+		var pts := PackedVector2Array()
+		var steps := 10
+		var corners := [[r.position + Vector2(rad, rad), PI], [Vector2(r.end.x - rad, r.position.y + rad), PI * 1.5],
+			[r.end - Vector2(rad, rad), 0.0], [Vector2(r.position.x + rad, r.end.y - rad), PI * 0.5]]
+		for c in corners:
+			for i in steps + 1:
+				var a: float = c[1] + (PI / 2) * i / steps
+				pts.append(c[0] + Vector2(cos(a), sin(a)) * rad)
+		pts.append(pts[0])
+		var dash := 6.0
+		var gap := 5.0
+		var on := true
+		var left := dash
+		for i in pts.size() - 1:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var seg := a.distance_to(b)
+			var pos := 0.0
+			while pos < seg:
+				var step := minf(left, seg - pos)
+				var p1 := a.lerp(b, pos / seg)
+				var p2 := a.lerp(b, (pos + step) / seg)
+				if on:
+					draw_line(p1, p2, col, w, true)
+				pos += step
+				left -= step
+				if left <= 0.001:
+					on = not on
+					left = dash if on else gap
 
 
-class CountBadge extends Control:
-	var slot: Slot
-
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _ready() -> void:
-		slot.resized.connect(queue_redraw)
-		slot.draw.connect(queue_redraw)
-
-	func _draw() -> void:
-		if slot.count < 2:
-			return
-		var w := slot.size.x
-		var d := clampf(w * 0.3, 20, 30)
-		var c := Vector2(w + 7 - d / 2, -7 + d / 2)
-		var five := slot.count >= 4
-		draw_circle(c, d / 2 + 1.5, Art.INK if five else Art.CARTA)
-		draw_circle(c, d / 2, Art.SEGNALE if five else Art.INK)
-		var f := Art.bold()
-		var fs := int(d * 0.55)
-		var s := str(slot.count)
-		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(f, c + Vector2(-tw / 2, f.get_ascent(fs) * 0.38), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.INK if five else Art.CARTA)
-
-
-## Mazzo: una pila sdraiata, più spessa quante più carte ha; accanto il numero.
+## Mazzo: una pillola «Mazzo 41».
 class Deck extends Control:
 	var count := 40
 	var pw := 15.0
@@ -190,28 +210,25 @@ class Deck extends Control:
 			count = n
 			queue_redraw()
 
+	func text() -> String:
+		return "Mazzo %d" % count
+
+	func needed_width() -> float:
+		return Art.sans().get_string_size("Mazzo 50", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + fs * 1.8
+
 	func pile_rect() -> Rect2:
-		var ph := pw * 1.4
-		return Rect2(position + Vector2(0, (size.y - ph) / 2), Vector2(pw, ph))
+		var h := size.y * 0.8
+		return Rect2(position + Vector2(size.x / 2 - h * 0.36, (size.y - h) / 2), Vector2(h * 0.72, h))
 
 	func _draw() -> void:
-		var ph := pw * 1.4
-		var y := (size.y - ph) / 2 - 2
-		var layers := 3 if count > 30 else 2 if count > 12 else 1 if count > 0 else 0
-		if count == 0:
-			draw_rect(Rect2(0, y, pw, ph), Art.RIGA, false, 1.5)
-		else:
-			for i in range(layers * 2, 0, -1):
-				var o := i * 1.5
-				draw_rect(Rect2(o - 1.5, y + o - 1.5, pw + 3, ph + 3), Art.CARTA if i % 2 == 0 else Art.CARTA2)
-			draw_rect(Rect2(-1.5, y - 1.5, pw + 3, ph + 3), Art.CARTA)
-			Art.draw_cover(self, Art.tex("bk-" + Art.BACK, pw), Rect2(0, y, pw, ph))
-		var f := Art.sans()
-		draw_string(f, Vector2(pw + 12, size.y / 2 + f.get_ascent(fs) * 0.36), str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.MUTO)
+		var h := minf(size.y, fs * 2.3)
+		var r := Rect2(Vector2(0, (size.y - h) / 2), Vector2(size.x, h))
+		Art.draw_pill(self, r, text(), fs)
 
 
-## La mano dell'avversario: dorsi aperti a ventaglio e il numero in un segnalino.
+## La mano dell'avversario: una pillola «Mano 4».
 class Backs extends Control:
+	signal width_changed
 	var count := 5
 	var bw := 13.0
 	var fs := 12
@@ -219,50 +236,26 @@ class Backs extends Control:
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	signal width_changed
-
 	func set_count(n: int) -> void:
 		if n != count:
 			count = n
 			queue_redraw()
 			width_changed.emit()
 
-	func fan_rect() -> Rect2:
-		return Rect2(position, Vector2(size.x * 0.6, size.y))
-
-	## Larghezza che serve davvero: ventaglio di `count` dorsi più il segnalino col numero.
 	func needed_width() -> float:
-		var k := mini(count, 10)
-		var tw := Art.bold().get_string_size(str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		return bw * 0.9 + maxf(k, 1) * bw * 0.45 + bw * 0.9 + maxf(fs * 1.76, tw + 12) + 2
+		return Art.sans().get_string_size("Mano %d" % count, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + fs * 1.8
+
+	func fan_rect() -> Rect2:
+		var h := size.y * 0.8
+		return Rect2(position + Vector2(size.x / 2 - h * 0.36, (size.y - h) / 2), Vector2(h * 0.72, h))
 
 	func _draw() -> void:
-		var k := mini(count, 10)
-		var mid := (k - 1) / 2.0
-		var step := 7.0 if k > 6 else 10.0
-		var bh := bw * 1.4
-		var x0 := bw * 0.9  # le carte esterne ruotano verso sinistra: margine
-		var base_y := size.y / 2 + bh * 0.45
-		for i in k:
-			var x := x0 + i * bw * 0.45
-			var ang := deg_to_rad((i - mid) * step)
-			var pivot := Vector2(x + bw / 2, base_y + bh * 0.6)
-			draw_set_transform(pivot, ang)
-			var r := Rect2(Vector2(-bw / 2, -bh * 1.6 + bh * 0.6), Vector2(bw, bh))
-			draw_rect(r.grow(1.5), Art.CARTA)
-			Art.draw_cover(self, Art.tex("bk-" + Art.BACK, bw), r)
-		draw_set_transform(Vector2.ZERO)
-		var f := Art.bold()
-		var s := str(count)
-		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var bx := x0 + maxf(k, 1) * bw * 0.45 + bw * 0.9
-		var bh2 := fs * 1.6
-		var bwid := maxf(bh2 * 1.1, tw + 12)
-		draw_style_box(Art.box(Art.CARTA, bh2 / 2), Rect2(bx, (size.y - bh2) / 2, bwid, bh2))
-		draw_string(f, Vector2(bx + (bwid - tw) / 2, size.y / 2 + f.get_ascent(fs) * 0.36), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.INK)
+		var h := minf(size.y, fs * 2.3)
+		var r := Rect2(Vector2(0, (size.y - h) / 2), Vector2(minf(size.x, needed_width()), h))
+		Art.draw_pill(self, r, "Mano %d" % count, fs)
 
 
-## Segnalino del cimitero: la croce e il totale; si tocca per aprire il dettaglio.
+## Il cimitero: una pillola «✝ 3» che si tocca per aprire il dettaglio.
 class GyBadge extends Control:
 	signal pressed
 	var total := 0
@@ -295,17 +288,17 @@ class GyBadge extends Control:
 	func _draw() -> void:
 		var h := size.y
 		var r := Rect2(Vector2.ZERO, size)
-		draw_style_box(Art.box(Color(0, 0, 0, 0), h / 2, Art.TESTO if open else Art.RIGA, 1.5), r)
 		if target:
 			var k := 0.5 + 0.5 * sin(_t * TAU)
-			draw_style_box(Art.box(Color(0, 0, 0, 0), h / 2 + 3, Color(Art.SEGNALE, 0.6 + 0.4 * k), 3), r.grow(3))
-		var d := h * 0.68
-		Art.draw_contain(self, Art.tex("ico-T", d), Rect2(h * 0.16, (h - d) / 2, d, d))
-		var f := Art.bold()
-		draw_string(f, Vector2(h * 0.16 + d + 7, h / 2 + f.get_ascent(fs) * 0.36), str(total), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
+			draw_style_box(Art.box(Color(0, 0, 0, 0), h / 2 + 4, Color(Art.SEGNALE, 0.35 + 0.4 * k), 3), r.grow(4))
+		draw_style_box(Art.box(Color(1, 1, 1, 0.18 if open else 0.10), h / 2 - 1, Color(Art.SEGNALE, 0.9) if target else Color(1, 1, 1, 0.12), 1.0), r)
+		var d := h * 0.62
+		Art.draw_contain(self, Art.tex("ico-T", d), Rect2(h * 0.2, (h - d) / 2, d, d))
+		var f := Art.semi()
+		draw_string(f, Vector2(h * 0.2 + d + 6, h / 2 + (f.get_ascent(fs) - f.get_descent(fs)) / 2), str(total), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.TESTO)
 
 
-## Puntino accanto al nome: giallo quando è il turno di quel giocatore.
+## Puntino accanto al nome: d'oro quando è il turno di quel giocatore.
 class Dot extends Control:
 	var active := false
 
@@ -321,43 +314,122 @@ class Dot extends Control:
 	func _draw() -> void:
 		var c := size / 2
 		if active:
-			draw_circle(c, 7.5, Color(Art.SEGNALE, 0.25))
+			draw_circle(c, 8, Color(Art.SEGNALE, 0.25))
 			draw_circle(c, 4.5, Art.SEGNALE)
 		else:
 			draw_arc(c, 3.75, 0, TAU, 20, Art.MUTO, 1.5, true)
 
 
-## Sfondo: tavolo con le curve di livello e la rosa dei venti al centro.
+## Sfondo: cielo sfumato, stelle (cieli notturni), colline in fondo e il grande cerchio al centro
+## (l'«orizzonte» dove si posano le carte). La luce del cielo cambia piano col turno.
 class Table extends Control:
-	var rose_center := Vector2.ZERO
-	var rose_size := 0.0
-	var rose_angle := 0.0:
+	var rose_center := Vector2.ZERO  # centro del cerchio
+	var rose_size := 0.0  # diametro del cerchio
+	var rose_angle := 0.0:  # (resta per compatibilità: un quinto di giro a ogni terra)
 		set(v):
 			rose_angle = v
+			queue_redraw()
+	var warmth := 0.0:  # 0 turno dell'avversario, 1 mio turno: il cielo si scalda un poco
+		set(v):
+			warmth = v
+			queue_redraw()
+	var hills_shift := 0.0:  # le colline scivolano piano (parallasse, con il turno)
+		set(v):
+			hills_shift = v
 			queue_redraw()
 	var _grad: GradientTexture2D
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var g := Gradient.new()
-		g.set_color(0, Art.TAVOLO)
-		g.set_color(1, Art.TAVOLO2)
 		_grad = GradientTexture2D.new()
 		_grad.gradient = g
-		_grad.fill = GradientTexture2D.FILL_RADIAL
-		_grad.fill_from = Vector2(0.5, 0.38)
-		_grad.fill_to = Vector2(1.1, 1.0)
-		_grad.width = 256
+		_grad.fill_from = Vector2(0.5, 0)
+		_grad.fill_to = Vector2(0.5, 1)
+		_grad.width = 8
 		_grad.height = 256
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
-		_grad.gradient.set_color(0, Art.TAVOLO)
-		_grad.gradient.set_color(1, Art.TAVOLO2)
-		draw_texture_rect(_grad, Rect2(Vector2.ZERO, size), false)
-		Art.draw_cover(self, Art.tex(Art.TOPO, maxf(size.x, size.y * 0.55)), Rect2(Vector2.ZERO, size))
+		var top := Art.TAVOLO
+		var bottom := Art.TAVOLO2.lerp(Color("#c9786f"), 0.12 * warmth)
+		Art.draw_vgrad(self, Rect2(Vector2.ZERO, size), top, bottom)
+		var sky: Array = Art.Scenery.SKIES[Art.THEME]
+		if sky[4]:
+			var st := Art.tex("stars", 400)
+			var tile := 400.0
+			var y := 0.0
+			while y < size.y * 0.7:
+				var x := 0.0
+				while x < size.x:
+					draw_texture_rect(st, Rect2(x, y, tile, tile), false, Color(1, 1, 1, 0.8))
+					x += tile
+				y += tile
+		# colline: larghe quanto lo schermo, alte un terzo della larghezza
+		var hw := maxf(size.x * 1.15, 400.0)
+		var hh := hw * 0.3
+		var ht := Art.tex("hills-" + Art.THEME, hw)
+		draw_texture_rect(ht, Rect2(-size.x * 0.075 + hills_shift, size.y - hh, hw, hh), false)
 		if rose_size > 0:
-			var t := Art.tex(Art.ROSE, rose_size)
-			draw_set_transform(rose_center, deg_to_rad(rose_angle))
-			draw_texture_rect(t, Rect2(-Vector2(rose_size, rose_size) / 2, Vector2(rose_size, rose_size)), false, Color(1, 1, 1, 0.7))
-			draw_set_transform(Vector2.ZERO)
+			# l'orizzonte: un cerchio leggero, con un anello appena più chiaro
+			var r := rose_size / 2
+			draw_circle(rose_center, r, Color(1, 1, 1, 0.045))
+			draw_arc(rose_center, r, 0, TAU, 96, Color(1, 1, 1, 0.10), 2.0, true)
+			draw_arc(rose_center, r * 0.82, 0, TAU, 96, Color(1, 1, 1, 0.05), 1.0, true)
+
+
+## Onde che si allargano da un punto (il contrasto dell'Isola, una terra che entra in gioco).
+## Si cancella da sola quando ha finito.
+class Ripple extends Control:
+	var color := Color.WHITE
+	var radius := 60.0
+	var rings := 3
+	var dur := 0.9
+	var _t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+		if _t > dur + 0.3:
+			queue_free()
+
+	func _draw() -> void:
+		for i in rings:
+			var k := clampf((_t - i * 0.15) / dur, 0.0, 1.0)
+			if k <= 0.0 or k >= 1.0:
+				continue
+			var e := 1.0 - pow(1.0 - k, 3.0)
+			draw_arc(Vector2.ZERO, radius * (0.55 + 0.75 * e), 0, TAU, 72, Color(color, 0.55 * (1.0 - k)), 3.0 * (1.0 - k) + 1.0, true)
+
+
+## Raggi di luce dorata che girano piano (la vittoria). `strength` 0–1 per farli comparire.
+class Rays extends Control:
+	var strength := 0.0:
+		set(v):
+			strength = v
+			queue_redraw()
+	var radius := 300.0
+	var color := Color("#ffd27a")
+	var _a := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_a += delta * 0.12
+		queue_redraw()
+
+	func _draw() -> void:
+		if strength <= 0.0:
+			return
+		var n := 14
+		for i in n:
+			var a := _a + TAU * i / n
+			var w := TAU / n * 0.32
+			var pts := PackedVector2Array([Vector2.ZERO, Vector2(cos(a - w), sin(a - w)) * radius, Vector2(cos(a + w), sin(a + w)) * radius])
+			draw_colored_polygon(pts, Color(color, 0.10 * strength))
+		draw_circle(Vector2.ZERO, radius * 0.32, Color(color, 0.12 * strength))
+		draw_circle(Vector2.ZERO, radius * 0.18, Color(color, 0.16 * strength))

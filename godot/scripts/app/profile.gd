@@ -7,17 +7,17 @@ const FILE := "user://profili.json"
 const TYPES := ["W", "U", "B", "R", "G"]
 
 const GOALS := [
-	{"id": "prima", "name": "Prima vittoria", "desc": "Vinci una partita.", "reward": {"kind": "back", "id": "sestante", "name": "dorso Sestante"}},
+	{"id": "prima", "name": "Prima vittoria", "desc": "Vinci una partita.", "reward": {"kind": "back", "id": "monti", "name": "dorso Monti"}},
 	{"id": "dominio", "name": "Dominio", "desc": "Vinci con cinque terre diverse."},
 	{"id": "cinqueuguali", "name": "Cinque di un tipo", "desc": "Vinci con cinque terre uguali."},
-	{"id": "cinqueforeste", "name": "Cinque Foreste", "desc": "Vinci con cinque Foreste.", "reward": {"kind": "back", "id": "radici", "name": "dorso Radici"}},
-	{"id": "controcontrasto", "name": "Contro-contrasto", "desc": "Contrasta un contrasto.", "reward": {"kind": "back", "id": "maree", "name": "dorso Maree"}},
+	{"id": "cinqueforeste", "name": "Cinque Foreste", "desc": "Vinci con cinque Foreste.", "reward": {"kind": "back", "id": "pini", "name": "dorso Pini"}},
+	{"id": "controcontrasto", "name": "Contro-contrasto", "desc": "Contrasta un contrasto.", "reward": {"kind": "back", "id": "onde", "name": "dorso Onde"}},
 	{"id": "muro", "name": "Muro", "desc": "Contrasta 3 volte nella stessa partita."},
 	{"id": "demolitore", "name": "Demolitore", "desc": "Distruggi 3 terre nella stessa partita."},
 	{"id": "lampo", "name": "Lampo", "desc": "Vinci entro il turno 10."},
-	{"id": "serie3", "name": "Tre di fila", "desc": "Vinci 3 partite di fila.", "reward": {"kind": "table", "id": "pergamena", "name": "tavolo Pergamena"}},
+	{"id": "serie3", "name": "Tre di fila", "desc": "Vinci 3 partite di fila.", "reward": {"kind": "table", "id": "stellata", "name": "cielo Notte stellata"}},
 	{"id": "serie5", "name": "Cinque di fila", "desc": "Vinci 5 partite di fila."},
-	{"id": "difficile", "name": "Mente fina", "desc": "Batti il computer difficile.", "reward": {"kind": "table", "id": "corallo", "name": "tavolo Corallo"}},
+	{"id": "difficile", "name": "Mente fina", "desc": "Batti il computer difficile.", "reward": {"kind": "table", "id": "aurora", "name": "cielo Aurora"}},
 	{"id": "esploratore", "name": "Esploratore", "desc": "Gioca 100 terre in totale."},
 	{"id": "vittorie10", "name": "Dieci vittorie", "desc": "Vinci 10 partite.", "reward": {"kind": "back", "id": "stelle", "name": "dorso Stelle"}},
 	{"id": "difficile3", "name": "Tre volte il difficile", "desc": "Batti 3 volte il computer difficile."},
