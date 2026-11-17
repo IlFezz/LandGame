@@ -191,3 +191,29 @@ static func stars() -> String:
 	for i in 70:
 		s += "<circle cx=\"%.1f\" cy=\"%.1f\" r=\"%.2f\" fill=\"#ffffff\" opacity=\"%.2f\"/>" % [r.randf() * 400, r.randf() * 400, 0.4 + r.randf() * 0.9, 0.25 + r.randf() * 0.55]
 	return _svg(400, 400, s)
+
+
+## Icona dell'app (512×512): cielo al crepuscolo, un grande sole chiaro con l'alone, monti e colline
+## a strati con i colori delle terre. `full`: riempie tutto il quadrato (per l'icona adattiva di
+## Android, che taglia lei gli angoli); altrimenti quadrato con gli angoli tondi.
+static func app_icon(full := false) -> String:
+	var s := "<defs>"
+	s += "<linearGradient id=\"sky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#1d1f47\"/><stop offset=\".55\" stop-color=\"#5b3f6e\"/><stop offset=\"1\" stop-color=\"#c98181\"/></linearGradient>"
+	s += "<radialGradient id=\"halo\" cx=\".5\" cy=\".5\" r=\".5\"><stop offset=\"0\" stop-color=\"#ffe9c9\" stop-opacity=\".55\"/><stop offset=\"1\" stop-color=\"#ffe9c9\" stop-opacity=\"0\"/></radialGradient>"
+	s += "<clipPath id=\"r\"><rect width=\"512\" height=\"512\" rx=\"%d\"/></clipPath>" % (0 if full else 112)
+	s += "</defs><g clip-path=\"url(#r)\">"
+	s += "<rect width=\"512\" height=\"512\" fill=\"url(#sky)\"/>"
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	for i in 18:
+		s += "<circle cx=\"%.0f\" cy=\"%.0f\" r=\"%.1f\" fill=\"#ffffff\" opacity=\"%.2f\"/>" % [r.randf() * 512, r.randf() * 190, 1.2 + r.randf() * 1.6, 0.35 + r.randf() * 0.4]
+	s += "<circle cx=\"256\" cy=\"232\" r=\"150\" fill=\"url(#halo)\"/>"
+	s += "<circle cx=\"256\" cy=\"232\" r=\"82\" fill=\"#ffe3c2\"/>"
+	# monti (rosso Montagna), colline (viola Palude), mare (blu Isola), prato (verde Foresta)
+	s += "<path d=\"M-10 360 L120 214 L190 290 L256 220 L330 300 L400 236 L522 360 V512 H-10Z\" fill=\"#b3405a\"/>"
+	s += "<path d=\"M0 372 Q130 318 260 358 T512 344 V512 H0Z\" fill=\"#6a3a6e\"/>"
+	s += "<path d=\"M0 418 Q140 384 280 410 T512 404 V512 H0Z\" fill=\"#2f7fc0\"/>"
+	s += "<path d=\"M0 452 Q170 426 330 448 T512 446 V512 H0Z\" fill=\"#22744a\"/>"
+	s += "<path d=\"M0 484 Q200 466 512 482 V512 H0Z\" fill=\"#174e34\"/>"
+	s += "</g>"
+	return _svg(512, 512, s)

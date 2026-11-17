@@ -177,9 +177,18 @@ static func play(name: String) -> void:
 		p.ready.connect(p.play, CONNECT_ONE_SHOT)
 
 
-static func vibrate(ms: int) -> void:
-	if Prefs.get_value("vibrate") and OS.has_feature("mobile"):
-		Input.vibrate_handheld(ms)
+## Vibrazioni della partita, per forza: "light" (il tuo turno, un fumetto), "medium" (contrasto,
+## scarto, una terra che entra), "strong" (distruzione, terra annullata, avviso), "win", "lose".
+## Durano almeno 180 ms e sono a piena intensità: alcuni telefoni (per esempio OnePlus/Oppo)
+## trasformano le vibrazioni più brevi in un «tic» quasi impercettibile.
+const VIBES := {"light": [180, 0.7], "medium": [240, 0.9], "strong": [340, 1.0], "win": [520, 1.0], "lose": [300, 0.8]}
+
+
+static func vibrate(kind) -> void:
+	if not Prefs.get_value("vibrate") or not OS.has_feature("mobile"):
+		return
+	var v: Array = VIBES.get(kind, VIBES.medium) if kind is String else [maxi(90, int(kind) * 3), 1.0]
+	Input.vibrate_handheld(v[0], v[1])
 
 
 # ---------------- musica ----------------

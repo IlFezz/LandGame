@@ -2067,7 +2067,7 @@ func _show_over() -> void:
 	v.add_child(_btn("Torna alla home", "ghost_ink", func(): exit_requested.emit()))
 	_fit_sheet(v)
 	Sound.play("win" if won else "lose")
-	Sound.vibrate(60 if won else 30)
+	Sound.vibrate("win" if won else "lose")
 
 
 func _toast(msg: String) -> void:
@@ -2175,10 +2175,21 @@ func _animate(e: Dictionary) -> void:
 		Sound.play(EVENT_SOUND[t])
 	if t == "turn" and ev.player == me:
 		Sound.play("turn")
-	if t == "destroy" or t == "countered":
-		Sound.vibrate(40)
-	elif t == "counter" or (t == "turn" and ev.player == me):
-		Sound.vibrate(20)
+	# vibrazione negli eventi importanti
+	match t:
+		"destroy", "countered":
+			Sound.vibrate("strong")
+		"counter", "discard":
+			Sound.vibrate("medium")
+		"turn":
+			if ev.player == me:
+				Sound.vibrate("light")
+		"enter":
+			if ev.player == me:
+				Sound.vibrate("light")
+		"look":
+			if ev.player != me:
+				Sound.vibrate("medium")
 	match t:
 		"turn":
 			_apply(e)
@@ -2261,7 +2272,7 @@ func _animate(e: Dictionary) -> void:
 				caption_danger = true
 				_refresh_status(_task())
 				Sound.play("deny")
-				Sound.vibrate(60)
+				Sound.vibrate("strong")
 				await tree.create_timer(1.4).timeout
 				caption_danger = false
 		"destroy":
@@ -2536,7 +2547,7 @@ func _bubble(seat: int, i: int) -> void:
 			l.position = Vector2(stack_rect.end.x + 8, stack_rect.position.y + stack_rect.size.y * 0.42)
 	if w == "opp":
 		Sound.play("click")
-		Sound.vibrate(10)
+		Sound.vibrate("light")
 	var tw := l.create_tween()
 	tw.tween_interval(2.4)
 	tw.tween_property(l, "modulate:a", 0.0, 0.4)
