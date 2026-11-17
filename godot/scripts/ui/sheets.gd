@@ -15,8 +15,7 @@ static func sheet(host: Control, name: String, width := 400.0) -> VBoxContainer:
 	var veil := ColorRect.new()
 	veil.name = name
 	veil.color = Color(Art.TAVOLO2, 0.82)
-	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
-	veil.size = host.size
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # copre il genitore, qualunque misura abbia
 	host.add_child(veil)
 	var panel := PanelContainer.new()
 	var sb := Art.box(Art.CARTA, 16)
@@ -38,15 +37,35 @@ static func sheet(host: Control, name: String, width := 400.0) -> VBoxContainer:
 static func fit(v: VBoxContainer) -> void:
 	if not is_instance_valid(v):
 		return
-	var panel: PanelContainer = v.get_meta("panel")
-	var veil: Control = panel.get_parent()
-	var S := veil.size
-	var w := minf(float(v.get_meta("width")), S.x - 28)
+	fit_panel(v.get_meta("panel"), float(v.get_meta("width")))
+
+
+## Centra un foglio nel suo velo e, se non ci sta (in altezza o in larghezza), lo rimpicciolisce
+## tutto insieme: mai scorrere, mai uscire dallo schermo. Si ripete ai due fotogrammi successivi,
+## perché i testi a capo conoscono la loro altezza solo dopo aver ricevuto la larghezza.
+static func fit_panel(panel: Control, want_w: float) -> void:
+	_do_fit(panel, want_w)
+	var tree := panel.get_tree()
+	if tree == null:
+		return
+	tree.process_frame.connect(func(): _do_fit(panel, want_w), CONNECT_ONE_SHOT)
+	tree.create_timer(0.05).timeout.connect(func(): _do_fit(panel, want_w))
+
+
+static func _do_fit(panel: Control, want_w: float) -> void:
+	if not is_instance_valid(panel) or panel.get_parent() == null:
+		return
+	var S: Vector2 = (panel.get_parent() as Control).size
+	if S.x < 10 or S.y < 10:
+		return
+	var w := minf(want_w, S.x - 24)
+	panel.scale = Vector2.ONE
 	panel.custom_minimum_size.x = w
+	panel.size = Vector2(w, 0)
 	panel.reset_size()
 	var ps := panel.get_combined_minimum_size()
-	ps.x = w
-	var k := minf(1.0, (S.y - 24) / ps.y)
+	ps.x = maxf(ps.x, w)
+	var k := minf(1.0, minf((S.y - 24) / ps.y, (S.x - 24) / ps.x))
 	panel.pivot_offset = Vector2.ZERO
 	panel.scale = Vector2(k, k)
 	panel.size = ps
@@ -91,6 +110,7 @@ static func rich(bbcode: String, fs := 14) -> RichTextLabel:
 	for f in ["normal_font_size", "bold_font_size", "italics_font_size"]:
 		r.add_theme_font_size_override(f, fs)
 	r.add_theme_color_override("default_color", Art.INK)
+	r.add_theme_constant_override("line_separation", 3)
 	r.text = bbcode
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r
@@ -138,7 +158,7 @@ static func goals(host: Control) -> void:
 			n += 1
 	v.add_child(para("%d di %d raggiunti. Alcuni sbloccano dorsi e tavoli nella Collezione." % [n, Profile.GOALS.size()], 14))
 	var grid := GridContainer.new()
-	grid.columns = 2
+	grid.columns = 2 if host.size.x >= 480 else 1
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 6)
 	for g in Profile.GOALS:
@@ -148,8 +168,9 @@ static func goals(host: Control) -> void:
 		var mark := W.label("✓" if got.has(g.id) else "·", 15, Art.LAND.G if got.has(g.id) else Color(Art.INK, 0.3), Art.bold())
 		mark.custom_minimum_size.x = 14
 		row.add_child(mark)
-		var txt := W.label("%s\n%s%s" % [g.name, g.desc, ("  Premio: " + g.reward.name) if g.has("reward") else ""], 11, Art.INK if got.has(g.id) else Color(Art.INK, 0.6))
-		txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		# nome in grassetto, sotto la descrizione e l'eventuale premio
+		var txt := rich("[b]%s[/b]\n%s%s" % [g.name, g.desc, ("  [i]Premio: %s[/i]" % g.reward.name) if g.has("reward") else ""], 12)
+		txt.modulate.a = 1.0 if got.has(g.id) else 0.6
 		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		txt.custom_minimum_size.x = 160
 		row.add_child(txt)

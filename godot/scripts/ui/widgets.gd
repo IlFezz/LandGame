@@ -219,20 +219,29 @@ class Backs extends Control:
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	signal width_changed
+
 	func set_count(n: int) -> void:
 		if n != count:
 			count = n
 			queue_redraw()
+			width_changed.emit()
 
 	func fan_rect() -> Rect2:
 		return Rect2(position, Vector2(size.x * 0.6, size.y))
+
+	## Larghezza che serve davvero: ventaglio di `count` dorsi più il segnalino col numero.
+	func needed_width() -> float:
+		var k := mini(count, 10)
+		var tw := Art.bold().get_string_size(str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		return bw * 0.9 + maxf(k, 1) * bw * 0.45 + bw * 0.9 + maxf(fs * 1.76, tw + 12) + 2
 
 	func _draw() -> void:
 		var k := mini(count, 10)
 		var mid := (k - 1) / 2.0
 		var step := 7.0 if k > 6 else 10.0
 		var bh := bw * 1.4
-		var x0 := bw * 0.6
+		var x0 := bw * 0.9  # le carte esterne ruotano verso sinistra: margine
 		var base_y := size.y / 2 + bh * 0.45
 		for i in k:
 			var x := x0 + i * bw * 0.45

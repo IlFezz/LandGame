@@ -258,7 +258,7 @@ func t_full_game():
 
 ## Nessun elemento del tavolo esce dallo schermo o si sovrappone a un altro.
 func t_layouts():
-	for sz in [Vector2(390, 844), Vector2(360, 640), Vector2(844, 390), Vector2(667, 375), Vector2(1024, 768),
+	for sz in [Vector2(354, 792), Vector2(792, 354), Vector2(390, 844), Vector2(360, 640), Vector2(844, 390), Vector2(667, 375), Vector2(1024, 768),
 			Vector2(768, 1024), Vector2(1280, 720), Vector2(1920, 1080), Vector2(2560, 1080)]:
 		await _new_table({"h0": ["W", "U", "B", "R", "G", "G", "U", "W"]}, sz)
 		var boxes := {}
@@ -277,6 +277,12 @@ func t_layouts():
 			var hr := Rect2(c.position, c.size)
 			hand = hr if hand.size == Vector2.ZERO else hand.merge(hr)
 		boxes["mano"] = hand.grow(-4)
+		# i nomi non devono ridursi a poche lettere
+		for w in ["opp", "me"]:
+			var z = t.zones[w]
+			var full: float = z.name.get_theme_font("font").get_string_size(z.name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(t._fs.name)).x
+			if z.name.size.x < minf(full, 60.0):
+				failures.append("%s: il nome di %s è tagliato troppo (%d punti)" % [sz, w, int(z.name.size.x)])
 		var screen := Rect2(Vector2.ZERO, sz)
 		var keys := boxes.keys()
 		for i in keys.size():

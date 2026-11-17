@@ -109,7 +109,7 @@ func _layout() -> void:
 		b.add_theme_constant_override("icon_max_width", 24)  # l'immagine è più grande sugli schermi densi
 		b.custom_minimum_size = Vector2(tab_w, tab_h)
 		b.add_theme_font_override("font", Art.bold() if on else Art.sans())
-		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_font_size_override("font_size", 11 if w < 400 else 12)
 		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 			b.add_theme_color_override(c, col)
 		var id: String = t[0]
@@ -350,7 +350,7 @@ func _challenges_pane() -> Control:
 	var days := ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"]
 	var months := ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 	var nice := "%s %d %s" % [days[d.weekday], d.day, months[d.month - 1]]
-	var sub := W.label("%s: stessa partenza per tutti, vinci nel minor numero di turni." % nice.substr(0, 1).to_upper() + nice.substr(1), 13, Color(Art.CARTA, 0.75), Art.serif())
+	var sub := W.label("%s: stessa partenza per tutti, vinci nel minor numero di turni." % (nice.substr(0, 1).to_upper() + nice.substr(1)), 13, Color(Art.CARTA, 0.75), Art.serif())
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.custom_minimum_size.x = 200
 	cv.add_child(sub)
@@ -367,13 +367,13 @@ func _challenges_pane() -> Control:
 			n += 1
 	v.add_child(Sheets.h4("Sfide a tema   %d/%d" % [n, Modes.CHALLENGES.size()]))
 	for c in Modes.CHALLENGES:
-		var b := Button.new()
-		b.focus_mode = Control.FOCUS_NONE
+		# riquadro che cresce con il testo (un Button non si allarga per i figli)
+		var b := PanelContainer.new()
 		var bs := Art.box(Color("#fffaf0"), 12, Color(Art.INK, 0.12), 1.5)
 		for m in ["left", "right", "top", "bottom"]:
 			bs.set("content_margin_" + m, 10)
-		for st in ["normal", "hover", "pressed"]:
-			b.add_theme_stylebox_override(st, bs)
+		b.add_theme_stylebox_override("panel", bs)
+		b.mouse_filter = Control.MOUSE_FILTER_STOP
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 10)
 		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -387,12 +387,10 @@ func _challenges_pane() -> Control:
 		h.add_child(txt)
 		h.add_child(W.label("turno %d" % done[c.id] if done.has(c.id) else "›", 13, Color(Art.INK, 0.7), Art.bold()))
 		b.add_child(h)
-		h.set_anchors_preset(Control.PRESET_FULL_RECT)
-		h.offset_left = 10
-		h.offset_right = -10
-		b.custom_minimum_size.y = 52
 		var id: String = c.id
-		b.pressed.connect(func(): play_challenge.emit(id))
+		b.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and not e.pressed:
+				play_challenge.emit(id))
 		v.add_child(b)
 	return v
 

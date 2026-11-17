@@ -92,6 +92,7 @@ var peek_layer: Control
 var _press = null  # { card(view), idx, pos, t, moved, from }
 var _drag = null  # { view, idx, grab }
 var _hover_idx := -1
+var tut_idx := -1  # carta da giocare indicata dal tutorial: sta sollevata e dritta
 var _play_from := Rect2()  # da dove parte il volo della carta giocata (dove è stata lasciata)
 
 
@@ -551,10 +552,10 @@ func _place_head_row(w: String, r: Rect2) -> void:
 	z.deck.position = Vector2(x, r.position.y)
 	z.deck.size = Vector2(dw, h)
 	if w == "opp":
-		var bwid: float = z.backs.bw * 7.5 + _fs.small * 2.5
-		x -= bwid + 10
-		z.backs.position = Vector2(x, r.position.y)
-		z.backs.size = Vector2(bwid, h)
+		# i dorsi vanno subito dopo il nome: _fit_name li sistema secondo quante carte ci sono
+		z.backs.position.y = r.position.y
+		z.backs.size.y = h
+	z.row = true
 	_place_name(w, Vector2(r.position.x + 4, r.position.y), x - r.position.x - 16, h)
 
 
@@ -565,15 +566,39 @@ func _place_name(w: String, pos: Vector2, width: float, h: float) -> void:
 	var nh: float = _fs.name * 1.4
 	z.name.position = pos + Vector2(16, (h - nh) / 2)
 	var nearw: float = _fs.small * 1.45
-	var namew: float = z.name.get_theme_font("font").get_string_size(z.name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.name)).x + 2
-	z.name.size = Vector2(minf(namew, maxf(10, width - 16 - nearw - 6)), nh)
+	# spazio per il nome: tolti il segnale «!» e (per me) il pulsante delle reazioni
+	z.name_max = maxf(10, width - 16 - nearw - 6 - (40.0 if w == "me" and z.get("row", false) else 0.0))
+	z.name.size = Vector2(z.name_max, nh)
 	z.near.size = Vector2(nearw, nearw)
-	z.near.position = Vector2(z.name.position.x + z.name.size.x + 6, pos.y + (h - nearw) / 2)
+	z.near.position.y = pos.y + (h - nearw) / 2
+	_fit_name(w)
+
+
+## Il nome prende la sua larghezza (tagliato con «…» se non ci sta); il «!» va subito dopo.
+func _fit_name(w: String) -> void:
+	var z = zones[w]
+	if not z.has("name_max"):
+		return
+	var room: float = z.name_max
+	var backs_w := 0.0
+	if w == "opp" and z.get("row", false):
+		backs_w = z.backs.needed_width()
+		room -= backs_w + 8
+	var namew: float = z.name.get_theme_font("font").get_string_size(z.name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.name)).x + 2
+	z.name.size.x = minf(namew, maxf(24, room))
+	z.near.position.x = z.name.position.x + z.name.size.x + 6
+	if backs_w > 0:
+		var after: float = z.name.position.x + z.name.size.x + 8
+		if z.near.visible:
+			after = z.near.position.x + z.near.size.x + 8
+		z.backs.position.x = after
+		z.backs.size.x = backs_w
 
 
 ## Intestazione in colonna (PC e telefono orizzontale): nome, dorsi, mazzo, cimitero uno sotto l'altro.
 func _place_head_col(w: String, r: Rect2) -> void:
 	var z = zones[w]
+	z.row = false
 	# l'avversario ha una riga in più (i dorsi): se a lui non basta lo spazio, entrambi in forma compatta
 	var rows: Array = [_fs.name * 1.5, _fs.small * 2.3, _fs.small * 2.0, _fs.gy_h]
 	var gap := maxf(4.0, r.size.y * 0.06)
@@ -605,6 +630,7 @@ func _place_head_col(w: String, r: Rect2) -> void:
 ## Testa a colonna stretta: nome, dorsi, poi mazzo e cimitero affiancati.
 func _place_head_compact(w: String, r: Rect2) -> void:
 	var z = zones[w]
+	z.row = false
 	var rows: Array = [_fs.name * 1.5]
 	if w == "opp":
 		rows.append(_fs.small * 2.2)
@@ -648,7 +674,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 		hw = minf(17.5 * vw, 12 * vh) * k
 		cw = (minf(28 * vw, 17 * vh) if tablet else minf(26 * vw, 13.5 * vh)) * k
 		var hand_h := hw * 1.4 + 26
-		var fixed := 4 + top_h + gap + zh + 6 + sw * 1.4 + gap + gap + sw * 1.4 + 6 + zh + gap + hand_h + 4
+		var fixed := 4 + top_h + gap + zh + 6 + sw * 1.4 + gap + gap + sw * 1.4 + 6 + zh + gap + hand_h + 12
 		var need: float = cw * 1.4 + _fs.status * 2 + _fs.btn * 6
 		if S.y - fixed >= need or k < 0.55:
 			break
@@ -666,7 +692,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	_place_bf("opp", x0, inner, y, 1.8 * vw)
 	y += sw * 1.4 + gap
 	var hand_h := hw * 1.4 + 26
-	var bottom := S.y - 4 - hand_h
+	var bottom := S.y - (12.0 if OS.has_feature("mobile") else 4.0) - hand_h  # sul telefono: lontano dal bordo curvo
 	hand_rect = Rect2(x0, bottom, inner, hand_h)
 	var me_head_y := bottom - gap - zh
 	_place_head_row("me", Rect2(x0, me_head_y, inner, zh))
@@ -682,7 +708,7 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	var act_h := maxf(60.0, free)
 	var start := c_top + maxf(0, (center_rect.size.y - 8 - used - minf(act_h, _actions_min_h())) / 2)
 	stack_rect.position.y = start
-	status_label.position = Vector2(x0, start + cw * 1.4 + 6)
+	status_label.position = Vector2(x0, start + cw * 1.4 + 10)
 	status_label.size = Vector2(inner, st_h)
 	actions.position = Vector2(x0, status_label.position.y + st_h + 8)
 	actions.size = Vector2(inner, center_rect.end.y - actions.position.y)
@@ -883,10 +909,7 @@ func _refresh() -> void:
 	# il nome può essere cambiato di lunghezza: riposiziona il segnale "vicino alla vittoria"
 	if not _fs.is_empty():
 		for w in ["opp", "me"]:
-			var z = zones[w]
-			var namew: float = z.name.get_theme_font("font").get_string_size(z.name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.name)).x + 2
-			z.name.size.x = minf(namew, maxf(z.name.size.x, namew))
-			z.near.position.x = z.name.position.x + z.name.size.x + 6
+			_fit_name(w)
 	_refresh_stack()
 	_refresh_status(task)
 	_refresh_actions(task)
@@ -1274,15 +1297,21 @@ func _place_hand(animate: bool) -> void:
 		var rot: float = pos[k].rot
 		var lift := 0.0
 		var scl := 1.0
-		if (sel != null and sel.idx == i) or (counter_mode and c.ring == Art.ROSSO):
+		if (sel != null and sel.idx == i) or (counter_mode and c.ring == Art.ROSSO) or i == tut_idx:
 			lift = 18.0
 			scl = 1.06
+			if i == tut_idx:
+				rot = 0.0
 		elif i == _hover_idx:
 			lift = 14.0
 			scl = 1.08
 			rot = 0.0
 		c.z_index = 40 if lift > 0 else i
+		# la carta sollevata non deve salire sopra il campo (telefono in orizzontale)
+		lift = minf(lift, maxf(0.0, p.y - hand_rect.position.y - hw * 0.14))
 		var target_pos := p - Vector2(0, lift)
+		# dove finirà la carta (posizione, rotazione, scala): serve a chi la deve cerchiare
+		c.set_meta("fan", {"pos": target_pos, "rot": rot, "scale": scl})
 		if animate and c.position != Vector2.ZERO:
 			var tw := c.create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 			tw.tween_property(c, "position", target_pos, 0.2)
@@ -1624,23 +1653,36 @@ func _show_reveal() -> void:
 	var cards: Array = V.choice.revealed
 	var title := W.label("Mano di %s" % V.opp.name, 20, Art.TESTO, Art.bold())
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var n := maxi(3, cards.size())
-	var w := minf((size.x - 40 - (n - 1) * 10) / n, size.y * 0.3)
-	var total := cards.size() * w + (cards.size() - 1) * 10
-	var y := (size.y - w * 1.4) / 2
+	# su più righe se così le carte vengono più grandi (sul telefono con tante carte)
+	var n: int = cards.size()
+	var rows := 1
+	var per := maxi(n, 1)
+	var w := 0.0
+	for r in [1, 2, 3]:
+		var c := int(ceil(float(n) / r))
+		var wr := minf((size.x - 40 - (maxi(c, 3) - 1) * 10) / maxi(c, 3), minf(size.y * 0.3, (size.y - 170 - (r - 1) * 12) / r / 1.4))
+		if wr > w + 4:
+			w = wr
+			rows = r
+			per = c
+	var block := rows * w * 1.4 + (rows - 1) * 12
+	var y := (size.y - block) / 2
 	title.position = Vector2(0, y - 54)
 	title.size = Vector2(size.x, 30)
 	veil.add_child(title)
 	var sub := W.label("Tocca la terra da far scartare", 15, Art.MUTO, Art.serif())
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.position = Vector2(0, y + w * 1.4 + 18)
+	sub.position = Vector2(0, y + block + 18)
 	sub.size = Vector2(size.x, 24)
 	veil.add_child(sub)
 	for i in cards.size():
 		var b := Button.new()
 		b.flat = true
 		b.focus_mode = Control.FOCUS_NONE
-		b.position = Vector2((size.x - total) / 2 + i * (w + 10), y)
+		var row := i / per
+		var in_row := mini(per, n - row * per)
+		var total := in_row * w + (in_row - 1) * 10
+		b.position = Vector2((size.x - total) / 2 + (i % per) * (w + 10), y + row * (w * 1.4 + 12))
 		b.size = Vector2(w, w * 1.4)
 		var c := Card.new()
 		c.kind = cards[i]
@@ -1678,17 +1720,7 @@ func _sheet(name: String) -> VBoxContainer:
 
 
 func _fit_sheet(v: VBoxContainer) -> void:
-	var panel: PanelContainer = v.get_meta("panel")
-	var w := minf(400.0, size.x - 28)
-	panel.custom_minimum_size.x = w
-	panel.reset_size()
-	var ps := panel.get_combined_minimum_size()
-	ps.x = w
-	# se non ci sta in altezza si rimpicciolisce tutto insieme (mai scorrere)
-	var k := minf(1.0, (size.y - 28) / ps.y)
-	panel.scale = Vector2(k, k)
-	panel.size = ps
-	panel.position = (size - ps * k) / 2
+	Sheets.fit_panel(v.get_meta("panel"), 400.0)
 
 
 func _open_menu(confirm_exit := false) -> void:
@@ -2175,6 +2207,10 @@ func _draw_arrow() -> void:
 func _place_react() -> void:
 	var z = zones.me
 	react_btn.size = Vector2(34, 30)
+	if not z.get("row", false):
+		# intestazione in colonna: accanto al segnalino del cimitero
+		react_btn.position = Vector2(z.gy.position.x + z.gy.size.x + 6, z.gy.position.y + (z.gy.size.y - 30) / 2)
+		return
 	var x: float = z.name.position.x + z.name.size.x + 6
 	if z.near.visible:
 		x = z.near.position.x + z.near.size.x + 6
@@ -2266,3 +2302,19 @@ func _bot_reacts(evs: Array) -> void:
 	if i != null:
 		var idx: int = i
 		get_tree().create_timer(0.4).timeout.connect(func(): if is_instance_valid(self): _bubble(bot.p, idx))
+
+
+## Il rettangolo (dritto) che contiene la carta in mano dove andrà a fermarsi.
+func hand_card_rect(c: Control) -> Rect2:
+	var f: Dictionary = c.get_meta("fan", {"pos": c.position, "rot": c.rotation_degrees, "scale": c.scale.x})
+	var sz: Vector2 = c.size * f.scale
+	var r := Rect2(f.pos + Vector2((c.size.x - sz.x) / 2, c.size.y - sz.y), sz)
+	if absf(f.rot) > 0.01:
+		# carta ruotata attorno al centro del lato in basso: il rettangolo che la contiene
+		var piv: Vector2 = f.pos + Vector2(c.size.x / 2, c.size.y)
+		var pts := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+		var out := Rect2(piv, Vector2.ZERO)
+		for q in pts:
+			out = out.expand(piv + (q - piv).rotated(deg_to_rad(f.rot)))
+		return out
+	return r

@@ -63,6 +63,7 @@ func _ready() -> void:
 	_text.add_theme_font_override("normal_font", Art.sans())
 	_text.add_theme_font_override("bold_font", Art.bold())
 	_text.add_theme_color_override("default_color", Art.INK)
+	_text.add_theme_constant_override("line_separation", 4)
 	_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(_text)
 	var row := HBoxContainer.new()
@@ -301,6 +302,9 @@ func update() -> void:
 		return
 	size = t.size
 	var P = shown()
+	if t.tut_idx != -1 and (P == null or not P.has("card")):
+		t.tut_idx = -1
+		t._place_hand(true)
 	_rings = []
 	_tag_rect = Rect2()
 	visible = P != null
@@ -354,21 +358,25 @@ func _highlight(P: Dictionary) -> void:
 			if arg == "":
 				var r := Rect2()
 				for c in t.hand_cards:
-					var cr := Rect2(c.position, c.size)
+					var cr: Rect2 = t.hand_card_rect(c)
 					r = cr if r.size == Vector2.ZERO else r.merge(cr)
 				_rings.append(r.grow(6))
 			else:
-				for c in t.hand_cards:
+				for i in t.hand_cards.size():
+					var c: Control = t.hand_cards[i]
 					if c.kind == arg and c.visible:
 						# la carta da usare si alza e porta l'etichetta; le altre si spengono
 						if P.has("card"):
 							for o in t.hand_cards:
 								if o != c:
 									o.modulate.a = 0.45
-							c.position.y = minf(c.position.y, t._fan_positions(t.hand_cards.size())[0].pos.y - 14)
-							c.rotation_degrees = 0
-							_tag_rect = Rect2(c.position + Vector2(0, -26), Vector2(c.size.x, 22))
-						_rings.append(Rect2(c.position, c.size).grow(5))
+							if t.tut_idx != i:
+								t.tut_idx = i
+								t._place_hand(true)
+						var cr: Rect2 = t.hand_card_rect(c)
+						if P.has("card"):
+							_tag_rect = Rect2(cr.position + Vector2(0, -28), Vector2(cr.size.x, 22))
+						_rings.append(cr.grow(5))
 						break
 		"bf":
 			var z = t.zones[arg]
@@ -397,7 +405,9 @@ func _buttons(n: Node) -> Array:
 
 func _draw() -> void:
 	var k := 0.5 + 0.5 * sin(_t * TAU)
-	for r in _rings:
+	var screen := Rect2(Vector2(4, 4), size - Vector2(8, 8))
+	for r0 in _rings:
+		var r: Rect2 = r0.intersection(screen)
 		draw_style_box(Art.box(Color(0, 0, 0, 0), 12, Color(Art.SEGNALE, 0.35 + 0.35 * k), 3), r.grow(4))
 		draw_style_box(Art.box(Color(0, 0, 0, 0), 10, Art.SEGNALE, 3), r)
 	if _tag_rect.has_area():
