@@ -42,7 +42,7 @@ func _init(table) -> void:
 
 func _ready() -> void:
 	_panel = PanelContainer.new()
-	var sb := Art.box(Art.FOGLIO, 18, Color(Art.SEGNALE, 0.55), 1.5)
+	var sb := Art.box(Art.FOGLIO, 18, Color(1, 1, 1, 0.22), 1.0)
 	for m in ["left", "right", "top", "bottom"]:
 		sb.set("content_margin_" + m, 14)
 	sb.shadow_color = Art.OMBRA

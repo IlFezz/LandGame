@@ -243,7 +243,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	av.custom_minimum_size = Vector2(54, 54)
 	var initial: String = (a.name as String).strip_edges().substr(0, 1).to_upper()
 	av.draw.connect(func():
-		av.draw_circle(Vector2(27, 27), 27, Art.SEGNALE)
+		av.draw_circle(Vector2(27, 27), 27, Color(1, 1, 1, 0.5))
 		av.draw_circle(Vector2(27, 27), 25, Art.CARTA)
 		av.draw_circle(Vector2(27, 27), 22, Color("#3d3577"))
 		var f := Art.bold()

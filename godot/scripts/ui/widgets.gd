@@ -39,9 +39,9 @@ static func style_button(b: Button, kind: String, fs: int) -> void:
 			fg = Color.WHITE
 			border = Art.ROSSO
 		"full":
-			fill = Art.SEGNALE
+			fill = Art.CARTA
 			fg = Art.INK
-			border = Art.SEGNALE
+			border = Art.CARTA
 	var pad_x := fs * 1.4
 	var pad_y := fs * 0.8
 	var rad := fs * 1.36  # pillola: angoli tondi poco meno di metà altezza (se no si vede una giuntura)
@@ -185,7 +185,7 @@ class Slot extends Control:
 		if missing and count == 0:
 			Art.draw_text_centered(self, Art.semi(), Art.NAMES[land], Vector2(size.x / 2, y), int(fs * 0.8), Art.AZZURRO)
 		else:
-			var col := Art.SEGNALE if count >= 4 else (Art.TESTO if count > 0 else Color(Art.TESTO, 0.45))
+			var col := Art.TESTO if count > 0 else Color(Art.TESTO, 0.45)
 			Art.draw_text_centered(self, Art.bold() if count > 0 else Art.sans(), str(count), Vector2(size.x / 2, y), fs, col)
 
 	func _dashed(r: Rect2, rad: float, col: Color, w: float) -> void:
@@ -358,9 +358,13 @@ class Backs extends Control:
 			return
 		var k := mini(count, 8)
 		var mid := (k - 1) / 2.0
+		# passo tra le carte: si stringono se lo spazio è poco
+		var step := cw * 0.5
+		if k > 1:
+			step = minf(step, (size.x - cw - fs * 1.2) / (k - 1))
 		for i in k:
 			var ang := deg_to_rad((i - mid) * 5.0)
-			var c := Vector2(cw / 2 + i * cw * 0.5, 4 + cw * 0.7 + absf(i - mid) * 1.2)
+			var c := Vector2(cw / 2 + i * step, 4 + cw * 0.7 + absf(i - mid) * 1.2)
 			draw_set_transform(c, ang)
 			var r := Rect2(-Vector2(cw, cw * 1.4) / 2, Vector2(cw, cw * 1.4))
 			var sh := Art.box(Color(0, 0, 0, 0), cw * 0.11)
@@ -369,7 +373,7 @@ class Backs extends Control:
 			draw_style_box(sh, r)
 			Art.draw_tex(self, "bk-" + Art.BACK, r)
 		draw_set_transform(Vector2.ZERO)
-		var end_x := cw + maxi(k - 1, 0) * cw * 0.5
+		var end_x := cw + maxi(k - 1, 0) * step
 		Art.draw_count(self, Vector2(end_x - fs * 0.3, size.y - fs * 0.85), count, int(fs * 0.9))
 
 
@@ -534,7 +538,7 @@ class Rays extends Control:
 			strength = v
 			queue_redraw()
 	var radius := 300.0
-	var color := Color("#ffd27a")
+	var color := Color("#ffffff")
 	var _a := 0.0
 
 	func _init() -> void:

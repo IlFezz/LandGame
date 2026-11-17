@@ -47,6 +47,7 @@ var _last_tick := -1
 var timer_bar: Control
 var arrow_layer: Control
 var react_btn: Button
+var bubble_layer: Control
 var _react_last := 0
 var _me_bot: Bot
 
@@ -82,6 +83,8 @@ var unstage_btn: Button
 var ctr_label: Label
 var status_label: Label
 var actions: VBoxContainer
+var hints: VBoxContainer  # spiegazioni sulla plancia (sotto la scritta di stato)
+var _actions_base := Vector2.ZERO  # PC e telefono orizzontale: spiegazioni e pulsanti in colonna da qui
 var hand_layer: Control
 var hand_cards: Array = []  # CardView in mano, nello stesso ordine di V.hand
 var fly_layer: Control
@@ -170,6 +173,11 @@ func _build() -> void:
 	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(status_label)
+	hints = VBoxContainer.new()
+	hints.alignment = BoxContainer.ALIGNMENT_BEGIN
+	hints.add_theme_constant_override("separation", 2)
+	hints.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(hints)
 	actions = VBoxContainer.new()
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	actions.add_theme_constant_override("separation", 8)
@@ -201,6 +209,10 @@ func _build() -> void:
 	peek_layer = Control.new()
 	peek_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(peek_layer)
+	bubble_layer = Control.new()  # i fumetti delle reazioni: sopra a tutto, mai coperti dalle carte
+	bubble_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bubble_layer)
+	move_child(bubble_layer, overlay_layer.get_index())  # sopra le carte, sotto menu e finestre
 
 
 # =====================================================================
@@ -491,14 +503,7 @@ func _layout() -> void:
 	center_frame.size = center_rect.size
 	arrow_layer.size = S
 	# barra del tempo: sotto la barra in alto (telefono verticale) o lungo il bordo superiore
-	if lay == "portrait":
-		# in cima allo spazio centrale, tra il campo dell'avversario e la carta: lì non c'è nulla
-		var tw := minf(center_rect.size.x * 0.7, 260.0)
-		timer_bar.position = Vector2(center_rect.get_center().x - tw / 2, center_rect.position.y + 2)
-		timer_bar.size = Vector2(tw, 16)
-	else:
-		timer_bar.position = Vector2(0, 0)
-		timer_bar.size = Vector2(S.x, maxf(12, 1.8 * vh))
+	_place_timer()
 	_place_react()
 	_place_hand(false)
 
@@ -594,6 +599,8 @@ func _fit_name(w: String) -> void:
 	if not z.has("name_max"):
 		return
 	var room: float = z.name_max
+	if not z.near.visible:
+		room += z.near.size.x + 6  # il «!» non c'è: il nome può usare anche il suo posto
 	var namew: float = z.name.get_theme_font("font").get_string_size(z.name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.name)).x + 2
 	z.name.size.x = minf(namew, maxf(24, room))
 	z.near.position.x = z.name.position.x + z.name.size.x + 6
@@ -603,32 +610,33 @@ func _fit_name(w: String) -> void:
 func _place_head_col(w: String, r: Rect2) -> void:
 	var z = zones[w]
 	z.row = false
-	# l'avversario ha una riga in più (i dorsi): se a lui non basta lo spazio, entrambi in forma compatta
-	var rows: Array = [_fs.name * 1.5, _fs.small * 2.3, _fs.small * 2.0, _fs.gy_h]
-	var gap := maxf(4.0, r.size.y * 0.06)
-	var total := 0.0
-	for h in rows:
-		total += h
-	total += gap * (rows.size() - 1)
-	if total > r.size.y:
+	# nome; sotto le carte coperte (mano dell'avversario e mazzo) abbastanza grandi da vedere il
+	# dorso; sotto ancora il cimitero
+	var name_h: float = _fs.name * 1.5
+	var gyh: float = _fs.gy_h
+	var gap := 6.0
+	var H := clampf(r.size.y - name_h - gap, 34.0, 74.0)
+	var total := name_h + gap + H
+	if total > r.size.y + 4:
 		_place_head_compact(w, r)
 		return
-	if w != "opp":
-		rows.remove_at(1)
 	var y := r.position.y + maxf(0, (r.size.y - total) / 2)
-	_place_name(w, Vector2(r.position.x, y), r.size.x, rows[0])
-	y += rows[0] + gap
-	var i := 1
+	_place_name(w, Vector2(r.position.x, y), r.size.x, name_h)
+	y += name_h + gap
+	var x := r.position.x
 	if w == "opp":
-		z.backs.position = Vector2(r.position.x, y)
-		z.backs.size = Vector2(minf(r.size.x, z.backs.bw * 7.5 + _fs.small * 2.5), rows[i])
-		y += rows[i] + gap
-		i += 1
-	z.deck.position = Vector2(r.position.x + 2, y)
-	z.deck.size = Vector2(minf(r.size.x, z.deck.needed_width()), rows[i])
-	y += rows[i] + gap
-	z.gy.position = Vector2(r.position.x, y)
-	z.gy.size = Vector2(z.gy.needed_width(), _fs.gy_h)
+		z.backs.size = Vector2(0, H)
+		var bw: float = minf(z.backs.needed_width(), r.size.x - z.deck.needed_width() - z.gy.needed_width() - 24)
+		z.backs.position = Vector2(x, y)
+		z.backs.size = Vector2(bw, H)
+		x += bw + 10
+	z.deck.size = Vector2(0, H)
+	z.deck.position = Vector2(x, y)
+	z.deck.size = Vector2(z.deck.needed_width(), H)
+	x += z.deck.size.x + 10
+	# il cimitero accanto al mazzo, centrato sulla riga delle carte
+	z.gy.position = Vector2(x, y + (H - gyh) / 2)
+	z.gy.size = Vector2(z.gy.needed_width(), gyh)
 
 
 ## Testa a colonna stretta: nome, dorsi, poi mazzo e cimitero affiancati.
@@ -713,16 +721,22 @@ func _layout_portrait(S: Vector2, vw: float, vh: float) -> void:
 	var me_bf_y := me_head_y - 4 - sw * 1.32
 	_place_bf("me", x0, inner, me_bf_y, 1.8 * vw)
 	center_rect = Rect2(x0, y, inner, me_bf_y - gap - y)
-	# carta, stato e azioni in colonna, centrati nello spazio libero tra i due campi
-	var st_h: float = _fs.status * 2.6
-	var block := cw * 1.4 + 10 + st_h + 6 + _actions_min_h()
-	# sopra la carta resta la striscia del tempo (20 punti)
-	var start := center_rect.position.y + maxf(24, (center_rect.size.y - block) / 2)
-	stack_rect = Rect2(center_rect.get_center().x - cw / 2, start, cw, cw * 1.4)
-	status_label.position = Vector2(x0, stack_rect.end.y + 10)
+	# in alto lo stato («Tocca a te») con il tempo accanto e sotto le spiegazioni; poi la carta e i
+	# pulsanti. Così vicino al mio campo non c'è testo.
+	var st_h: float = _fs.status * 2.2
+	status_label.position = Vector2(x0, center_rect.position.y + 2)
 	status_label.size = Vector2(inner, st_h)
 	_status_h = st_h
-	actions.position = Vector2(x0, status_label.position.y + st_h + 6)
+	var hint_h: float = _fs.status * 2.9
+	hints.position = Vector2(x0 + 8, status_label.position.y + st_h)
+	hints.size = Vector2(inner - 16, hint_h)
+	var top_used := st_h + hint_h + 8
+	var btn_h: float = _fs.btn * 3.4
+	var room := center_rect.size.y - top_used - btn_h - 10
+	cw = minf(cw, room / 1.4)
+	var cy := center_rect.position.y + top_used + maxf(0, (room - cw * 1.4) / 2)
+	stack_rect = Rect2(center_rect.get_center().x - cw / 2, cy, cw, cw * 1.4)
+	actions.position = Vector2(x0, stack_rect.end.y + 10)
 	actions.size = Vector2(inner, center_rect.end.y - actions.position.y)
 	actions.alignment = BoxContainer.ALIGNMENT_BEGIN
 
@@ -769,8 +783,10 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	_status_h = st_h
 	var ax := cc.x + cw * 0.5 + 3.5 * vw
 	var aw := minf(minf(30 * vw, 420.0), S.x - ax - side)
-	actions.position = Vector2(ax, center_rect.position.y)
-	actions.size = Vector2(aw, center_rect.size.y)
+	# spiegazioni e pulsanti a destra della carta, dalla sua altezza (sotto la scritta di stato)
+	actions.position = Vector2(ax, stack_rect.position.y + 6)
+	actions.size = Vector2(aw, center_rect.end.y - stack_rect.position.y - 6)
+	_actions_base = actions.position
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	# menu in alto a destra, modalità in basso a sinistra
 	var mb := Vector2(maxf(44, 6 * vh), maxf(36, 4.8 * vh))
@@ -820,6 +836,7 @@ func _layout_side(S: Vector2, vw: float, vh: float) -> void:
 	_status_h = st_h
 	actions.position = Vector2(center_rect.position.x, status_label.position.y + st_h + vh)
 	actions.size = Vector2(center_rect.size.x, center_rect.end.y - actions.position.y)
+	_actions_base = actions.position
 	actions.alignment = BoxContainer.ALIGNMENT_BEGIN
 	menu_btn.position = Vector2(S.x - vw - 38, 17)
 	menu_btn.size = Vector2(38, 28)
@@ -929,7 +946,6 @@ func _refresh() -> void:
 	_refresh_stack()
 	_refresh_status(task)
 	_refresh_actions(task)
-	_fit_actions.call_deferred()
 	_sync_hand(task)
 	center_frame.queue_redraw()
 	if task == "choice" and V.choice.kind == "discard":
@@ -976,7 +992,7 @@ func _refresh_stack() -> void:
 			# contrasto è stato a sua volta contrastato, «Torna in gioco» (oro)
 			var neg: bool = p.counters % 2 == 1
 			stack_card.stamp = "Contrastata" if neg else "Torna in gioco"
-			stack_card.stamp_color = Art.LAND.U if neg else Art.SEGNALE2
+			stack_card.stamp_color = Art.LAND.U if neg else Art.LAND.G
 			stack_card.stamp_n = p.counters
 	else:
 		stack_card.visible = false
@@ -1023,38 +1039,31 @@ func _status() -> Dictionary:
 
 
 func _refresh_status(_task_now: String) -> void:
+	# una sola scritta, sempre uguale: grassetto, stessa misura, senza sfondo. Cambia solo il colore
+	# (chiaro per te e per le didascalie, tenue per l'avversario, rosso per il pericolo).
 	var st := _status()
 	status_label.text = st.text
-	var sb: StyleBox = StyleBoxEmpty.new()
-	var col := Art.TESTO if st.cls != "" else Art.MUTO
-	# «Tocca a te», «Turno di BOT»: grandi e in grassetto; le didascalie restano in una pillola
-	var big: bool = st.cls == "mine" or st.cls == ""
 	if _status_h > 0:
-		status_label.size.y = _status_h  # dopo una scritta grande l'etichetta non torna piccola da sola
-	status_label.add_theme_font_size_override("font_size", int(_fs.get("status", 14) * (1.55 if big else 1.0)))
-	status_label.add_theme_font_override("font", Art.bold() if big else Art.semi())
-	var pill_r := minf(status_label.size.y, _fs.get("status", 14) * 1.9) / 2
-	if st.cls == "danger":
-		sb = Art.box(Art.CARTA, pill_r)
-		col = Art.ROSSO
-	elif st.cls == "cap":
-		sb = Art.box(Art.TAVOLO2, pill_r, Art.RIGA, 1.5)
-	if sb is StyleBoxFlat:
-		sb.content_margin_left = 14
-		sb.content_margin_right = 14
-	status_label.add_theme_stylebox_override("normal", sb)
+		status_label.size.y = _status_h
+	var col := Art.TESTO
+	if st.cls == "":
+		col = Color(Art.TESTO, 0.7)
+	elif st.cls == "danger":
+		col = Art.ROSSO.lightened(0.15)
+	# lascia libero lo spazio dell'anello del tempo a destra (e lo stesso a sinistra, per restare
+	# centrata); se la frase è lunga si rimpicciolisce un poco, sempre su una riga
+	var ring: float = timer_bar.size.x + 8
+	var w := center_rect.size.x - ring * 2
+	var fs := int(_fs.get("status", 14) * 1.4)
+	while fs > 12 and Art.bold().get_string_size(st.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > w:
+		fs -= 1
+	status_label.add_theme_font_size_override("font_size", fs)
+	status_label.add_theme_font_override("font", Art.bold())
+	status_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	status_label.add_theme_color_override("font_color", col)
-	# la pillola di sfondo abbraccia solo il testo
-	if st.cls == "danger" or st.cls == "cap":
-		var f := status_label.get_theme_font("font")
-		var tw := f.get_string_size(st.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_fs.status)).x + 32
-		var cx := center_rect.get_center().x
-		var w := minf(tw, center_rect.size.x)
-		status_label.position.x = cx - w / 2
-		status_label.size.x = w
-	else:
-		status_label.position.x = center_rect.position.x
-		status_label.size.x = center_rect.size.x
+	status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	status_label.position.x = center_rect.position.x + ring
+	status_label.size.x = w
 
 
 func _consequence(p: Dictionary) -> String:
@@ -1102,6 +1111,7 @@ func _hint(text: String) -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if lay == "wide" else HORIZONTAL_ALIGNMENT_CENTER
 	l.custom_minimum_size.x = 10
+	l.max_lines_visible = 2
 	return l
 
 
@@ -1137,19 +1147,33 @@ func _fit_actions() -> void:
 
 
 func _refresh_actions(task: String) -> void:
-	for c in actions.get_children():
-		actions.remove_child(c)
-		c.queue_free()
+	_fill_actions(task)
+	if lay != "portrait":
+		hints.position = _actions_base
+		hints.custom_minimum_size.x = actions.size.x
+		for c in hints.get_children():
+			c.custom_minimum_size.x = actions.size.x
+		hints.size = Vector2(actions.size.x, 0)
+		hints.reset_size()
+		var hh := hints.get_combined_minimum_size().y if hints.get_child_count() > 0 else 0.0
+		actions.position.y = _actions_base.y + (hh + 8 if hh > 0 else 0.0)
+
+
+func _fill_actions(task: String) -> void:
+	for box in [actions, hints]:
+		for c in box.get_children():
+			box.remove_child(c)
+			c.queue_free()
 	if V.phase != "playing":
 		return
 	if task == "":
 		if not busy and V.active != me and V.step == "main":
-			actions.add_child(_hint("Il computer sta pensando…"))
+			hints.add_child(_hint("Il computer sta pensando…"))
 		return
 	if task == "main":
 		if staged != null:
 			var c: String = staged.card
-			actions.add_child(_hint("Tocca la terra avversaria da distruggere." if c == "R" else
+			hints.add_child(_hint("Tocca la terra avversaria da distruggere." if c == "R" else
 				"Tocca nel tuo cimitero la terra da recuperare." if c == "G" else "Tocca la tua terra da riattivare."))
 			return
 		if mode.kind == "tutorial":
@@ -1157,7 +1181,7 @@ func _refresh_actions(task: String) -> void:
 			if coach != null and coach.wants_pass():
 				actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
 			return
-		actions.add_child(_hint(_win_hint() if _win_hint() != "" else "Trascina una carta al centro per giocarla, oppure toccala e poi tocca il centro."))
+		hints.add_child(_hint(_win_hint() if _win_hint() != "" else "Trascina una carta al centro per giocarla."))
 		actions.add_child(_row([_btn("Passa il turno", "pass", func(): act({"type": "pass"}))]))
 		return
 	if task == "response":
@@ -1168,17 +1192,15 @@ func _refresh_actions(task: String) -> void:
 			if mode.kind == "tutorial":
 				actions.add_child(_row([_btn(allow_label, "primary", func(): act({"type": "allow"}))]))
 				return
-			actions.add_child(_hint(_consequence(p)))
+			hints.add_child(_hint(_consequence(p)))
 			return
 		if not counter_mode:
-			actions.add_child(_hint(_consequence(p)))
+			hints.add_child(_hint(_consequence(p)))
 			actions.add_child(_row([_btn("Contrasta", "counter", _counter_start), _btn(allow_label, "primary", func(): act({"type": "allow"}))]))
-			if lay != "portrait":
-				actions.add_child(_hint("Contrastare costa un'Isola e un'altra terra dalla tua mano."))
 			return
 		actions.add_child(_formula(p))
 		if pick == null:
-			actions.add_child(_hint("Tocca in mano la seconda terra da scartare."))
+			hints.add_child(_hint("Tocca in mano la seconda terra da scartare."))
 		var bs := []
 		if pick != null:
 			bs.append(_btn("Conferma", "counter", func(): act({"type": "counter", "other": pick.card})))
@@ -1188,9 +1210,9 @@ func _refresh_actions(task: String) -> void:
 	if task == "choice":
 		var kind: String = V.choice.kind
 		if kind == "destroy":
-			actions.add_child(_hint("Tocca la terra avversaria da distruggere."))
+			hints.add_child(_hint("Tocca la terra avversaria da distruggere."))
 		elif kind == "regrow":
-			actions.add_child(_hint("Tocca nel tuo cimitero la terra da recuperare."))
+			hints.add_child(_hint("Tocca nel tuo cimitero la terra da recuperare."))
 
 
 ## "Isola + ? → Montagna ✕": cosa succede contrastando.
@@ -1646,7 +1668,7 @@ func _open_gy(w: String) -> void:
 		b.add_theme_font_size_override("font_size", fs)
 		for c in ["font_color", "font_hover_color", "font_pressed_color"]:
 			b.add_theme_color_override(c, Art.TESTO)
-		var bs := Art.box(Color("#fffaf0") if is_t else Color(0, 0, 0, 0), 8, Art.SEGNALE if is_t else Color(0, 0, 0, 0), 2.5 if is_t else 0.0)
+		var bs := Art.box(Color(1, 1, 1, 0.12) if is_t else Color(0, 0, 0, 0), 10, Color(1, 1, 1, 0.7) if is_t else Color(0, 0, 0, 0), 1.5 if is_t else 0.0)
 		bs.content_margin_left = 6
 		bs.content_margin_right = 10
 		bs.content_margin_top = 6
@@ -1827,8 +1849,8 @@ func _switch(label: String, key: String) -> Button:
 	b.draw.connect(func():
 		var on: bool = Prefs.get_value(key)
 		var r := Rect2(b.size.x - 46, (b.size.y - 24) / 2, 44, 24)
-		b.draw_style_box(Art.box(Art.SEGNALE if on else Color(1, 1, 1, 0.16), 12), r)
-		b.draw_circle(Vector2(r.end.x - 12 if on else r.position.x + 12, r.get_center().y), 9, Art.CARTA))
+		b.draw_style_box(Art.box(Color(1, 1, 1, 0.85) if on else Color(1, 1, 1, 0.16), 12), r)
+		b.draw_circle(Vector2(r.end.x - 12 if on else r.position.x + 12, r.get_center().y), 9, Art.FOGLIO if on else Color(1, 1, 1, 0.7)))
 	b.pressed.connect(func():
 		var on: bool = not Prefs.get_value(key)
 		if key == "music":
@@ -2207,20 +2229,27 @@ func _process(_delta: float) -> void:
 		_pump()
 
 
+## Il tempo: un anello sottile bianco accanto alla scritta di stato, con i secondi dentro.
+## Si svuota man mano; negli ultimi 5 secondi diventa rosso tenue.
+func _place_timer() -> void:
+	var d: float = clampf(_fs.get("status", 14) * 2.4, 32, 44)
+	var y := status_label.position.y + (maxf(_status_h, d) - d) / 2
+	timer_bar.size = Vector2(d, d)
+	timer_bar.position = Vector2(center_rect.end.x - d - 2, y)
+
+
 func _draw_timer() -> void:
 	var left := maxf(0.0, _timer_end - Time.get_ticks_msec() / 1000.0)
 	var k := clampf(left / maxf(1, turn_time), 0, 1)
-	var r := Rect2(Vector2.ZERO, timer_bar.size)
-	var rad := r.size.y / 2 if lay == "portrait" else 0.0
-	timer_bar.draw_style_box(Art.box(Color(Art.TAVOLO2, 0.6), rad, Art.RIGA, 1.5), r)
-	var col := Art.ROSSO if left <= 5 else Art.SEGNALE
+	var d := minf(timer_bar.size.x, timer_bar.size.y)
+	var c := timer_bar.size / 2
+	var r := d / 2 - 2
+	var col := Color("#ff9a9a") if left <= 5 else Art.TESTO
+	timer_bar.draw_circle(c, r + 1, Color(1, 1, 1, 0.06))
+	timer_bar.draw_arc(c, r, 0, TAU, 64, Color(1, 1, 1, 0.14), 2.5, true)
 	if k > 0:
-		timer_bar.draw_style_box(Art.box(col, rad), Rect2(r.position, Vector2(r.size.x * k, r.size.y)))
-	var f := Art.bold()
-	var fs := int(r.size.y * 0.8)
-	var txt := "%d s" % int(ceil(left))
-	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	timer_bar.draw_string(f, Vector2((r.size.x - tw) / 2, r.size.y / 2 + f.get_ascent(fs) * 0.36), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Art.INK)
+		timer_bar.draw_arc(c, r, -PI / 2, -PI / 2 + TAU * k, 64, col, 2.5, true)
+	Art.draw_text_centered(timer_bar, Art.semi(), str(int(ceil(left))), c, int(d * 0.36), col)
 
 
 # =====================================================================
@@ -2340,7 +2369,7 @@ func _bubble(seat: int, i: int) -> void:
 	if not Prefs.get_value("react") or mode.kind == "tutorial":
 		return
 	var w := _who(seat)
-	var old := overlay_layer.get_node_or_null("Fumetto" + w)
+	var old := bubble_layer.get_node_or_null("Fumetto" + w)
 	if old:
 		_drop(old)
 	var l := W.label(Modes.REACTIONS[i], 14, Art.INK, Art.bold())
@@ -2351,7 +2380,7 @@ func _bubble(seat: int, i: int) -> void:
 	sb.content_margin_top = 6
 	sb.content_margin_bottom = 6
 	l.add_theme_stylebox_override("normal", sb)
-	overlay_layer.add_child(l)
+	bubble_layer.add_child(l)
 	l.reset_size()
 	var r: Rect2 = _lr(zones[w].name)
 	l.position = Vector2(clampf(r.position.x, 8, size.x - l.size.x - 8), r.end.y + 6 if w == "opp" else r.position.y - l.size.y - 6)
@@ -2367,7 +2396,7 @@ func _bubble(seat: int, i: int) -> void:
 		if w == "opp":
 			l.position = Vector2(stack_rect.position.x - 8 - l.size.x, stack_rect.position.y + 4)
 		else:
-			l.position = Vector2(stack_rect.end.x + 8, stack_rect.end.y - l.size.y - 4)
+			l.position = Vector2(stack_rect.end.x + 8, stack_rect.position.y + stack_rect.size.y * 0.42)
 	if w == "opp":
 		Sound.play("click")
 		Sound.vibrate(10)
