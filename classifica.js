@@ -52,10 +52,15 @@ function replay(day, steps) {
 const boards = new Map(); // giorno -> { chiave nome: { name, turns, at } }
 let fileData = null;
 
+let storeError = null; // ultimo errore del database (null: tutto bene)
 async function redis(cmd) {
-  const r = await fetch(REDIS_URL, { method: 'POST', headers: { Authorization: `Bearer ${REDIS_TOKEN}` }, body: JSON.stringify(cmd) });
-  if (!r.ok) throw new Error('redis ' + r.status);
-  return (await r.json()).result;
+  try {
+    const r = await fetch(REDIS_URL, { method: 'POST', headers: { Authorization: `Bearer ${REDIS_TOKEN}` }, body: JSON.stringify(cmd) });
+    if (!r.ok) throw new Error('database: risposta ' + r.status);
+    const j = await r.json();
+    storeError = null;
+    return j.result;
+  } catch (e) { storeError = e.message; throw e; }
 }
 
 async function load(day) {
@@ -98,7 +103,7 @@ async function view(day, name) {
   const k = keyOf(cleanName(name));
   const i = k ? list.findIndex((e) => keyOf(e.name) === k) : -1;
   return {
-    day, total: list.length, store: REDIS_URL && REDIS_TOKEN ? 'database' : 'file',
+    day, total: list.length, store: REDIS_URL && REDIS_TOKEN ? (storeError ? 'database non raggiungibile' : 'database') : 'file',
     top: list.slice(0, TOP).map((e) => ({ name: e.name, turns: e.turns })),
     me: i >= 0 ? { rank: i + 1, turns: list[i].turns } : null,
   };
