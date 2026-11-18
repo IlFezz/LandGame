@@ -8,6 +8,7 @@ signal play_bot(level: String)
 signal play_challenge(id: String)
 signal play_daily(day: String)
 signal play_tutorial
+signal resume_game  # riprende la partita rimasta in corso quando l'app è stata chiusa
 signal play_friend(code: String)  # "" = crea una stanza, altrimenti entra con il codice
 signal friend_cancel  # esce dalla stanza mentre si aspetta l'amico
 signal fullscreen_toggled
@@ -19,6 +20,7 @@ const Prefs := preload("res://scripts/app/prefs.gd")
 const Profile := preload("res://scripts/app/profile.gd")
 const Modes := preload("res://scripts/app/modes.gd")
 const Sound := preload("res://scripts/app/sound.gd")
+const Table := preload("res://scripts/ui/table.gd")
 
 const TABS := [["play", "Gioca"], ["challenges", "Sfide"], ["profile", "Profilo"], ["collection", "Collezione"], ["learn", "Impara"]]
 const TAB_ICON := {
@@ -444,7 +446,7 @@ func friend_connecting() -> void:
 	_close_sheets()
 	var v := Sheets.sheet(_overlays, "Amico", 360)
 	v.add_child(Sheets.title("Collegamento…", 24))
-	v.add_child(Sheets.para("Mi collego al server delle partite. La prima volta della giornata può volerci fino a un minuto.", 15))
+	v.add_child(Sheets.para("Mi collego al server. Se è la prima partita di oggi potrebbe volerci qualche secondo.", 15))
 	v.add_child(Sheets.button("Annulla", "ghost", func():
 		_close_sheets()
 		friend_cancel.emit(), 15))
@@ -562,8 +564,28 @@ func _play_pane() -> Control:
 	trow.add_child(ts)
 	b.add_child(trow)
 	var go := W.button("Contro il computer", "primary", 19)
-	go.pressed.connect(func(): play_bot.emit(Prefs.get_value("level")))
-	b.add_child(go)
+	go.pressed.connect(func():
+		Table.forget_save()
+		play_bot.emit(Prefs.get_value("level")))
+	if Table.saved_game().is_empty():
+		b.add_child(go)
+	else:
+		# partita rimasta in corso: due pulsanti affiancati nello stesso spazio di «Contro il computer»
+		var h := go.get_combined_minimum_size().y
+		go.free()
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		for x in [["Riprendi", "primary", func(): resume_game.emit()],
+				["Nuova partita", "dark", func():
+					Table.forget_save()
+					play_bot.emit(Prefs.get_value("level"))]]:
+			var bt := W.button(x[0], x[1], 17)
+			bt.custom_minimum_size.y = h
+			bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bt.size_flags_stretch_ratio = 1.0
+			bt.pressed.connect(x[2])
+			row.add_child(bt)
+		b.add_child(row)
 	var friend := W.button("Con un amico", "dark", 19)
 	friend.pressed.connect(func():
 		Sound.play("click")

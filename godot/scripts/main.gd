@@ -73,17 +73,16 @@ func _ready() -> void:
 			_start("normal", {"kind": "tutorial"})
 			started = true
 	if not started:
-		var saved := Table.saved_game()
-		if not saved.is_empty() and foto == "":
-			_resume(saved)
-		else:
-			_show_home()
-			# solo per le prove: "--amico" apre la finestra «Con un amico», "--amico=attesa" la stanza creata
-			for a in args:
-				if a == "--amico":
-					_home.friend_sheet()
-				elif a == "--amico=attesa":
-					_home.friend_waiting("K7QD", 60)
+		# riaprendo l'app si parte sempre dalla home: se c'era una partita in corso, al posto di
+		# «Contro il computer» ci sono «Riprendi» e «Nuova partita». (Se l'app era solo in
+		# sottofondo, senza essere chiusa, si torna invece direttamente alla partita.)
+		_show_home()
+		# solo per le prove: "--amico" apre la finestra «Con un amico», "--amico=attesa" la stanza creata
+		for a in args:
+			if a == "--amico":
+				_home.friend_sheet()
+			elif a == "--amico=attesa":
+				_home.friend_waiting("K7QD", 60)
 	if foto != "":
 		await get_tree().create_timer(attesa).timeout
 		get_viewport().get_texture().get_image().save_png(foto)
@@ -173,6 +172,13 @@ func _show_home() -> void:
 	_home.play_tutorial.connect(func(): _start("normal", {"kind": "tutorial"}))
 	_home.fullscreen_toggled.connect(toggle_fullscreen)
 	_home.play_friend.connect(_friend)
+	_home.resume_game.connect(func():
+		var saved := Table.saved_game()
+		if saved.is_empty():
+			_home.refresh()
+		else:
+			Sound.play("click")
+			_resume(saved))
 	_home.friend_cancel.connect(_friend_cancel)
 
 

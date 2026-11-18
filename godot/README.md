@@ -17,7 +17,7 @@ Premendo ▶ nell'editor si apre la home a schede, come nella versione web (sul 
 - **Collezione**: cieli del tavolo Crepuscolo, Alba, Notte stellata, Aurora e sette dorsi (Sole, Luna, Colline, Monti, Pini, Onde, Stelle), con i lucchetti degli obiettivi; elenco dei 15 obiettivi.
 - **Impara**: tutorial con il Maestro (13 turni, stessi testi, «Avanti»/«Indietro», l'elemento di cui si parla è cerchiato e la carta da usare porta «Gioca questa»), le cinque terre, le regole complete.
 
-Se l'app viene chiusa a metà partita, alla riapertura la partita riprende da dove era. Le sfide non contano per statistiche, obiettivi e sblocchi.
+Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla home: al posto di «Contro il computer» ci sono «Riprendi» e «Nuova partita», nello stesso spazio. Se l'app era solo in sottofondo si torna direttamente alla partita. Le sfide non contano per statistiche, obiettivi e sblocchi.
 
 ### Il tavolo (passo 2, prima parte)
 - Stesse misure della versione web in tutti i formati: telefono verticale, telefono orizzontale (rosa dei venti a destra), tablet e PC (campo al centro). Le misure sono in "punti" come i px del browser: su un telefono ad alta densità tutto viene ingrandito in proporzione. Niente scorrimento e niente sovrapposizioni (c'è un test che lo controlla in 9 formati).
