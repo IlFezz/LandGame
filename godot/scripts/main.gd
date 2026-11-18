@@ -23,6 +23,8 @@ func _ready() -> void:
 	get_tree().quit_on_go_back = false  # il tasto Indietro lo gestiamo noi
 	if OS.has_feature("mobile"):
 		# telefono: sempre in verticale; tablet: gira come lo tieni. Sempre a schermo intero.
+		# (Nel progetto l'orientamento è «sensore»: se fosse «verticale», Android sui tablet mostrerebbe
+		# l'app in un riquadro da telefono con bande nere, e l'app non si accorgerebbe del tablet.)
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR if is_tablet() else DisplayServer.SCREEN_PORTRAIT)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	Prefs.load_all()
