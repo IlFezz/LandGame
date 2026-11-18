@@ -94,7 +94,7 @@ func _layout() -> void:
 	if S.x < 10:
 		return
 	_overlays.size = S
-	_side = S.x / S.y >= 1.1 and S.y <= 520
+	_side = S.x / S.y >= 1.1 and S.y <= 660  # telefono girato o tablet in orizzontale: due colonne
 	# in alto a destra, solo nella scheda Gioca: musica e (su PC e nel browser) schermo intero.
 	# Nell'app del telefono lo schermo è già intero: il pulsante non serve.
 	for c in _corner.get_children():

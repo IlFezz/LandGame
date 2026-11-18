@@ -804,32 +804,41 @@ func _place_head_col(w: String, r: Rect2) -> void:
 	var z = zones[w]
 	z.row = false
 	# nome; sotto le carte coperte (mano dell'avversario e mazzo) abbastanza grandi da vedere il
-	# dorso; sotto ancora il cimitero
+	# dorso, con accanto il cimitero. Se la colonna è stretta (tablet in orizzontale) il cimitero
+	# dell'avversario va sulla riga del nome, così il ventaglio resta grande.
 	var name_h: float = _fs.name * 1.5
 	var gyh: float = _fs.gy_h
 	var gap := 6.0
 	var H := clampf(r.size.y - name_h - gap, 34.0, 74.0)
 	var total := name_h + gap + H
-	if total > r.size.y + 4:
+	var fan_min := (H - 8) / 1.4 * 2.2
+	z.deck.size = Vector2(0, H)
+	var dw: float = z.deck.needed_width()
+	var gyw: float = z.gy.needed_width()
+	var gy_up := w == "opp" and fan_min + dw + gyw + 34 > r.size.x
+	if total > r.size.y + 4 or (w == "opp" and (H - 8) / 1.4 * 1.3 + dw + 24 > r.size.x):
 		_place_head_compact(w, r)
 		return
 	var y := r.position.y + maxf(0, (r.size.y - total) / 2)
-	_place_name(w, Vector2(r.position.x, y), r.size.x, name_h)
+	_place_name(w, Vector2(r.position.x, y), r.size.x - (gyw + 8 if gy_up else 0.0), name_h)
+	if gy_up:
+		z.gy.position = Vector2(r.end.x - gyw, y + (name_h - gyh) / 2)
+		z.gy.size = Vector2(gyw, gyh)
 	y += name_h + gap
 	var x := r.position.x
 	if w == "opp":
 		z.backs.size = Vector2(0, H)
-		var bw: float = minf(z.backs.needed_width(), r.size.x - z.deck.needed_width() - z.gy.needed_width() - 24)
+		var bw: float = minf(z.backs.needed_width(), r.size.x - dw - 10 - (0.0 if gy_up else gyw + 14))
 		z.backs.position = Vector2(x, y)
 		z.backs.size = Vector2(bw, H)
 		x += bw + 10
-	z.deck.size = Vector2(0, H)
 	z.deck.position = Vector2(x, y)
-	z.deck.size = Vector2(z.deck.needed_width(), H)
-	x += z.deck.size.x + 10
-	# il cimitero accanto al mazzo, centrato sulla riga delle carte
-	z.gy.position = Vector2(x, y + (H - gyh) / 2)
-	z.gy.size = Vector2(z.gy.needed_width(), gyh)
+	z.deck.size = Vector2(dw, H)
+	x += dw + 10
+	if not gy_up:
+		# il cimitero accanto al mazzo, centrato sulla riga delle carte
+		z.gy.position = Vector2(x, y + (H - gyh) / 2)
+		z.gy.size = Vector2(gyw, gyh)
 
 
 ## Testa a colonna stretta: nome, dorsi, poi mazzo e cimitero affiancati.
@@ -950,6 +959,11 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	var bf_gap := 1.3 * vw
 	var bf_w := sw * 5 + bf_gap * 4
 	var colgap := 2.4 * vw
+	# su schermi più stretti (tablet in orizzontale) le colonne dei nomi si stringono: niente fuori dai bordi
+	head_w = minf(head_w, maxf(130.0, (S.x - side * 2 - bf_w - colgap * 2) / 2))
+	if head_w * 2 + colgap * 2 + bf_w > S.x - side * 2:
+		sw = (S.x - side * 2 - head_w * 2 - colgap * 2 - bf_gap * 4) / 5
+		bf_w = sw * 5 + bf_gap * 4
 	var grid_w := head_w + colgap + bf_w + colgap + head_w
 	var gx := (S.x - grid_w) / 2
 	var bf_x := gx + head_w + colgap
@@ -970,12 +984,18 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	var room := center_rect.size.y - st_h - 10
 	cw = minf(cw, room / 1.4)
 	var sy := center_rect.position.y + st_h + 6 + maxf(0, (room - cw * 1.4) / 2 - st_h / 2)
+	# a destra della carta servono almeno due pulsanti affiancati: se lo schermo è stretto (tablet in
+	# orizzontale) la carta si sposta un po' a sinistra
+	var need_w: float = _fs.btn * 20.0
+	var free_w := S.x - side - (cc.x + cw * 0.5 + 3.5 * vw)
+	var shift := clampf(need_w - free_w, 0.0, maxf(0.0, cc.x - cw * 0.5 - side - head_w))
+	cc.x -= shift
 	stack_rect = Rect2(cc.x - cw / 2, sy, cw, cw * 1.4)
 	status_label.position = Vector2(center_rect.position.x, stack_rect.position.y - st_h - 4)
 	status_label.size = Vector2(center_rect.size.x, st_h)
 	_status_h = st_h
 	var ax := cc.x + cw * 0.5 + 3.5 * vw
-	var aw := minf(minf(30 * vw, 420.0), S.x - ax - side)
+	var aw := minf(420.0, S.x - ax - side)  # largo abbastanza per due pulsanti affiancati
 	# spiegazioni e pulsanti a destra della carta, dalla sua altezza (sotto la scritta di stato)
 	actions.position = Vector2(ax, stack_rect.position.y + 6)
 	actions.size = Vector2(aw, center_rect.end.y - stack_rect.position.y - 6)
@@ -1333,7 +1353,10 @@ func _btn(text: String, kind: String, cb: Callable) -> Button:
 
 
 ## Le azioni (scritte e pulsanti) devono stare nel loro spazio: se non ci stanno si rimpiccioliscono.
-func _fit_actions() -> void:
+func _fit_actions(again := true) -> void:
+	if again:
+		# i pulsanti vanno a capo solo dopo aver ricevuto la larghezza: si ricontrolla al fotogramma dopo
+		(func(): if is_instance_valid(self): _fit_actions(false)).call_deferred()
 	actions.scale = Vector2.ONE
 	var need := actions.get_combined_minimum_size().y
 	# lo spazio vero fino al campo (il contenitore si allunga da solo se il contenuto è più alto)

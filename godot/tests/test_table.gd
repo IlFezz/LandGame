@@ -260,7 +260,7 @@ func t_full_game():
 
 ## Nessun elemento del tavolo esce dallo schermo o si sovrappone a un altro.
 func t_layouts():
-	for sz in [Vector2(354, 792), Vector2(792, 354), Vector2(390, 844), Vector2(360, 640), Vector2(844, 390), Vector2(667, 375), Vector2(1024, 768),
+	for sz in [Vector2(540, 865), Vector2(865, 540), Vector2(645, 860), Vector2(860, 645), Vector2(354, 792), Vector2(792, 354), Vector2(390, 844), Vector2(360, 640), Vector2(844, 390), Vector2(667, 375), Vector2(1024, 768),
 			Vector2(768, 1024), Vector2(1280, 720), Vector2(1920, 1080), Vector2(2560, 1080)]:
 		await _new_table({"h0": ["W", "U", "B", "R", "G", "G", "U", "W"]}, sz)
 		var boxes := {}

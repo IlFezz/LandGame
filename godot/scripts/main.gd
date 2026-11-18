@@ -22,8 +22,8 @@ var _net: Node = null  # collegamento al server mentre si prepara una partita co
 func _ready() -> void:
 	get_tree().quit_on_go_back = false  # il tasto Indietro lo gestiamo noi
 	if OS.has_feature("mobile"):
-		# telefono: sempre in verticale e a schermo intero (niente barra delle notifiche)
-		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_PORTRAIT)
+		# telefono: sempre in verticale; tablet: gira come lo tieni. Sempre a schermo intero.
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR if is_tablet() else DisplayServer.SCREEN_PORTRAIT)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	Prefs.load_all()
 	Art.apply_theme(Prefs.get_value("theme"))
@@ -96,6 +96,11 @@ func _screen_factor() -> float:
 	var f := 1.0
 	if OS.has_feature("mobile"):
 		f = DisplayServer.screen_get_dpi() / 160.0
+		if is_tablet():
+			# sul tablet tutto si ingrandisce in proporzione allo schermo, ma restando almeno
+			# 540 × 860 punti: in verticale è come un telefono grande, in orizzontale come un PC piccolo
+			var dp := Vector2(DisplayServer.screen_get_size()) / f
+			f *= clampf(minf(minf(dp.x, dp.y) / 540.0, maxf(dp.x, dp.y) / 860.0), 1.0, 1.5)
 	else:
 		f = maxf(DisplayServer.screen_get_scale(), 1.0)
 		if OS.get_name() == "Windows":
@@ -104,6 +109,14 @@ func _screen_factor() -> float:
 		if a.begins_with("--scala="):
 			f = float(a.get_slice("=", 1))
 	return clampf(f, 1.0, 4.0)
+
+
+## Tablet: il lato corto dello schermo è di almeno 600 punti (la stessa regola di Android).
+static func is_tablet() -> bool:
+	if not OS.has_feature("mobile"):
+		return false
+	var dp := Vector2(DisplayServer.screen_get_size()) / (DisplayServer.screen_get_dpi() / 160.0)
+	return minf(dp.x, dp.y) >= 600.0
 
 
 func _fit_window() -> void:
