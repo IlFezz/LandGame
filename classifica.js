@@ -98,7 +98,7 @@ async function view(day, name) {
   const k = keyOf(cleanName(name));
   const i = k ? list.findIndex((e) => keyOf(e.name) === k) : -1;
   return {
-    day, total: list.length,
+    day, total: list.length, store: REDIS_URL && REDIS_TOKEN ? 'database' : 'file',
     top: list.slice(0, TOP).map((e) => ({ name: e.name, turns: e.turns })),
     me: i >= 0 ? { rank: i + 1, turns: list[i].turns } : null,
   };
