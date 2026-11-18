@@ -337,6 +337,8 @@ func t_tutorial():
 	t.deal_anim = false
 	t.start("normal", "zz tutorial", {}, {"kind": "tutorial"})
 	var t0 := Time.get_ticks_msec()
+	var tried_counter := false
+	var tried_card := false
 	while t.g.phase == "playing" and Time.get_ticks_msec() - t0 < 180000:
 		await _tree().process_frame
 		if t.busy or t.coach == null:
@@ -350,6 +352,26 @@ func t_tutorial():
 			continue
 		var hl: String = P.get("hl", "")
 		var task: String = t._task()
+		# fuori programma: «Contrasta» quando il Maestro chiede di lasciar risolvere
+		if hl == "btn:Lascia risolvere" and not tried_counter and t.actions.find_children("*", "Button", true, false).any(func(x): return x.text == "Contrasta"):
+			tried_counter = true
+			t.caption = ""
+			_press_button("Contrasta")
+			check(not t.counter_mode, "nel tutorial «Contrasta» fuori programma non parte")
+			check(t.caption != "", "avviso per il gesto fuori programma")
+			t.caption = ""
+		# fuori programma: trascinare una carta diversa da quella indicata
+		if hl.begins_with("hand:") and task == "main" and not tried_card:
+			var other := ""
+			for c in t.V.hand:
+				if c != hl.substr(5) and t.V.playable.has(c):
+					other = c
+			if other != "":
+				tried_card = true
+				await _drag_to(_card_center(other), t.stack_rect.get_center())
+				check(t.staged == null and t.g.turn == t.V.turn and t._task() == "main", "nel tutorial non si gioca una carta diversa")
+				t.caption = ""
+				await _idle()
 		if hl.begins_with("hand:") and task == "main":
 			await _drag_to(_card_center(hl.substr(5)), t.stack_rect.get_center())
 		elif t.staged != null:
@@ -377,6 +399,7 @@ func t_tutorial():
 	eq(t.g.phase, "over", "il tutorial finisce")
 	eq(t.g.winner, 0, "e lo vinci tu")
 	eq(t.g.turn, 13, "al turno 13 come nella versione web")
+	check(tried_counter and tried_card, "provati i gesti fuori programma")
 	check(Profile.load_profile("zz tutorial").tutorial, "tutorial segnato come completato")
 	Profile.remove("zz tutorial")
 	t.queue_free()

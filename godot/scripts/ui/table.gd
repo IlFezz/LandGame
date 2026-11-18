@@ -590,6 +590,12 @@ func _allowed(a: Dictionary) -> bool:
 	return coach == null or coach.allows(a)
 
 
+## Anche i gesti che preparano una mossa (prendere una carta, «Contrasta», scegliere la seconda
+## carta del contrasto) passano dal Maestro: nel tutorial si fa solo quello che sta spiegando.
+func _ui_ok(what: String, card := "") -> bool:
+	return coach == null or coach.allows_ui(what, card)
+
+
 ## Statistiche: ogni evento aggiorna i conteggi; a fine partita si salva il profilo.
 func _track(evs: Array) -> void:
 	for e in evs:
@@ -1443,6 +1449,8 @@ func _fcard(t: String, d: float) -> Control:
 
 
 func _counter_start() -> void:
+	if not _ui_ok("counter"):
+		return
 	counter_mode = true
 	pick = null
 	_refresh()
@@ -1634,7 +1642,7 @@ func _on_motion(p: Vector2) -> void:
 	if not _press.moved and p.distance_to(_press.pos) > SLOP:
 		_press.moved = true
 		var i: int = _press.idx
-		if i >= 0 and _task() == "main" and staged == null and V.playable.has(V.hand[i]):
+		if i >= 0 and _task() == "main" and staged == null and V.playable.has(V.hand[i]) and _ui_ok("card", V.hand[i]):
 			var c: Card = hand_cards[i]
 			_drag = {"view": c, "idx": i, "grab": c.size / 2}
 			sel = null
@@ -1687,6 +1695,8 @@ func _on_tap(p: Vector2, idx: int) -> void:
 						return
 			return
 		if idx >= 0 and V.playable.has(V.hand[idx]):
+			if not _ui_ok("card", V.hand[idx]):
+				return
 			sel = null if sel != null and sel.idx == idx else {"card": V.hand[idx], "idx": idx}
 			_refresh()
 			return
@@ -1699,6 +1709,8 @@ func _on_tap(p: Vector2, idx: int) -> void:
 		return
 	if task == "response" and counter_mode and idx >= 0:
 		var plan = _counter_plan()
+		if not _ui_ok("pick"):
+			return
 		if plan != null and pick == null and plan.eligible[idx]:
 			pick = {"card": V.hand[idx], "idx": idx}
 			_refresh()

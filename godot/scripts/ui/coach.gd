@@ -30,6 +30,8 @@ var _note: Label
 var _back_btn: Button
 var _fwd_btn: Button
 var _rings: Array = []  # rettangoli da cerchiare
+var _radii: Array = []  # raggio degli angoli di ogni contorno (i pulsanti sono pillole)
+var _hl_page = null  # la pagina che chiede l'evidenziazione: si ricalcola a ogni fotogramma
 var _tag_rect := Rect2()
 var _t := 0.0
 
@@ -83,6 +85,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _hl_page != null:
+		# i pulsanti e le carte prendono il loro posto qualche fotogramma dopo l'aggiornamento:
+		# il contorno segue sempre la posizione vera, così non è mai sfasato
+		_rings = []
+		_radii = []
+		_tag_rect = Rect2()
+		_highlight(_hl_page)
 	if not _rings.is_empty():
 		queue_redraw()
 
@@ -116,7 +125,8 @@ func pages() -> Array:
 			"R": "Ora tocca una terra del Maestro: è il bersaglio della Montagna e verrà distrutta.",
 			"W": "Ora tocca la tua [b]Montagna[/b]: la Pianura ne ripeterà l'effetto."}.get(t.staged.card, "")
 		var c: String = t.staged.card
-		return [{"text": txt, "allow": func(a): return a.type == "play" and a.card == c}]
+		return [{"text": txt, "allow": func(a): return a.type == "play" and a.card == c,
+			"wrong": "Ora tocca il bersaglio indicato dal Maestro."}]
 	if task == "main":
 		match T:
 			1:
@@ -184,15 +194,17 @@ func pages() -> Array:
 				if t.counter_mode:
 					if t.pick != null:
 						return [{"text": "Premi [b]«Conferma»[/b]: l'Isola e la terra scelta vanno nel tuo cimitero, e la Montagna del Maestro ci finisce senza effetto.",
-							"hl": "btn:Conferma", "allow": func(a): return a.type == "counter"}]
+							"hl": "btn:Conferma", "pick_ui": true, "allow": func(a): return a.type == "counter",
+							"wrong": "In questo passaggio premi «Conferma»."}]
 					return [{"text": "L'Isola è già stata scelta da sola: è quella segnata in rosso. Ora tocca nella tua mano [b]un'altra terra qualsiasi[/b] da scartare insieme a lei.",
-						"allow": func(a): return a.type == "counter"}]
+						"pick_ui": true, "allow": func(a): return a.type == "counter",
+						"wrong": "Prima tocca nella tua mano la seconda terra da scartare."}]
 				return [
 					_info("Il Maestro gioca un'altra [b]Montagna[/b], questa volta contro la tua Foresta. Fermalo con un [b]contrasto[/b]."),
 					_info("Il contrasto si può fare [b]solo se hai un'Isola in mano[/b]. Si scartano due carte: l'Isola più un'altra terra a tua scelta. La terra dell'avversario finisce nel cimitero e il suo effetto non avviene.", "hand:U"),
 					_info("Quando premi «Contrasta», l'Isola viene [b]scelta automaticamente[/b]: tu devi solo toccare la seconda terra da scartare, poi confermare."),
 					_info("Attenzione: anche l'avversario può contrastare il tuo contrasto, se ha un'Isola. Vince chi contrasta per ultimo."),
-					{"text": "Premi [b]«Contrasta»[/b].", "hl": "btn:Contrasta", "allow": func(a): return a.type == "counter",
+					{"text": "Premi [b]«Contrasta»[/b].", "hl": "btn:Contrasta", "counter_ui": true, "allow": func(a): return a.type == "counter",
 						"wrong": "In questo passaggio premi «Contrasta»."},
 				]
 			8:
@@ -210,7 +222,8 @@ func pages() -> Array:
 				return [_allow_page("Il Maestro gioca una [b]Pianura[/b] per ripetere l'effetto della sua Foresta. Non ti danneggia: premi [b]«Lascia risolvere»[/b].")]
 		return [_allow_page("Premi [b]«Lascia risolvere»[/b].")]
 	if task == "choice" and T == 7:
-		return [{"text": "La Pianura ripete l'effetto della Montagna: tocca la terra del Maestro da distruggere."}]
+		return [{"text": "La Pianura ripete l'effetto della Montagna: tocca la terra del Maestro da distruggere.",
+			"wrong": "Tocca una terra del Maestro da distruggere."}]
 	return []
 
 
@@ -282,6 +295,32 @@ func allows(a: Dictionary) -> bool:
 	return false
 
 
+## Gesti che preparano una mossa: "card" (prendere o scegliere una carta della mano), "counter"
+## («Contrasta»), "pick" (la seconda carta del contrasto). Se non è quello che la pagina chiede,
+## compare un avviso e il gesto non ha effetto.
+func allows_ui(what: String, card := "") -> bool:
+	var P = shown()
+	if P == null:
+		return true
+	if P.get("review", false):
+		t._toast("Stai rileggendo: premi «Avanti» per tornare al punto in cui eri")
+		return false
+	if P.get("info", false) or P.get("go", false):
+		t._toast("Premi «Avanti» per continuare")
+		return false
+	var ok := true
+	match what:
+		"card":
+			ok = P.has("card") and P.card == card
+		"counter":
+			ok = P.get("counter_ui", false)
+		"pick":
+			ok = P.get("pick_ui", false)
+	if not ok:
+		t._toast(P.get("wrong", "Segui il consiglio del Maestro"))
+	return ok
+
+
 func wants_pass() -> bool:
 	var P = shown()
 	return P != null and P.get("pass", false) and not P.get("review", false)
@@ -306,7 +345,9 @@ func update() -> void:
 		t.tut_idx = -1
 		t._place_hand(true)
 	_rings = []
+	_radii = []
 	_tag_rect = Rect2()
+	_hl_page = null
 	visible = P != null
 	if P == null:
 		queue_redraw()
@@ -342,6 +383,7 @@ func update() -> void:
 	_panel.position = pos
 	_panel.size = Vector2(w, h)
 	if not P.get("review", false):
+		_hl_page = P
 		_highlight(P)
 	queue_redraw()
 
@@ -361,6 +403,7 @@ func _highlight(P: Dictionary) -> void:
 					var cr: Rect2 = t.hand_card_rect(c)
 					r = cr if r.size == Vector2.ZERO else r.merge(cr)
 				_rings.append(r.grow(6))
+				_radii.append(10.0)
 			else:
 				for i in t.hand_cards.size():
 					var c: Control = t.hand_cards[i]
@@ -377,21 +420,29 @@ func _highlight(P: Dictionary) -> void:
 						if P.has("card"):
 							_tag_rect = Rect2(cr.position + Vector2(0, -28), Vector2(cr.size.x, 22))
 						_rings.append(cr.grow(5))
+						_radii.append(10.0)
 						break
 		"bf":
 			var z = t.zones[arg]
 			_rings.append(t._lr(z.slots["W"]).merge(t._lr(z.slots["G"])).grow(6))
+			_radii.append(10.0)
 		"gy":
 			_rings.append(t._lr(t.zones[arg].gy).grow(4))
+			_radii.append(10.0)
 		"deckgy":
 			_rings.append(t._lr(t.zones[arg].deck).grow(4))
+			_radii.append(10.0)
 			_rings.append(t._lr(t.zones[arg].gy).grow(4))
+			_radii.append(10.0)
 		"name":
 			_rings.append(t._lr(t.zones[arg].name).merge(t._lr(t.zones[arg].near)).grow(6))
+			_radii.append(10.0)
 		"btn":
 			for b in _buttons(t.actions):
-				if b.text == arg:
-					_rings.append(t._lr(b).grow(5))
+				if b.text == arg and b.is_visible_in_tree():
+					var br: Rect2 = t._lr(b).grow(5)
+					_rings.append(br)
+					_radii.append(br.size.y / 2 - 1)
 
 
 func _buttons(n: Node) -> Array:
@@ -406,10 +457,11 @@ func _buttons(n: Node) -> Array:
 func _draw() -> void:
 	var k := 0.5 + 0.5 * sin(_t * TAU)
 	var screen := Rect2(Vector2(4, 4), size - Vector2(8, 8))
-	for r0 in _rings:
-		var r: Rect2 = r0.intersection(screen)
-		draw_style_box(Art.box(Color(0, 0, 0, 0), 12, Color(Art.SEGNALE, 0.35 + 0.35 * k), 3), r.grow(4))
-		draw_style_box(Art.box(Color(0, 0, 0, 0), 10, Art.SEGNALE, 3), r)
+	for i in _rings.size():
+		var r: Rect2 = _rings[i].intersection(screen)
+		var rad: float = _radii[i] if i < _radii.size() else 10.0
+		draw_style_box(Art.box(Color(0, 0, 0, 0), rad + 4, Color(Art.SEGNALE, 0.35 + 0.35 * k), 3), r.grow(4))
+		draw_style_box(Art.box(Color(0, 0, 0, 0), rad, Art.SEGNALE, 3), r)
 	if _tag_rect.has_area():
 		var f := Art.bold()
 		var txt := "Gioca questa"
