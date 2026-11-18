@@ -71,6 +71,7 @@ var end_text := ""
 var log_lines: Array = []
 var events: Array = []  # eventi animabili: { ev, views: [vista P0, vista P1] }
 var first_player := 0
+var record = null  # sfida del giorno: elenco delle mosse ({ p, a } o { p, timeout }) per la classifica
 var quiet := false  # partita simulata dal computer difficile: niente eventi né registro
 
 
@@ -102,15 +103,17 @@ func _init(names: Array = [], opts: Dictionary = {}) -> void:
 		if setups != null and i < setups.size() and setups[i] != null:
 			su = setups[i]
 		var bf := empty_count()
+		var gy := empty_count()
 		var deck := []
 		for t in TYPES:
 			if su.has("without") and su.without.has(t):
 				continue
 			bf[t] = su.bf.get(t, 0) if su.has("bf") else 0
-			for k in range(bf[t], copies):
+			gy[t] = su.gy.get(t, 0) if su.has("gy") else 0  # terre già nel cimitero (sfida del giorno)
+			for k in range(bf[t] + gy[t], copies):
 				deck.append(t)
 		players.append({"name": names[i], "deck": shuffle(deck, rng), "hand": [], "bf": bf,
-			"gy": empty_count(), "handSize": su.get("hand", hand_size)})
+			"gy": gy, "handSize": su.get("hand", hand_size)})
 	if opts.has("onlyFive"):
 		only_five = opts.onlyFive.duplicate()
 	turn_limit = opts.get("turnLimit")
@@ -162,7 +165,8 @@ func to_dict() -> Dictionary:
 		"only_five": only_five.duplicate(), "turn_limit": turn_limit, "phase": phase, "turn": turn,
 		"active": active, "step": step, "land_played": land_played, "pending": pending, "resolving": resolving,
 		"choice": choice, "pass_streak": pass_streak, "last_land_player": last_land_player, "winner": winner,
-		"end_reason": end_reason, "end_text": end_text, "log": log_lines.duplicate(), "first_player": first_player}
+		"end_reason": end_reason, "end_text": end_text, "log": log_lines.duplicate(), "first_player": first_player,
+		"record": record.duplicate(true) if record != null else null}
 
 
 ## Il JSON trasforma tutti i numeri in decimali: qui tornano interi.
@@ -203,6 +207,7 @@ static func from_dict(d: Dictionary):
 	g.end_text = d.end_text
 	g.log_lines = d.log
 	g.first_player = d.first_player
+	g.record = d.get("record")
 	return g
 
 
@@ -247,11 +252,20 @@ func auto_act() -> void:
 	add_log("⏱ Tempo scaduto per %s." % name_of(p))
 	emit({"type": "timeout", "player": p, "step": step})
 	if step == "main":
+		_rec({"p": p, "timeout": true})
 		do_pass(p)
 	elif step == "response":
+		_rec({"p": p, "timeout": true})
 		do_allow(p)
 	else:
-		do_choose(p, choice.options[int(floor(rng.call() * choice.options.size()))])
+		var c = choice.options[int(floor(rng.call() * choice.options.size()))]
+		_rec({"p": p, "timeout": true, "choice": c})
+		do_choose(p, c)
+
+
+func _rec(x: Dictionary) -> void:
+	if record != null:
+		record.append(x)
 
 
 func add_log(text: String) -> void:
@@ -395,6 +409,13 @@ func can_respond(p: int) -> bool:
 ## Azioni: {type:"play", card, target?} · {type:"pass"} · {type:"counter", other}
 ## · {type:"allow"} · {type:"choose", choice} · {type:"surrender"}
 func act(p: int, a):
+	var err = _act(p, a)
+	if err == null and record != null:
+		record.append({"p": p, "a": a.duplicate()})
+	return err
+
+
+func _act(p: int, a):
 	if phase != "playing":
 		return "La partita è finita."
 	if not (a is Dictionary) or not (a.get("type") is String):

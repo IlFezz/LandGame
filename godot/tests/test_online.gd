@@ -20,6 +20,7 @@ func tests() -> Array:
 		["tra giocatori ci si arrende", t_surrender],
 		["se l'amico si arrende compare la vittoria", t_opp_surrender],
 		["chiusa l'app, si rientra nella stanza con il gettone", t_rejoin],
+		["sfida del giorno: la partita dell'app è accettata dalla classifica", t_classifica],
 	]
 
 
@@ -222,4 +223,50 @@ func t_opp_surrender():
 	eq(t.g.winner, 0, "vinci tu")
 	check(await _wait(func(): return t.overlay_layer.has_node("Over"), 5), "compare la finestra di vittoria")
 	await _teardown()
+	return true
+
+
+## Una sfida del giorno giocata dal motore dell'app (computer per entrambi, con qualche mossa a caso
+## per il giocatore): il server la rigioca con il motore del sito e deve dare lo stesso risultato.
+func t_classifica():
+	const Modes := preload("res://scripts/app/modes.gd")
+	const Classifica := preload("res://scripts/net/classifica.gd")
+	var host := Node.new()
+	_tree().root.add_child(host)
+	var won := false
+	for k in 300:
+		var day := Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_system()) + ((k % 3) - 1) * 86400)
+		var g = Game.new(["Tu", "BOT"], Modes.daily_opts(day))
+		g.record = []
+		var n := 0
+		while g.phase == "playing" and n < 2000:
+			n += 1
+			var p = g.actor()
+			var a = Bot.new(g, p, {"level": "normal"}).decide()
+			var v: Dictionary = g.view(p)
+			if p == 0 and g.step == "main" and v.has("playable") and randf() < 0.35 and not v.playable.is_empty():
+				var c: String = v.playable.keys()[randi() % v.playable.size()]
+				var tg = v.playable[c]
+				a = {"type": "play", "card": c}
+				if tg is Array and not tg.is_empty():
+					a.target = tg[randi() % tg.size()]
+				elif tg is Array:
+					a = {"type": "pass"}
+			if a == null or g.act(p, a) != null:
+				g.act(p, {"type": "pass"} if g.step == "main" else {"type": "allow"})
+			if n == 7 and g.phase == "playing" and g.actor() != null:
+				g.auto_act()  # anche il tempo scaduto deve essere rigiocato uguale
+		var r: Dictionary = await Classifica.submit(host, day, "Prova Godot", g.record)
+		check(not r.has("error"), "il server accetta le mosse dell'app (%s): %s" % [day, r.get("error", "")])
+		if g.winner == 0 and g.end_reason != "surrender":
+			eq(r.get("ok"), true, "vittoria accettata")
+			eq(r.get("turns"), g.turn, "stesso numero di turni nel sito e nell'app")
+			won = true
+			break
+		else:
+			eq(r.get("lost"), true, "sconfitta riconosciuta")
+		if not failures.is_empty():
+			break
+	check(won, "almeno una vittoria nelle prove")
+	host.queue_free()
 	return true

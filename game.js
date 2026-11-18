@@ -34,14 +34,15 @@ class Game {
     // opts.decks (facoltativo): mazzi già in ordine, l'ultima carta è la prima pescata (serve al tutorial)
     this.players = names.map((name, i) => {
       if (opts.decks && opts.decks[i]) return { name, deck: opts.decks[i].slice(), hand: [], bf: emptyCount(), gy: emptyCount() };
-      // opts.setup[i] (sfide): { bf: terre già in gioco, without: tipi tolti dal mazzo, hand: carte iniziali }
-      const su = (opts.setup && opts.setup[i]) || {}, bf = emptyCount(), deck = [];
+      // opts.setup[i] (sfide): { bf: terre già in gioco, gy: terre già nel cimitero, without: tipi tolti dal mazzo, hand: carte iniziali }
+      const su = (opts.setup && opts.setup[i]) || {}, bf = emptyCount(), gy = emptyCount(), deck = [];
       for (const t of TYPES) {
         if (su.without && su.without.includes(t)) continue;
         bf[t] = (su.bf && su.bf[t]) || 0;
-        for (let k = bf[t]; k < this.copies; k++) deck.push(t);
+        gy[t] = (su.gy && su.gy[t]) || 0;
+        for (let k = bf[t] + gy[t]; k < this.copies; k++) deck.push(t);
       }
-      return { name, deck: shuffle(deck, this.rng), hand: [], bf, gy: emptyCount(), handSize: su.hand || this.handSize };
+      return { name, deck: shuffle(deck, this.rng), hand: [], bf, gy, handSize: su.hand || this.handSize };
     });
     this.onlyFive = opts.onlyFive || [false, false];   // sfida: vince solo con cinque terre uguali
     this.turnLimit = opts.turnLimit || null;           // sfida: { turn, loser } chi non vince entro quel turno perde

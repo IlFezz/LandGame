@@ -662,16 +662,28 @@ func _challenges_pane() -> Control:
 	var days := ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"]
 	var months := ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 	var nice := "%s %d %s" % [days[d.weekday], d.day, months[d.month - 1]]
-	var sub := W.label("%s: stessa partenza per tutti, vinci nel minor numero di turni." % (nice.substr(0, 1).to_upper() + nice.substr(1)), 13, Color(Art.TESTO, 0.75), Art.serif())
+	var sub := W.label("%s: stessa partita per tutti, vinci nel minor numero di turni.
+%s" % [nice.substr(0, 1).to_upper() + nice.substr(1), Modes.daily_text(day)], 13, Color(Art.TESTO, 0.75), Art.serif())
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.custom_minimum_size.x = 200
 	cv.add_child(sub)
 	var best = daily.get(day)
 	if best != null:
 		cv.add_child(W.label("Record: turno %d" % best, 13, Art.SEGNALE, Art.semi()))
+	var drow := HBoxContainer.new()
+	drow.add_theme_constant_override("separation", 10)
 	var go := W.button("Riprova" if best != null else "Gioca la sfida", "primary", 16)
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	go.pressed.connect(func(): play_daily.emit(day))
-	cv.add_child(go)
+	drow.add_child(go)
+	var lb := W.button("Classifica", "dark", 16)
+	lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb.pressed.connect(func():
+		Sound.play("click")
+		Sheets.classifica(_overlays, day))
+	drow.add_child(lb)
+	_even.call_deferred(drow)
+	cv.add_child(drow)
 	v.add_child(card)
 	var n := 0
 	for c in Modes.CHALLENGES:

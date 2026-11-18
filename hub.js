@@ -79,6 +79,62 @@ function seeded(str) {
 }
 const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 
+// La situazione di partenza della sfida del giorno, uguale per tutti (anche nell'app: modes.gd).
+// A volte si parte da zero, a volte da una partita già avviata. Per essere giusta, nella partita
+// avviata tu e il computer avete la stessa quantità di terre in gioco (fino a 4, al massimo tre tipi
+// e tre uguali), di terre nel cimitero (0–3) e di carte in mano (3–6): cambiano i tipi e chi inizia.
+function dailyScenario(day) {
+  // si provano più situazioni (sempre dalla data) e si tiene la prima equa: nessuno deve poter
+  // vincere quasi subito con le carte che ha in mano
+  for (let k = 0; k < 12; k++) {
+    const s = scenarioTry(day, k);
+    const g = new Game(['Tu', 'BOT'], { rng: seeded('atlas-' + day + (k ? '#' + k : '')), firstPlayer: s.firstPlayer, setup: s.setup });
+    if (k === 11 || (reach(g.players[1]) > 2 && reach(g.players[0]) > 1)) return { ...s, attempt: k };
+  }
+}
+// Quante terre deve ancora giocare per vincere con quello che ha in campo e in mano (99: non basta).
+function reach(pl) {
+  let best = 99;
+  const have = TYPES.filter((t) => pl.bf[t] > 0 || pl.hand.includes(t));
+  if (have.length === 5) best = TYPES.filter((t) => !pl.bf[t]).length;
+  for (const t of TYPES) {
+    const n = pl.hand.filter((x) => x === t).length;
+    if (pl.bf[t] + n >= 5) best = Math.min(best, 5 - pl.bf[t]);
+  }
+  return best;
+}
+function scenarioTry(day, k) {
+  const r = seeded('atlas-scena-' + day + (k ? '#' + k : ''));
+  const pick = () => TYPES[Math.floor(r() * 5)];
+  const started = r() >= 0.3;
+  if (!started) return { started, setup: [{ bf: {}, gy: {}, hand: 5 }, { bf: {}, gy: {}, hand: 5 }], firstPlayer: 0 };
+  // la «forma» del campo: quante terre per tipo, per esempio [2, 1]
+  const shape = [];
+  let left = 1 + Math.floor(r() * 4);
+  while (left > 0) {
+    const c = shape.length === 2 ? left : 1 + Math.floor(r() * Math.min(3, left));
+    shape.push(c);
+    left -= c;
+  }
+  const g = Math.floor(r() * 4), hand = 3 + Math.floor(r() * 4);
+  const side = () => {
+    const bf = {}, gy = {};
+    for (const c of shape) {
+      let t = pick();
+      while (bf[t]) t = pick();
+      bf[t] = c;
+    }
+    for (let k = 0; k < g; k++) { const t = pick(); gy[t] = (gy[t] || 0) + 1; }
+    return { bf, gy, hand };
+  };
+  const me = side(), bot = side();
+  return { started, setup: [me, bot], firstPlayer: r() >= 0.5 ? 1 : 0 };
+}
+function dailyOpts(day) {
+  const s = dailyScenario(day);
+  return { rng: seeded('atlas-' + day + (s.attempt ? '#' + s.attempt : '')), firstPlayer: s.firstPlayer, setup: s.setup };
+}
+
 // Reazioni rapide: solo frasi predefinite, niente chat libera.
 const REACTIONS = ['Ciao!', 'Bella mossa', 'Ops', 'Ci penso…', 'Fortuna!', 'Bella partita'];
 
@@ -205,7 +261,7 @@ class Hub {
     const names = [room.seats[0].name, room.seats[1].name];
     const ch = room.challenge && CHALLENGES.find((c) => c.id === room.challenge);
     room.game = room.tutorial ? new Game(names, { decks: [tutorialDeck(TUT_ME), tutorialDeck(TUT_BOT)], firstPlayer: 0 })
-      : room.daily ? new Game(names, { rng: seeded('atlas-' + room.daily), firstPlayer: 0 })
+      : room.daily ? new Game(names, dailyOpts(room.daily))
       : ch ? new Game(names, ch.opts) : new Game(names);
     room.rematch = [false, false];
     this.clearTimers(room);
@@ -354,6 +410,6 @@ class Hub {
   }
 }
 
-if (isNode) module.exports = { Hub, BOT_SEAT, CHALLENGES, REACTIONS };
-else globalThis.BLGHub = { Hub, BOT_SEAT, CHALLENGES, REACTIONS };
+if (isNode) module.exports = { Hub, BOT_SEAT, CHALLENGES, REACTIONS, dailyScenario, dailyOpts };
+else globalThis.BLGHub = { Hub, BOT_SEAT, CHALLENGES, REACTIONS, dailyScenario, dailyOpts };
 }

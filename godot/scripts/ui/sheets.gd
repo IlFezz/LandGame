@@ -117,6 +117,68 @@ static func rich(bbcode: String, fs := 14) -> RichTextLabel:
 	return r
 
 
+## Classifica della sfida del giorno (dal server). Si apre subito con «Carico…» e si riempie
+## appena arriva la risposta.
+static func classifica(host: Control, day: String) -> void:
+	var Classifica = load("res://scripts/net/classifica.gd")
+	var v := sheet(host, "Classifica", 380)
+	v.add_child(title("Classifica del giorno", 24))
+	var parts := day.split("-")
+	var months := ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+	v.add_child(para("%d %s · meno turni servono per vincere, più in alto sei" % [int(parts[2]), months[int(parts[1]) - 1]], 14))
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	v.add_child(body)
+	var wait := para("Carico la classifica…", 15)
+	body.add_child(wait)
+	v.add_child(button("Chiudi", "ink", func(): close(v), 16))
+	fit(v)
+	var me := Prefs.player_name() if str(Prefs.get_value("name")).strip_edges() != "" else ""
+	var r: Dictionary = await Classifica.board(host, day, me)
+	if not is_instance_valid(body):
+		return
+	wait.queue_free()
+	if r.has("error"):
+		body.add_child(para(r.error, 15))
+	elif r.get("total", 0) == 0:
+		body.add_child(para("Ancora nessuno ha vinto la sfida di oggi: puoi essere il primo!", 15))
+	else:
+		var mine_shown := false
+		for i in r.top.size():
+			var e: Dictionary = r.top[i]
+			var mine: bool = me != "" and e.name.to_lower() == me.to_lower()
+			mine_shown = mine_shown or mine
+			body.add_child(_board_row(i + 1, e.name, e.turns, mine))
+		if r.get("me") != null and not mine_shown:
+			body.add_child(para("…", 14))
+			body.add_child(_board_row(r.me.rank, me, r.me.turns, true))
+		var tot := para("%d giocator%s in classifica" % [r.total, "e" if r.total == 1 else "i"], 13)
+		body.add_child(tot)
+	fit(v)
+
+
+static func _board_row(rank: int, name: String, turns: int, mine: bool) -> Control:
+	var row := PanelContainer.new()
+	var sb := Art.box(Color(1, 1, 1, 0.14) if mine else Color(1, 1, 1, 0.05), 12, Color(1, 1, 1, 0.5) if mine else Color(0, 0, 0, 0), 1.0 if mine else 0.0)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	row.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	row.add_child(h)
+	var rk := W.label("%dº" % rank, 15, Art.TESTO, Art.bold())
+	rk.custom_minimum_size.x = 34
+	h.add_child(rk)
+	var nm := W.label(name, 15, Art.TESTO, Art.semi() if mine else Art.sans())
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	h.add_child(nm)
+	h.add_child(W.label("%d turni" % turns, 14, Color(Art.TESTO, 0.8), Art.semi()))
+	return row
+
+
 static func button(text: String, kind: String, cb: Callable, fs := 15) -> Button:
 	var b := W.button(text, kind, fs)
 	b.pressed.connect(cb)

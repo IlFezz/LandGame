@@ -49,6 +49,12 @@ Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla 
 - Chiudendo l'app durante una partita con un amico, alla riapertura nella home c'è «Rientra · CODICE» (e «Nuova stanza») al posto di «Con un amico»: si rientra nella stessa stanza con il proprio gettone, come nel sito.
 - «Condividi» (stanza creata) apre il menu di condivisione del telefono con il codice e il link `…/?room=CODICE`, che apre la stanza nel sito; «Copia codice» copia solo il codice.
 
+### Sfida del giorno e classifica
+- La data decide tutto, uguale per tutti nel sito e nell'app (`dailyScenario()` in `hub.js` e `daily_scenario()` in `modes.gd`, controllate a vicenda per 60 giorni da `tests/daily_fixture.json`): a volte si parte da zero, a volte da una partita già avviata. In quella avviata tu e il BOT avete la stessa quantità di terre in gioco (fino a 4), nel cimitero (0–3) e in mano (3–6); cambiano i tipi e chi inizia. Se con le carte pescate qualcuno potesse vincere quasi subito si passa a un'altra situazione (sempre dalla data). La scheda Sfide descrive la situazione del giorno.
+- Classifica: chi vince manda al server tutte le mosse (`scripts/net/classifica.gd`); il server (`classifica.js`) rigioca la partita con il motore del sito e la accetta solo se è vera. Conta il numero di turni, a parità chi arriva prima; un nome compare una volta sola con il suo record. «Classifica» nella scheda Sfide e nella finestra di fine partita.
+- Serve un nome (scheda Gioca) per entrare in classifica. Valgono solo le sfide di ieri, oggi e domani (fusi orari).
+- Sul piano gratuito di Render la classifica si perde quando il server si riavvia: per tenerla serve un database gratuito Upstash (variabili `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` su Render).
+
 ### Versione per il browser
 Il gioco Godot esportato per il web sta in `public/gioco/` e il server lo serve su **/gioco/** (per esempio `https://landgame-mrsc.onrender.com/gioco/`), compresso (circa 10 MB al primo caricamento). È identico all'app: stesse schermate, stesso computer, partite tra amici sullo stesso server (si collega da solo all'indirizzo della pagina). Il sito di prima resta all'indirizzo principale finché non si decide di sostituirlo.
 

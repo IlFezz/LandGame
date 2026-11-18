@@ -28,10 +28,26 @@ func t_seeded():
 
 
 func t_daily():
+	# stessa partita del sito (valori presi da game.js + hub.js per il 2026-11-16)
 	var g = Game.new(["A", "B"], Modes.daily_opts("2026-11-16"))
-	eq("".join(g.players[0].hand), "RWRGW")
-	eq("".join(g.players[1].hand), "WBRWU")
-	eq("".join(g.players[0].deck.slice(-5)), "UUWRW")
+	eq("".join(g.players[0].hand), "RWRU")
+	eq("".join(g.players[1].hand), "RRRG")
+	eq(g.players[0].bf, {"W": 0, "U": 1, "B": 1, "R": 0, "G": 0})
+	eq(g.players[1].bf, {"W": 1, "U": 0, "B": 1, "R": 0, "G": 0})
+	eq("".join(g.players[0].deck.slice(-5)), "WBGGB")
+	eq("".join(g.players[1].deck.slice(-5)), "UBBBB")
+	# situazione e carte del giorno identiche al sito per 60 giorni (tests/daily_fixture.json, da hub.js)
+	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/daily_fixture.json"))
+	var started := 0
+	for day in fx.scenari:
+		var want: Dictionary = Game._ints(fx.scenari[day])
+		var got := Modes.daily_scenario(day)
+		eq(got, want, day)
+		if got.started:
+			started += 1
+		var dg = Game.new(["A", "B"], Modes.daily_opts(day))
+		eq(dg.players.map(func(p): return "".join(p.hand) + "|" + "".join(p.deck.slice(-5))), fx.mani[day], day + " mani")
+	check(started > 20 and started < 60, "ci sono sia giorni da zero sia partite avviate")
 	return true
 
 

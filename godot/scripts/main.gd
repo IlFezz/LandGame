@@ -83,6 +83,8 @@ func _ready() -> void:
 				_home.friend_sheet()
 			elif a == "--amico=attesa":
 				_home.friend_waiting("K7QD", 60)
+			elif a == "--classifica":
+				load("res://scripts/ui/sheets.gd").classifica(_home._overlays, load("res://scripts/app/modes.gd").today())
 	if foto != "":
 		await get_tree().create_timer(attesa).timeout
 		get_viewport().get_texture().get_image().save_png(foto)

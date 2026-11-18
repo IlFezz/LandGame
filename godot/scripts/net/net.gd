@@ -26,16 +26,23 @@ var _held: Array = []
 
 
 func _ready() -> void:
+	url = server_url()
+	_open()
+
+
+## L'indirizzo del server: quello del sito; nel browser lo stesso della pagina; per le prove --server=.
+static func server_url() -> String:
+	var u := DEFAULT_URL
 	if OS.has_feature("web"):
 		# nel browser il gioco sta sullo stesso server: stesso indirizzo della pagina
 		var host = JavaScriptBridge.eval("location.host")
 		var https = JavaScriptBridge.eval("location.protocol") == "https:"
 		if host is String and host != "":
-			url = ("wss://" if https else "ws://") + host + "/ws"
+			u = ("wss://" if https else "ws://") + host + "/ws"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--server="):
-			url = a.get_slice("=", 1)
-	_open()
+			u = a.get_slice("=", 1)
+	return u
 
 
 func _open() -> void:

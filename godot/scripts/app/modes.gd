@@ -70,9 +70,90 @@ static func seeded(text: String) -> Callable:
 	return func(): return s.next()  # la funzione tiene vivo il generatore
 
 
+## La situazione di partenza della sfida del giorno, uguale per tutti: stesso calcolo di
+## dailyScenario() in hub.js (il sito e l'app danno sempre la stessa partita nello stesso giorno).
+## A volte si parte da zero, a volte da una partita già avviata. Per essere giusta, nella partita
+## avviata tu e il BOT avete la stessa quantità di terre in gioco (fino a 4, al massimo tre tipi e tre
+## uguali), di terre nel cimitero (0–3) e di carte in mano (3–6): cambiano i tipi e chi inizia.
+## Si provano più situazioni e si tiene la prima in cui nessuno può vincere quasi subito.
+static func daily_scenario(day: String) -> Dictionary:
+	var Game = load("res://scripts/rules/game.gd")
+	for k in 12:
+		var s := _scenario_try(day, k)
+		var g = Game.new(["Tu", "BOT"], {"rng": seeded("atlas-" + day + ("#%d" % k if k > 0 else "")), "firstPlayer": s.firstPlayer, "setup": s.setup})
+		if k == 11 or (_reach(g.players[1]) > 2 and _reach(g.players[0]) > 1):
+			s.attempt = k
+			return s
+	return {}
+
+
+## Quante terre deve ancora giocare per vincere con quello che ha in campo e in mano (99: non basta).
+static func _reach(pl: Dictionary) -> int:
+	var best := 99
+	var types := ["W", "U", "B", "R", "G"]
+	var have := types.filter(func(t): return pl.bf[t] > 0 or pl.hand.has(t))
+	if have.size() == 5:
+		best = types.filter(func(t): return pl.bf[t] == 0).size()
+	for t in types:
+		var n: int = pl.hand.count(t)
+		if pl.bf[t] + n >= 5:
+			best = mini(best, 5 - pl.bf[t])
+	return best
+
+
+static func _scenario_try(day: String, k: int) -> Dictionary:
+	var r := seeded("atlas-scena-" + day + ("#%d" % k if k > 0 else ""))
+	var types := ["W", "U", "B", "R", "G"]
+	var started: bool = r.call() >= 0.3
+	if not started:
+		return {"started": false, "setup": [{"bf": {}, "gy": {}, "hand": 5}, {"bf": {}, "gy": {}, "hand": 5}], "firstPlayer": 0}
+	# la «forma» del campo: quante terre per tipo, per esempio [2, 1]
+	var shape := []
+	var left := 1 + int(floor(r.call() * 4))
+	while left > 0:
+		var c: int = left if shape.size() == 2 else 1 + int(floor(r.call() * mini(3, left)))
+		shape.append(c)
+		left -= c
+	var g := int(floor(r.call() * 4))
+	var hand := 3 + int(floor(r.call() * 4))
+	var sides := []
+	for i in 2:
+		var bf := {}
+		var gy := {}
+		for c in shape:
+			var t: String = types[int(floor(r.call() * 5))]
+			while bf.has(t):
+				t = types[int(floor(r.call() * 5))]
+			bf[t] = c
+		for j in g:
+			var t: String = types[int(floor(r.call() * 5))]
+			gy[t] = gy.get(t, 0) + 1
+		sides.append({"bf": bf, "gy": gy, "hand": hand})
+	return {"started": true, "setup": sides, "firstPlayer": 1 if r.call() >= 0.5 else 0}
+
+
 ## Opzioni del motore per la sfida del giorno.
 static func daily_opts(day: String) -> Dictionary:
-	return {"rng": seeded("atlas-" + day), "firstPlayer": 0}
+	var s := daily_scenario(day)
+	var k: int = s.attempt
+	return {"rng": seeded("atlas-" + day + ("#%d" % k if k > 0 else "")), "firstPlayer": s.firstPlayer, "setup": s.setup}
+
+
+## La situazione del giorno a parole (per la scheda Sfide).
+static func daily_text(day: String) -> String:
+	var s := daily_scenario(day)
+	if not s.started:
+		return "Si parte da zero: stesse carte per tutti, inizi tu."
+	var names := {"W": "Pianura", "U": "Isola", "B": "Palude", "R": "Montagna", "G": "Foresta"}
+	var say := func(bf: Dictionary) -> String:
+		var parts := []
+		for t in ["W", "U", "B", "R", "G"]:
+			if bf.has(t):
+				parts.append(("%d× %s" % [bf[t], names[t]]) if bf[t] > 1 else names[t])
+		return ", ".join(parts) if not parts.is_empty() else "niente"
+	return "Partita già avviata. In gioco: tu %s; il BOT %s. Hai %d carte in mano, il BOT %d. %s." % [
+		say.call(s.setup[0].bf), say.call(s.setup[1].bf), s.setup[0].hand, s.setup[1].hand,
+		"Inizia il BOT" if s.firstPlayer == 1 else "Inizi tu"]
 
 
 # ---------- tutorial ----------

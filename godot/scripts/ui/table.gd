@@ -18,6 +18,7 @@ const Sound := preload("res://scripts/app/sound.gd")
 const Sheets := preload("res://scripts/ui/sheets.gd")
 const Remote := preload("res://scripts/net/remote_game.gd")
 const Net := preload("res://scripts/net/net.gd")
+const Classifica := preload("res://scripts/net/classifica.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
@@ -255,6 +256,8 @@ func start(lvl: String, name := "Tu", opts := {}, m := {}) -> void:
 	level = lvl
 	player_name = name
 	g = Game.new([name, "Maestro" if kind == "tutorial" else "BOT"], opts)
+	if kind == "daily":
+		g.record = []  # le mosse servono alla classifica: il server rigioca la partita
 	cur = Profile.fresh(lvl if kind == "bot" else kind, mode.get("challenge"), mode.get("daily"), kind == "tutorial")
 	new_goals = []
 	_begin(true)
@@ -344,6 +347,8 @@ var deal_anim := true  # i test la spengono: la distribuzione iniziale richiede 
 
 func _begin(fresh := false) -> void:
 	_over_shown = false
+	_sent_record = false
+	_sent_text = ""
 	_awaiting = false
 	if online:
 		bot = null
@@ -2165,6 +2170,14 @@ func _show_over(quiet := false) -> void:
 		var l := W.label(line, 15, Art.TESTO, Art.bold())
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
+		if mode.kind == "daily":
+			var cl := W.label("", 14, Color(Art.TESTO, 0.85), Art.semi())
+			cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			v.add_child(cl)
+			_daily_submit(cl)
+			var day: String = mode.daily
+			v.add_child(_btn("Classifica", "ghost_ink", func(): Sheets.classifica(overlay_layer, day)))
 	for id in new_goals:
 		var gl := Profile.goal(id)
 		var box := PanelContainer.new()
@@ -2211,6 +2224,36 @@ func _over_online(v: VBoxContainer) -> void:
 	v.add_child(_btn("Torna alla home", "ghost_ink", func():
 		leave_online()
 		exit_requested.emit()))
+
+
+## Sfida del giorno vinta: la partita va al server per la classifica (una volta sola).
+var _sent_record := false
+
+
+func _daily_submit(lbl: Label) -> void:
+	if str(Prefs.get_value("name")).strip_edges() == "":
+		lbl.text = "Scrivi il tuo nome nella scheda Gioca per entrare in classifica."
+		return
+	if _sent_record or g.record == null:
+		lbl.text = _sent_text
+		return
+	_sent_record = true
+	lbl.text = "Invio alla classifica…"
+	var r: Dictionary = await Classifica.submit(self, mode.daily, Prefs.player_name(), g.record)
+	if r.has("error"):
+		_sent_record = false
+		_sent_text = r.error
+	elif r.get("ok", false):
+		_sent_text = "Classifica di oggi: sei %dº su %d" % [r.me.rank, r.total]
+		if not r.get("best", true):
+			_sent_text += " (con il tuo record di oggi)"
+	else:
+		_sent_text = ""
+	if is_instance_valid(lbl):
+		lbl.text = _sent_text
+
+
+var _sent_text := ""
 
 
 func _toast(msg: String) -> void:
