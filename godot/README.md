@@ -42,7 +42,7 @@ Se l'app viene chiusa a metà partita, alla riapertura la partita riprende da do
 - L'app parla con lo stesso server del sito (`server.js`, WebSocket, stessi messaggi di `hub.js`): si gioca anche contro chi usa il browser. Le regole girano sul server; il tavolo è lo stesso della partita contro il computer (`scripts/net/remote_game.gd` gli presenta la partita del server come se fosse il motore locale).
 - Il tempo per turno lo tiene il server (allo scadere gioca lui). Reazioni rapide tra i due giocatori. Se la linea cade l'app si ricollega da sola e rientra nella stanza; se cade all'avversario compare «… si è scollegato: aspetta che rientri».
 - Tra giocatori ci si arrende (dal menu: «Arrenditi», con conferma) invece di uscire. A fine partita «Rivincita» parte quando la chiedono tutti e due. Le partite contano nelle statistiche «contro giocatori» e per l'obiettivo «In compagnia».
-- Indirizzo del server: `DEFAULT_URL` in `scripts/net/net.gd`; per le prove si cambia con `--server=ws://localhost:3999`.
+- Indirizzo del server: `DEFAULT_URL` in `scripts/net/net.gd` (wss://landgame-mrsc.onrender.com/ws, lo stesso del sito); per le prove si cambia con `--server=ws://localhost:3999`.
 - Prova automatica (serve il server acceso sul PC: `PORT=3999 node server.js`):
   `godot --headless --path godot -s res://tests/only.gd -- test_online --server=ws://localhost:3999` — crea una stanza, fa entrare un secondo giocatore, gioca una partita intera, reazioni, rivincita e resa.
 

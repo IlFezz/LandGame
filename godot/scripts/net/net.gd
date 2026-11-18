@@ -10,7 +10,7 @@ signal online_changed(online: bool)
 const Game := preload("res://scripts/rules/game.gd")
 
 ## Indirizzo del server: lo stesso del sito (Render). Per le prove si cambia con --server=ws://...
-const DEFAULT_URL := "wss://landgame.onrender.com/ws"
+const DEFAULT_URL := "wss://landgame-mrsc.onrender.com/ws"
 
 var url := DEFAULT_URL
 var online := false
