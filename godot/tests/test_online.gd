@@ -18,6 +18,8 @@ func tests() -> Array:
 	return [
 		["stanza, partita intera, reazioni e rivincita con un amico", t_online],
 		["tra giocatori ci si arrende", t_surrender],
+		["se l'amico si arrende compare la vittoria", t_opp_surrender],
+		["chiusa l'app, si rientra nella stanza con il gettone", t_rejoin],
 	]
 
 
@@ -126,6 +128,7 @@ func _teardown() -> void:
 		b_net.shut()
 	await _tree().create_timer(0.5).timeout
 	preload("res://scripts/app/profile.gd").remove("Anna")
+	Net.forget()  # le prove non lasciano stanze da riprendere
 
 
 func _play_to_end(secs: float) -> bool:
@@ -167,5 +170,56 @@ func t_surrender():
 	check(await _wait(func(): return t.g.phase == "over" and not t.busy, 10), "la resa chiude la partita")
 	eq(t.g.winner, 1, "vince l'amico")
 	eq(t.g.end_reason, "surrender", "motivo: resa")
+	check(await _wait(func(): return t.overlay_layer.has_node("Over"), 5), "finestra di fine partita dopo la resa")
+	await _teardown()
+	return true
+
+
+func t_rejoin():
+	const Prefs := preload("res://scripts/app/prefs.gd")
+	if not await _setup():
+		return true
+	await _wait(func(): return not t.busy, 10)
+	check(Prefs.get_value("friend").has("token"), "la stanza è ricordata per il rientro")
+	# (nella prova i due giocatori stanno sullo stesso PC: il gettone di A si prende dal suo collegamento)
+	var s: Dictionary = a_net.session.duplicate()
+	var turn: int = t.g.turn
+	# l'app viene chiusa di colpo: niente «leave»
+	a_net.shut()
+	t.queue_free()
+	await _tree().create_timer(0.5).timeout
+	var n2: Node = Net.new()
+	_tree().root.add_child(n2)
+	var msgs: Array = []
+	n2.message.connect(func(m): msgs.append(m))
+	n2.send({"t": "join", "code": s.code, "token": s.token, "name": "Anna"})
+	check(await _wait(func(): return msgs.any(func(m): return m.t == "state" and m.game is Dictionary), 10), "rientro accettato dal server")
+	var st: Dictionary = msgs.filter(func(m): return m.t == "state" and m.game is Dictionary)[0]
+	eq(st.seat, 0, "stesso posto di prima")
+	n2.paused = true
+	t = Table.new()
+	_tree().root.add_child(t)
+	t.size = Vector2(390, 844)
+	t.save_enabled = false
+	t.deal_anim = false
+	await _tree().process_frame
+	t.start_online(n2, st, "Anna")
+	await _wait(func(): return not t.busy, 10)
+	check(t.g.turn >= turn, "la partita continua da dove era")
+	check(await _play_to_end(240), "e si arriva alla fine")
+	await _teardown()
+	check(Prefs.get_value("friend").is_empty(), "uscendo la stanza viene dimenticata")
+	Net.forget()
+	return true
+
+
+func t_opp_surrender():
+	if not await _setup():
+		return true
+	await _wait(func(): return not t.busy, 10)
+	b_net.send({"t": "action", "a": {"type": "surrender"}})
+	check(await _wait(func(): return t.g.phase == "over" and not t.busy, 10), "la resa dell'amico chiude la partita")
+	eq(t.g.winner, 0, "vinci tu")
+	check(await _wait(func(): return t.overlay_layer.has_node("Over"), 5), "compare la finestra di vittoria")
 	await _teardown()
 	return true

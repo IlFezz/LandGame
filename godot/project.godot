@@ -9,6 +9,10 @@ config/description="Il Basic Land Game: due giocatori, mazzi da 50 terre base."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+boot_splash/bg_color=Color(0.114, 0.122, 0.278, 1)
+boot_splash/image="res://assets/icons/icona-192.png"
+boot_splash/fullsize=false
+boot_splash/use_filter=true
 
 [display]
 

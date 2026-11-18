@@ -172,6 +172,10 @@ func _show_home() -> void:
 	_home.play_tutorial.connect(func(): _start("normal", {"kind": "tutorial"}))
 	_home.fullscreen_toggled.connect(toggle_fullscreen)
 	_home.play_friend.connect(_friend)
+	_home.rejoin_friend.connect(func():
+		var s: Dictionary = Prefs.get_value("friend")
+		if s.has("code") and s.has("token"):
+			_friend(str(s.code), str(s.token)))
 	_home.resume_game.connect(func():
 		var saved := Table.saved_game()
 		if saved.is_empty():
@@ -183,7 +187,7 @@ func _show_home() -> void:
 
 
 ## Partita con un amico: ci si collega al server e si crea una stanza (code "") o si entra.
-func _friend(code: String) -> void:
+func _friend(code: String, token := "") -> void:
 	Sound.play("click")
 	_friend_cancel()
 	_net = Net.new()
@@ -192,6 +196,8 @@ func _friend(code: String) -> void:
 	var who := Prefs.player_name()
 	if code == "":
 		_net.send({"t": "create", "name": who, "turnTime": int(Prefs.get_value("turn_time"))})
+	elif token != "":
+		_net.send({"t": "join", "code": code, "token": token, "name": who})  # rientro nella propria stanza
 	else:
 		_net.send({"t": "join", "code": code, "name": who})
 	_home.friend_connecting()
@@ -212,15 +218,21 @@ func _on_friend_msg(m: Dictionary) -> void:
 				await get_tree().process_frame
 				_table.start_online(net, m, Prefs.player_name())
 			else:
-				_home.friend_waiting(str(m.code), int(m.get("turnTime", 0)))
+				_home.friend_waiting(str(m.code), int(m.get("turnTime", 0)), _net.site_link(str(m.code)))
 		"error":
 			_home._close_sheets()
-			_home.toast(str(m.msg))
+			var msg := str(m.msg)
+			if msg.contains("non trovata") and not Prefs.get_value("friend").is_empty():
+				msg = "Quella partita non c'è più: il tuo amico è uscito o è passato troppo tempo."
+			Net.forget()
+			_home.refresh()
+			_home.toast(msg)
 			_friend_cancel()
 
 
 func _friend_cancel() -> void:
 	if _net != null:
+		Net.forget()
 		_net.send({"t": "leave"})
 		_net.get_tree().create_timer(0.3).timeout.connect(_net.shut)
 		_net = null

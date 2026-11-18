@@ -17,6 +17,7 @@ const Prefs := preload("res://scripts/app/prefs.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 const Sheets := preload("res://scripts/ui/sheets.gd")
 const Remote := preload("res://scripts/net/remote_game.gd")
+const Net := preload("res://scripts/net/net.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
@@ -277,7 +278,8 @@ func start_online(net: Node, m: Dictionary, name: String) -> void:
 	cur = Profile.fresh("friend")
 	new_goals = []
 	net.resume.call_deferred()
-	_begin(true)
+	# distribuzione animata solo a inizio partita (non quando si rientra a partita avviata)
+	_begin(m.has("steps"))
 
 
 ## Messaggi del server durante la partita.
@@ -317,6 +319,7 @@ func _read_timer(m: Dictionary) -> void:
 
 ## Esce dalla stanza (a partita finita o mentre si aspetta la rivincita).
 func leave_online() -> void:
+	Net.forget()
 	if _net != null:
 		_net.send({"t": "leave"})
 		var n := _net

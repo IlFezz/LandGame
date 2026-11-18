@@ -201,6 +201,14 @@ static func set_music(on: bool) -> void:
 			tw.tween_property(_music_player, "volume_db", -60.0, 0.8)
 			tw.tween_callback(_music_player.stop)
 		return
+	if _music_stream == null and ResourceLoader.exists(MUSIC_ASSET):
+		# la musica già pronta nel gioco: parte subito, senza calcoli (indispensabile nel browser)
+		var m: AudioStreamWAV = load(MUSIC_ASSET)
+		if m != null:
+			m.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			m.loop_begin = 0
+			m.loop_end = int(m.get_length() * m.mix_rate)
+			_music_stream = m
 	if _music_stream == null and FileAccess.file_exists(MUSIC_FILE):
 		var w := AudioStreamWAV.load_from_file(MUSIC_FILE)
 		if w != null:
@@ -278,6 +286,7 @@ static func _table(kind: String) -> PackedFloat32Array:
 
 
 const MUSIC_FILE := "user://musica.wav"
+const MUSIC_ASSET := "res://assets/audio/musica.wav"  # la stessa musica, preparata una volta per tutte
 
 
 ## Dm9 · Bbmaj7 · Gm(add9) · A7sus4, lento e cupo, con note sparse sopra (come Music in app.js).

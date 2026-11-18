@@ -46,6 +46,20 @@ Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla 
 - Prova automatica (serve il server acceso sul PC: `PORT=3999 node server.js`):
   `godot --headless --path godot -s res://tests/only.gd -- test_online --server=ws://localhost:3999` — crea una stanza, fa entrare un secondo giocatore, gioca una partita intera, reazioni, rivincita e resa.
 
+- Chiudendo l'app durante una partita con un amico, alla riapertura nella home c'è «Rientra · CODICE» (e «Nuova stanza») al posto di «Con un amico»: si rientra nella stessa stanza con il proprio gettone, come nel sito.
+- «Condividi» (stanza creata) apre il menu di condivisione del telefono con il codice e il link `…/?room=CODICE`, che apre la stanza nel sito; «Copia codice» copia solo il codice.
+
+### Versione per il browser
+Il gioco Godot esportato per il web sta in `public/gioco/` e il server lo serve su **/gioco/** (per esempio `https://landgame-mrsc.onrender.com/gioco/`), compresso (circa 10 MB al primo caricamento). È identico all'app: stesse schermate, stesso computer, partite tra amici sullo stesso server (si collega da solo all'indirizzo della pagina). Il sito di prima resta all'indirizzo principale finché non si decide di sostituirlo.
+
+Per rifare l'esportazione dopo una modifica:
+
+```bash
+godot --headless --path godot --export-release "Web" ../public/gioco/index.html
+```
+
+Versione senza thread: nel browser il computer difficile pensa sul thread principale (al massimo un secondo) e la musica è già pronta in `assets/audio/musica.wav`.
+
 ### Foto di prova
 `--finestra=390x844 --scala=1 --partita=normal --da-solo --foto=file.png --attesa=20` (dopo `--` sulla riga di comando di Godot) apre il tavolo alla misura voluta, fa giocare il computer anche al posto tuo e salva una foto dello schermo.
 

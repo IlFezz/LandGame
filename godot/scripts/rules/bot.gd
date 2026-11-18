@@ -299,8 +299,16 @@ var last_rounds := 0  # giri di simulazione dell'ultima decisione del difficile 
 ##   bot.decide_async(); var a = await bot.decided
 ## Mentre pensa, la partita non va toccata.
 func decide_async() -> void:
+	if OS.has_feature("web") and not OS.has_feature("threads"):
+		# nel browser (versione senza thread) pensa subito; il tavolo aspetta comunque il segnale
+		_emit_later.call_deferred(decide())
+		return
 	_thread = Thread.new()
 	_thread.start(_think)
+
+
+func _emit_later(a) -> void:
+	decided.emit(a)
 
 
 func _think() -> void:

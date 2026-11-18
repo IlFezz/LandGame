@@ -8,6 +8,7 @@ signal message(m: Dictionary)
 signal online_changed(online: bool)
 
 const Game := preload("res://scripts/rules/game.gd")
+const Prefs := preload("res://scripts/app/prefs.gd")
 
 ## Indirizzo del server: lo stesso del sito (Render). Per le prove si cambia con --server=ws://...
 const DEFAULT_URL := "wss://landgame-mrsc.onrender.com/ws"
@@ -25,6 +26,12 @@ var _held: Array = []
 
 
 func _ready() -> void:
+	if OS.has_feature("web"):
+		# nel browser il gioco sta sullo stesso server: stesso indirizzo della pagina
+		var host = JavaScriptBridge.eval("location.host")
+		var https = JavaScriptBridge.eval("location.protocol") == "https:"
+		if host is String and host != "":
+			url = ("wss://" if https else "ws://") + host + "/ws"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--server="):
 			url = a.get_slice("=", 1)
@@ -60,6 +67,19 @@ func resume() -> void:
 	_held = []
 	for d in held:
 		message.emit(d)
+
+
+## Indirizzo del sito (per il link d'invito): https://.../?room=CODICE apre la stanza nel browser.
+func site_link(code: String) -> String:
+	var u := url.replace("wss://", "https://").replace("ws://", "http://")
+	if u.ends_with("/ws"):
+		u = u.substr(0, u.length() - 3)
+	return u + "/?room=" + code
+
+
+## La stanza è finita o abbandonata: non si propone più di rientrare.
+static func forget() -> void:
+	Prefs.set_value("friend", {})
 
 
 ## Chiude per sempre (si esce dalla stanza o si torna alla home).
@@ -100,6 +120,7 @@ func _process(delta: float) -> void:
 				d = Game._ints(d)  # i numeri del JSON arrivano come decimali
 				if d.get("t") == "joined":
 					session = {"code": d.code, "token": d.token}
+					Prefs.set_value("friend", session)  # per rientrare anche dopo aver chiuso l'app
 				if paused:
 					_held.append(d)
 				else:

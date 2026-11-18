@@ -10,6 +10,7 @@ signal play_daily(day: String)
 signal play_tutorial
 signal resume_game  # riprende la partita rimasta in corso quando l'app è stata chiusa
 signal play_friend(code: String)  # "" = crea una stanza, altrimenti entra con il codice
+signal rejoin_friend  # rientra nella stanza con un amico lasciata chiudendo l'app
 signal friend_cancel  # esce dalla stanza mentre si aspetta l'amico
 signal fullscreen_toggled
 
@@ -21,6 +22,7 @@ const Profile := preload("res://scripts/app/profile.gd")
 const Modes := preload("res://scripts/app/modes.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 const Table := preload("res://scripts/ui/table.gd")
+const Share := preload("res://scripts/app/share.gd")
 
 const TABS := [["play", "Gioca"], ["challenges", "Sfide"], ["profile", "Profilo"], ["collection", "Collezione"], ["learn", "Impara"]]
 const TAB_ICON := {
@@ -384,6 +386,15 @@ func _edit(placeholder: String, max_len: int, fs := 17) -> LineEdit:
 	return e
 
 
+## Pulsanti affiancati tutti della stessa larghezza (quella del più largo).
+func _even(row: HBoxContainer) -> void:
+	var w := 0.0
+	for c in row.get_children():
+		w = maxf(w, c.get_combined_minimum_size().x)
+	for c in row.get_children():
+		c.custom_minimum_size.x = w
+
+
 # ---------------------------------------------------------------- Con un amico
 
 func _close_sheets() -> void:
@@ -454,7 +465,7 @@ func friend_connecting() -> void:
 
 
 ## Stanza creata: il codice grande da mandare all'amico.
-func friend_waiting(code: String, turn_time: int) -> void:
+func friend_waiting(code: String, turn_time: int, link := "") -> void:
 	_close_sheets()
 	var v := Sheets.sheet(_overlays, "Amico", 360)
 	v.add_child(Sheets.para("Manda questo codice al tuo amico", 15))
@@ -462,9 +473,26 @@ func friend_waiting(code: String, turn_time: int) -> void:
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(big)
 	v.add_child(Sheets.para("Tempo per turno: %s" % ("%d secondi" % turn_time if turn_time else "illimitato"), 14))
-	v.add_child(Sheets.button("Copia il codice", "ink", func():
-		DisplayServer.clipboard_set("Giochiamo ad Atlas! Codice stanza: %s" % code)
-		toast("Codice copiato"), 17))
+	var invite := "Giochiamo ad Atlas! Codice stanza: %s" % code + ("
+" + link if link != "" else "")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var sh := W.button("Condividi", "ink", 15)
+	sh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.pressed.connect(func():
+		Sound.play("click")
+		if not Share.text(invite):
+			toast("Invito copiato: incollalo nella chat con il tuo amico"))
+	row.add_child(sh)
+	var cp := W.button("Copia codice", "dark", 15)
+	cp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cp.pressed.connect(func():
+		Sound.play("click")
+		DisplayServer.clipboard_set(code)
+		toast("Codice copiato"))
+	row.add_child(cp)
+	_even.call_deferred(row)
+	v.add_child(row)
 	var wait := W.label("In attesa che il tuo amico entri…", 14, Color(Art.TESTO, 0.65))
 	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(wait)
@@ -585,12 +613,32 @@ func _play_pane() -> Control:
 			bt.size_flags_stretch_ratio = 1.0
 			bt.pressed.connect(x[2])
 			row.add_child(bt)
+		_even.call_deferred(row)
 		b.add_child(row)
 	var friend := W.button("Con un amico", "dark", 19)
 	friend.pressed.connect(func():
 		Sound.play("click")
 		friend_sheet())
-	b.add_child(friend)
+	var fs: Dictionary = Prefs.get_value("friend")
+	if fs.is_empty():
+		b.add_child(friend)
+	else:
+		# stanza con un amico lasciata chiudendo l'app: «Rientra» e «Nuova stanza» nello stesso spazio
+		var fh := friend.get_combined_minimum_size().y
+		friend.free()
+		var frow := HBoxContainer.new()
+		frow.add_theme_constant_override("separation", 10)
+		for x in [["Rientra · %s" % fs.get("code", ""), "primary", func(): rejoin_friend.emit()],
+				["Nuova stanza", "dark", func():
+					Sound.play("click")
+					friend_sheet()]]:
+			var bt := W.button(x[0], x[1], 16)
+			bt.custom_minimum_size.y = fh
+			bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bt.pressed.connect(x[2])
+			frow.add_child(bt)
+		_even.call_deferred(frow)
+		b.add_child(frow)
 	return top
 
 

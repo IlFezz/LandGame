@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { Hub } = require('./hub');
 
 const PORT = process.env.PORT || 3000;
@@ -11,13 +12,25 @@ const PUBLIC = path.join(__dirname, 'public');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff': 'font/woff',
+  '.wasm': 'application/wasm', '.pck': 'application/octet-stream',
 };
+// Versione compressa dei file grandi (il gioco Godot nel browser: /gioco/), preparata una volta sola.
+const gzCache = new Map();
+function gzipped(file, data, etag) {
+  const hit = gzCache.get(file);
+  if (hit && hit.etag === etag) return hit.data;
+  const z = zlib.gzipSync(data, { level: 9 });
+  gzCache.set(file, { etag, data: z });
+  return z;
+}
 
 // ---------- HTTP statico ----------
 const server = http.createServer((req, res) => {
   let url = decodeURIComponent(req.url.split('?')[0]);
   if (url === '/healthz') { res.writeHead(200); return res.end('ok'); }
   if (url === '/') url = '/index.html';
+  if (url === '/gioco') { res.writeHead(301, { Location: '/gioco/' }); return res.end(); }
+  if (url.endsWith('/')) url += 'index.html';
   // motore, computer e stanze stanno nella radice perché li usa anche il server
   const shared = ['/game.js', '/bot.js', '/hub.js'].includes(url);
   const file = shared ? path.join(__dirname, url) : path.normalize(path.join(PUBLIC, url));
@@ -34,6 +47,13 @@ const server = http.createServer((req, res) => {
       ETag: etag,
     };
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    const big = data.length > 100000 && ['.wasm', '.pck', '.js'].includes(ext);
+    if (big && /gzip/.test(req.headers['accept-encoding'] || '')) {
+      headers['Content-Encoding'] = 'gzip';
+      headers.Vary = 'Accept-Encoding';
+      res.writeHead(200, headers);
+      return res.end(gzipped(file, data, etag));
+    }
     res.writeHead(200, headers);
     res.end(data);
   });
