@@ -48,11 +48,12 @@ static func fit_panel(panel: Control, want_w: float) -> void:
 	var tree := panel.get_tree()
 	if tree == null:
 		return
-	tree.process_frame.connect(func(): _do_fit(panel, want_w), CONNECT_ONE_SHOT)
-	tree.create_timer(0.05).timeout.connect(func(): _do_fit(panel, want_w))
+	# con bind (non con una funzione anonima): se il foglio si chiude subito non dà errori
+	tree.process_frame.connect(_do_fit.bind(panel, want_w), CONNECT_ONE_SHOT)
+	tree.create_timer(0.05).timeout.connect(_do_fit.bind(panel, want_w))
 
 
-static func _do_fit(panel: Control, want_w: float) -> void:
+static func _do_fit(panel, want_w: float) -> void:  # panel senza tipo: può essere già chiuso
 	if not is_instance_valid(panel) or panel.get_parent() == null:
 		return
 	var S: Vector2 = (panel.get_parent() as Control).size
@@ -63,7 +64,7 @@ static func _do_fit(panel: Control, want_w: float) -> void:
 	panel.custom_minimum_size.x = w
 	panel.size = Vector2(w, 0)
 	panel.reset_size()
-	var ps := panel.get_combined_minimum_size()
+	var ps: Vector2 = panel.get_combined_minimum_size()
 	ps.x = maxf(ps.x, w)
 	var k := minf(1.0, minf((S.y - 24) / ps.y, (S.x - 24) / ps.x))
 	panel.pivot_offset = Vector2.ZERO

@@ -8,6 +8,8 @@ signal play_bot(level: String)
 signal play_challenge(id: String)
 signal play_daily(day: String)
 signal play_tutorial
+signal play_friend(code: String)  # "" = crea una stanza, altrimenti entra con il codice
+signal friend_cancel  # esce dalla stanza mentre si aspetta l'amico
 signal fullscreen_toggled
 
 const Art := preload("res://scripts/ui/art.gd")
@@ -358,6 +360,121 @@ func _seg(options: Array, current, cb: Callable, fs := 14) -> HBoxContainer:
 	return seg
 
 
+## Casella di testo di vetro (nome, codice della stanza).
+func _edit(placeholder: String, max_len: int, fs := 17) -> LineEdit:
+	var e := LineEdit.new()
+	e.placeholder_text = placeholder
+	e.max_length = max_len
+	e.add_theme_font_override("font", Art.semi())
+	e.add_theme_font_size_override("font_size", fs)
+	e.add_theme_color_override("font_color", Art.TESTO)
+	e.add_theme_color_override("font_placeholder_color", Color(Art.TESTO, 0.45))
+	e.add_theme_color_override("caret_color", Art.TESTO)
+	var es := Art.box(Color(1, 1, 1, 0.14), 22, Color(1, 1, 1, 0.3), 1)
+	es.content_margin_left = 20
+	es.content_margin_right = 20
+	es.content_margin_top = 13
+	es.content_margin_bottom = 13
+	e.add_theme_stylebox_override("normal", es)
+	var esf := es.duplicate()
+	esf.border_color = Color(Art.TESTO, 0.7)
+	e.add_theme_stylebox_override("focus", esf)
+	return e
+
+
+# ---------------------------------------------------------------- Con un amico
+
+func _close_sheets() -> void:
+	for c in _overlays.get_children():
+		_overlays.remove_child(c)
+		c.queue_free()
+
+
+## «Con un amico»: crea una stanza (il codice si manda all'amico) o entra con il suo codice.
+func friend_sheet() -> void:
+	_close_sheets()
+	var v := Sheets.sheet(_overlays, "Amico", 380)
+	v.add_child(Sheets.title("Con un amico", 26))
+	v.add_child(Sheets.para("Crea una stanza e manda il codice al tuo amico, oppure scrivi il codice che ti ha mandato. Si gioca anche contro chi usa il sito.", 15))
+	var tt := []
+	for t in TURN_TIMES:
+		tt.append([t, "%ds" % t if t else "∞"])
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 10)
+	trow.add_child(W.label("Tempo", 13, Color(Art.TESTO, 0.7)))
+	var ts := _seg(tt, Prefs.get_value("turn_time"), func(val):
+		Prefs.set_value("turn_time", val)
+		friend_sheet(), 12)
+	ts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	trow.add_child(ts)
+	v.add_child(trow)
+	v.add_child(Sheets.button("Crea una stanza", "ink", func(): play_friend.emit(""), 18))
+	var or_l := W.label("oppure entra con un codice", 14, Color(Art.TESTO, 0.65))
+	or_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(or_l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var code := _edit("CODICE", 4, 20)
+	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	code.text_changed.connect(func(t):
+		var up: String = t.to_upper()
+		if up != t:
+			var c := code.caret_column
+			code.text = up
+			code.caret_column = c)
+	var join := func():
+		var c := code.text.strip_edges().to_upper()
+		if c.length() != 4:
+			toast("Il codice ha 4 caratteri")
+			return
+		play_friend.emit(c)
+	code.text_submitted.connect(func(_t): join.call())
+	row.add_child(code)
+	var jb := W.button("Entra", "dark", 17)
+	jb.pressed.connect(join)
+	row.add_child(jb)
+	v.add_child(row)
+	v.add_child(Sheets.button("Chiudi", "ghost", _close_sheets, 15))
+	Sheets.fit(v)
+
+
+## Mentre ci si collega al server (la prima volta può volerci un po': il server si sveglia).
+func friend_connecting() -> void:
+	_close_sheets()
+	var v := Sheets.sheet(_overlays, "Amico", 360)
+	v.add_child(Sheets.title("Collegamento…", 24))
+	v.add_child(Sheets.para("Mi collego al server delle partite. La prima volta della giornata può volerci fino a un minuto.", 15))
+	v.add_child(Sheets.button("Annulla", "ghost", func():
+		_close_sheets()
+		friend_cancel.emit(), 15))
+	Sheets.fit(v)
+
+
+## Stanza creata: il codice grande da mandare all'amico.
+func friend_waiting(code: String, turn_time: int) -> void:
+	_close_sheets()
+	var v := Sheets.sheet(_overlays, "Amico", 360)
+	v.add_child(Sheets.para("Manda questo codice al tuo amico", 15))
+	var big := W.label(code, 56, Art.TESTO, Art.bold())
+	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(big)
+	v.add_child(Sheets.para("Tempo per turno: %s" % ("%d secondi" % turn_time if turn_time else "illimitato"), 14))
+	v.add_child(Sheets.button("Copia il codice", "ink", func():
+		DisplayServer.clipboard_set("Giochiamo ad Atlas! Codice stanza: %s" % code)
+		toast("Codice copiato"), 17))
+	var wait := W.label("In attesa che il tuo amico entri…", 14, Color(Art.TESTO, 0.65))
+	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(wait)
+	var tw := wait.create_tween().set_loops().set_trans(Tween.TRANS_SINE)
+	tw.tween_property(wait, "modulate:a", 0.4, 0.9)
+	tw.tween_property(wait, "modulate:a", 1.0, 0.9)
+	v.add_child(Sheets.button("Esci dalla stanza", "ghost", func():
+		_close_sheets()
+		friend_cancel.emit(), 15))
+	Sheets.fit(v)
+
+
 ## Riquadro di vetro (le schede Sfide e Impara).
 func _glass(pad := 16) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -424,24 +541,8 @@ func _play_pane() -> Control:
 		spacer.custom_minimum_size.y = 28
 		a.add_child(spacer)
 	b.add_child(W.label("Il tuo nome", 14, Color(Art.TESTO, 0.8)))
-	var name_edit := LineEdit.new()
+	var name_edit := _edit("Scrivi il tuo nome", 20)
 	name_edit.text = Prefs.get_value("name")
-	name_edit.placeholder_text = "Scrivi il tuo nome"
-	name_edit.max_length = 20
-	name_edit.add_theme_font_override("font", Art.semi())
-	name_edit.add_theme_font_size_override("font_size", 17)
-	name_edit.add_theme_color_override("font_color", Art.TESTO)
-	name_edit.add_theme_color_override("font_placeholder_color", Color(Art.TESTO, 0.45))
-	name_edit.add_theme_color_override("caret_color", Art.TESTO)
-	var es := Art.box(Color(1, 1, 1, 0.14), 22, Color(1, 1, 1, 0.3), 1)
-	es.content_margin_left = 20
-	es.content_margin_right = 20
-	es.content_margin_top = 13
-	es.content_margin_bottom = 13
-	name_edit.add_theme_stylebox_override("normal", es)
-	var esf := es.duplicate()
-	esf.border_color = Color(Art.TESTO, 0.7)
-	name_edit.add_theme_stylebox_override("focus", esf)
 	name_edit.text_changed.connect(func(t): Prefs.set_value("name", t.strip_edges()))
 	b.add_child(name_edit)
 	b.add_child(_seg(LEVELS, Prefs.get_value("level"), func(v):
@@ -464,7 +565,9 @@ func _play_pane() -> Control:
 	go.pressed.connect(func(): play_bot.emit(Prefs.get_value("level")))
 	b.add_child(go)
 	var friend := W.button("Con un amico", "dark", 19)
-	friend.pressed.connect(func(): toast("Le partite tra amici arrivano con il prossimo passo: intanto si gioca nel browser."))
+	friend.pressed.connect(func():
+		Sound.play("click")
+		friend_sheet())
 	b.add_child(friend)
 	return top
 

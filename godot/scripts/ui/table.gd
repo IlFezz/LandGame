@@ -16,6 +16,7 @@ const Profile := preload("res://scripts/app/profile.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 const Sheets := preload("res://scripts/ui/sheets.gd")
+const Remote := preload("res://scripts/net/remote_game.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
@@ -24,8 +25,14 @@ const SLOP := 6.0  # movimento oltre il quale la pressione diventa trascinamento
 const PEEK_S := 0.45  # tenendo premuto così a lungo si apre l'anteprima della carta
 
 # ---------- partita ----------
-var g: Game
+var g  # il motore (game.gd) o, con un amico, la partita sul server (remote_game.gd)
 var bot: Bot
+var online := false  # partita con un amico: le regole girano sul server
+var _net: Node = null
+var _awaiting := false  # mossa inviata al server, in attesa della risposta
+var _over_shown := false
+var _srv_timer := {}  # tempo del turno deciso dal server: { end (secondi locali), actor }
+var _net_down := false
 var level := "normal"
 var player_name := "Tu"
 var mode := {"kind": "bot"}  # kind: "bot" | "challenge" | "daily" | "tutorial"
@@ -48,7 +55,7 @@ var timer_bar: Control
 var arrow_layer: Control
 var react_btn: Button
 var bubble_layer: Control
-var _react_last := 0
+var _react_last := -100000
 var _me_bot: Bot
 
 # ---------- stato dell'interfaccia ----------
@@ -252,6 +259,71 @@ func start(lvl: String, name := "Tu", opts := {}, m := {}) -> void:
 	_begin(true)
 
 
+## Partita con un amico: `m` è il primo stato inviato dal server (con la partita appena iniziata).
+func start_online(net: Node, m: Dictionary, name: String) -> void:
+	_game_id += 1
+	online = true
+	mode = {"kind": "friend"}
+	level = "normal"
+	player_name = name
+	if _net == null:
+		_net = net
+		net.message.connect(_on_net)
+		net.online_changed.connect(_on_net_online)
+	g = Remote.new(net, int(m.seat))
+	g.push_state(m)
+	me = g.me
+	_read_timer(m)
+	cur = Profile.fresh("friend")
+	new_goals = []
+	net.resume.call_deferred()
+	_begin(true)
+
+
+## Messaggi del server durante la partita.
+func _on_net(m: Dictionary) -> void:
+	match m.get("t"):
+		"state":
+			if not m.get("game") is Dictionary:
+				return
+			_awaiting = false
+			if g.phase != "playing" and m.game.phase == "playing":
+				start_online(_net, m, player_name)  # rivincita: nuova partita
+				return
+			g.push_state(m)
+			_read_timer(m)
+			_pump()
+		"react":
+			_bubble(int(m.seat), int(m.i))
+		"error":
+			_awaiting = false
+			_toast(str(m.msg))
+			_refresh()
+
+
+func _on_net_online(on: bool) -> void:
+	_net_down = not on
+	_refresh()
+
+
+func _read_timer(m: Dictionary) -> void:
+	turn_time = int(m.get("turnTime", 0))
+	var t = m.get("timer")
+	if t is Dictionary:
+		_srv_timer = {"end": Time.get_ticks_msec() / 1000.0 + (float(t.deadline) - float(m.now)) / 1000.0, "actor": int(t.actor)}
+	else:
+		_srv_timer = {}
+
+
+## Esce dalla stanza (a partita finita o mentre si aspetta la rivincita).
+func leave_online() -> void:
+	if _net != null:
+		_net.send({"t": "leave"})
+		var n := _net
+		_net = null
+		n.get_tree().create_timer(0.3).timeout.connect(n.shut)
+
+
 ## Riprende una partita salvata alla chiusura dell'app.
 func resume(d: Dictionary) -> void:
 	_game_id += 1
@@ -268,8 +340,13 @@ var deal_anim := true  # i test la spengono: la distribuzione iniziale richiede 
 
 
 func _begin(fresh := false) -> void:
-	bot = Bot.new(g, 1, {"level": level})
-	turn_time = 0 if mode.kind == "tutorial" else int(Prefs.get_value("turn_time"))
+	_over_shown = false
+	_awaiting = false
+	if online:
+		bot = null
+	else:
+		bot = Bot.new(g, 1, {"level": level})
+		turn_time = 0 if mode.kind == "tutorial" else int(Prefs.get_value("turn_time"))
 	_timer_key = ""
 	staged = null
 	sel = null
@@ -367,7 +444,7 @@ func _deal(id: int) -> void:
 
 
 func _task() -> String:
-	if V.is_empty() or V.phase != "playing" or busy:
+	if V.is_empty() or V.phase != "playing" or busy or _awaiting:
 		return ""
 	if V.step == "main" and V.active == me and not V.landPlayed:
 		return "main"
@@ -395,6 +472,9 @@ func act(a: Dictionary) -> void:
 		_toast(err)
 		_refresh()
 		return
+	if online:
+		_awaiting = true
+		Sound.play("click")
 	staged = null
 	sel = null
 	counter_mode = false
@@ -430,12 +510,16 @@ func _pump() -> void:
 	_refresh()
 	_save()
 	if g.phase != "playing":
+		if _over_shown:
+			_show_over(true)  # con un amico: aggiorna la richiesta di rivincita
+			return
+		_over_shown = true
 		await get_tree().create_timer(0.4).timeout
 		if id == _game_id:
 			_show_over()
 		return
 	var actor = g.actor()
-	if actor == bot.p:
+	if bot != null and actor == bot.p:
 		_bot_move(id)
 	elif autoplay:
 		await get_tree().create_timer(0.6).timeout
@@ -517,7 +601,7 @@ func _track(evs: Array) -> void:
 
 ## Salva la partita in corso (o la cancella se è finita).
 func _save() -> void:
-	if g == null or autoplay or not save_enabled:
+	if g == null or autoplay or not save_enabled or online:
 		return
 	if g.phase != "playing":
 		forget_save()
@@ -950,6 +1034,8 @@ func _mode_label() -> String:
 			return "Sfida del giorno"
 		"challenge":
 			return "Sfida: %s" % Modes.challenge(mode.challenge).get("name", "")
+		"friend":
+			return "Con %s · stanza %s" % [V.opp.name if V.has("opp") else "un amico", g.room.get("code", "")]
 	return "vs BOT (%s)" % {"easy": "facile", "hard": "difficile"}.get(level, "normale")
 
 
@@ -1113,6 +1199,10 @@ func _status() -> Dictionary:
 		return {"text": caption, "cls": "danger" if caption_danger else "cap"}
 	if V.phase != "playing":
 		return {"text": "", "cls": ""}
+	if online and _net_down:
+		return {"text": "Connessione persa: mi ricollego…", "cls": "danger"}
+	if online and not g.opp_seat().get("connected", true):
+		return {"text": "%s si è scollegato: aspetta che rientri" % opp, "cls": "danger"}
 	var p = V.pending
 	if V.step == "response" and p != null and p.responder == me_seat and p.owner != me_seat and _wins_with(V.opp.bf, p.land):
 		return {"text": "Se entra, %s vince!" % opp, "cls": "danger"}
@@ -1897,6 +1987,17 @@ func _open_menu(confirm_exit := false) -> void:
 	var v := _sheet("Menu")
 	var t := W.label("Menu", 22, Art.TESTO, Art.bold())
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if confirm_exit and online and g.phase == "playing":
+		v.add_child(t)
+		v.add_child(Sheets.para("Vuoi arrenderti? La partita finisce e la vittoria va a %s." % V.opp.name, 15))
+		v.add_child(_btn("Arrenditi", "exit", func():
+			_close_overlays()
+			act({"type": "surrender"})))
+		v.add_child(_btn("Annulla", "ghost_ink", func():
+			_close_overlays()
+			_open_menu()))
+		_fit_sheet(v)
+		return
 	if confirm_exit:
 		v.add_child(t)
 		var msg := "Vuoi davvero uscire? " + ("Potrai rifare il tutorial quando vuoi dalla home." if mode.kind == "tutorial" else "La partita verrà chiusa e non conterà nelle statistiche.")
@@ -1931,7 +2032,7 @@ func _open_menu(confirm_exit := false) -> void:
 		row.add_child(b)
 	v.add_child(row)
 	v.add_child(_btn("Chiudi", "ink", _close_overlays))
-	v.add_child(_btn("Esci dalla partita", "exit", func(): _open_menu(true)))
+	v.add_child(_btn("Arrenditi" if online and g.phase == "playing" else "Esci dalla partita", "exit", func(): _open_menu(true)))
 	_fit_sheet(v)
 
 
@@ -2015,11 +2116,11 @@ func _drop(n: Node) -> void:
 	n.queue_free()
 
 
-func _show_over() -> void:
+func _show_over(quiet := false) -> void:
 	_close_overlays()
 	var v := _sheet("Over")
 	var won: bool = g.winner == me
-	if won:
+	if won and not quiet:
 		# vittoria: raggi dorati che girano piano dietro il foglio
 		var veil: ColorRect = v.get_meta("panel").get_parent()
 		veil.color = Color(Art.TAVOLO2, 0.6)
@@ -2062,12 +2163,39 @@ func _show_over() -> void:
 		gl_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(gl_l)
 		v.add_child(box)
-	var again := "Riprova" if mode.kind == "daily" or mode.kind == "challenge" else "Rivincita"
-	v.add_child(_btn(again, "ink", func(): start(level, player_name, {}, mode)))
-	v.add_child(_btn("Torna alla home", "ghost_ink", func(): exit_requested.emit()))
+	if online:
+		_over_online(v)
+	else:
+		var again := "Riprova" if mode.kind == "daily" or mode.kind == "challenge" else "Rivincita"
+		v.add_child(_btn(again, "ink", func(): start(level, player_name, {}, mode)))
+		v.add_child(_btn("Torna alla home", "ghost_ink", func(): exit_requested.emit()))
 	_fit_sheet(v)
+	if quiet:
+		return
 	Sound.play("win" if won else "lose")
 	Sound.vibrate("win" if won else "lose")
+
+
+## Fine partita con un amico: rivincita quando la chiedono tutti e due.
+func _over_online(v: VBoxContainer) -> void:
+	var rm: Array = g.room.get("rematch", [false, false])
+	var opp_name: String = V.opp.name
+	var gone: bool = not g.opp_seat().get("connected", true)
+	if gone:
+		v.add_child(Sheets.para("%s è uscito dalla stanza." % opp_name, 14))
+	elif rm[1 - me] and not rm[me]:
+		v.add_child(Sheets.para("%s vuole la rivincita!" % opp_name, 15))
+	if rm[me]:
+		var b := _btn("In attesa di %s…" % opp_name, "ghost_ink", func(): pass)
+		b.disabled = true
+		v.add_child(b)
+	elif not gone:
+		v.add_child(_btn("Rivincita", "ink", func():
+			Sound.play("click")
+			_net.send({"t": "rematch"})))
+	v.add_child(_btn("Torna alla home", "ghost_ink", func():
+		leave_online()
+		exit_requested.emit()))
 
 
 func _toast(msg: String) -> void:
@@ -2334,6 +2462,9 @@ func _process(_delta: float) -> void:
 			timer_bar.visible = false
 		return
 	var actor = g.actor()
+	if online:
+		_process_online_timer(actor)
+		return
 	# il tempo vale solo per me (contro il computer) e parte quando le animazioni sono finite
 	if actor != me or busy:
 		timer_bar.visible = false
@@ -2361,6 +2492,21 @@ func _process(_delta: float) -> void:
 		_close_overlays()
 		g.auto_act()
 		_pump()
+
+
+## Con un amico il tempo lo tiene il server (che poi gioca da solo): qui si mostra soltanto.
+func _process_online_timer(actor) -> void:
+	if _srv_timer.is_empty() or actor != me or busy or _srv_timer.actor != me:
+		timer_bar.visible = false
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	_timer_end = _srv_timer.end
+	timer_bar.visible = true
+	timer_bar.queue_redraw()
+	var sec := int(ceil(_timer_end - now))
+	if sec <= 5 and sec != _last_tick and sec > 0:
+		_last_tick = sec
+		Sound.play("tick")
 
 
 ## Il tempo: un anello sottile bianco accanto alla scritta di stato, con i secondi dentro.
@@ -2508,6 +2654,9 @@ func _react(seat: int, i: int) -> void:
 			_toast("Aspetta un attimo prima della prossima")
 			return
 		_react_last = now
+		if online:
+			_net.send({"t": "react", "i": i})  # il fumetto arriva a tutti e due dal server
+			return
 		if i == 0 and randf() < 0.8:
 			get_tree().create_timer(1.2 + randf() * 0.8).timeout.connect(func(): if is_instance_valid(self): _bubble(bot.p, 0))
 	_bubble(seat, i)
@@ -2556,7 +2705,7 @@ func _bubble(seat: int, i: int) -> void:
 
 ## Il computer ogni tanto reagisce (come botReacts in hub.js), dopo le animazioni.
 func _bot_reacts(evs: Array) -> void:
-	if mode.kind == "tutorial" or evs.is_empty():
+	if bot == null or mode.kind == "tutorial" or evs.is_empty():
 		return
 	var i = null
 	for e in evs:

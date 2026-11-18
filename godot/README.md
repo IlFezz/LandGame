@@ -7,7 +7,7 @@ Il gioco rifatto in **Godot 4.7 (GDScript)** per Android, iPhone e web. Regole e
 1. ✅ **Motore delle regole e computer**, tradotti da `game.js` e `bot.js`, con i test.
 2. ✅ **Tavolo e carte giocabili contro il computer, offline**, con home a schede, sfide, tutorial, statistiche, obiettivi, collezione, suoni e musica.
 3. Grafica nuova, effetti e suoni veri.
-4. Partite tra amici con lo stesso server Node (`server.js`).
+4. ✅ **Partite tra amici** con lo stesso server Node (`server.js`) della versione web.
 5. Pubblicazione sugli store.
 
 Premendo ▶ nell'editor si apre la home a schede, come nella versione web (sul telefono in orizzontale le schede sono una colonna a sinistra):
@@ -36,6 +36,15 @@ Se l'app viene chiusa a metà partita, alla riapertura la partita riprende da do
 - Freccia dalla terra giocata al suo bersaglio; tempo per turno con la barra (rossa negli ultimi 5 secondi, poi passa il turno o lascia risolvere da solo); reazioni rapide (sei frasi, anche il computer ogni tanto risponde).
 - Suoni e musica sintetizzati come nel browser (stesse note); la musica si prepara su un thread la prima volta e poi si riusa. Vibrazione sul telefono.
 - Menu in partita: schermo intero, info nella plancia, musica, effetti sonori, vibrazione, reazioni rapide, registro, regole, statistiche, «Esci dalla partita» con conferma.
+
+### Partite tra amici (passo 4)
+- Nella scheda Gioca, «Con un amico» apre una finestra: tempo per turno, «Crea una stanza» oppure il codice di 4 caratteri e «Entra». Chi crea la stanza vede il codice grande, «Copia il codice» e «In attesa che il tuo amico entri…».
+- L'app parla con lo stesso server del sito (`server.js`, WebSocket, stessi messaggi di `hub.js`): si gioca anche contro chi usa il browser. Le regole girano sul server; il tavolo è lo stesso della partita contro il computer (`scripts/net/remote_game.gd` gli presenta la partita del server come se fosse il motore locale).
+- Il tempo per turno lo tiene il server (allo scadere gioca lui). Reazioni rapide tra i due giocatori. Se la linea cade l'app si ricollega da sola e rientra nella stanza; se cade all'avversario compare «… si è scollegato: aspetta che rientri».
+- Tra giocatori ci si arrende (dal menu: «Arrenditi», con conferma) invece di uscire. A fine partita «Rivincita» parte quando la chiedono tutti e due. Le partite contano nelle statistiche «contro giocatori» e per l'obiettivo «In compagnia».
+- Indirizzo del server: `DEFAULT_URL` in `scripts/net/net.gd`; per le prove si cambia con `--server=ws://localhost:3999`.
+- Prova automatica (serve il server acceso sul PC: `PORT=3999 node server.js`):
+  `godot --headless --path godot -s res://tests/only.gd -- test_online --server=ws://localhost:3999` — crea una stanza, fa entrare un secondo giocatore, gioca una partita intera, reazioni, rivincita e resa.
 
 ### Foto di prova
 `--finestra=390x844 --scala=1 --partita=normal --da-solo --foto=file.png --attesa=20` (dopo `--` sulla riga di comando di Godot) apre il tavolo alla misura voluta, fa giocare il computer anche al posto tuo e salva una foto dello schermo.
@@ -76,6 +85,7 @@ Altri due script, da lanciare allo stesso modo:
 - `scripts/rules/bot.gd` (`AtlasBot`) – computer facile, normale e difficile, come `bot.js`. Con `decide_async()` pensa su un thread separato e risponde con il segnale `decided`: il tavolo non si blocca mai.
 - `scripts/rules/sim.gd` – la simulazione veloce usata solo dal difficile: stesse regole e stesse scelte del computer normale, ma con soli numeri. I test la confrontano mossa per mossa con la partita vera.
 - `scripts/main.gd`, `scenes/main.tscn` – avvio, scala dello schermo, home o partita ripresa.
+- `scripts/net/` – `net.gd` (collegamento WebSocket al server, si ricollega da solo), `remote_game.gd` (la partita del server vista dal tavolo).
 - `scripts/app/` – `modes.gd` (sfide, sfida del giorno, tutorial: da hub.js), `profile.gd` (statistiche e obiettivi: da stats.js e goals.js), `prefs.gd` (preferenze), `sound.gd` (suoni, musica, vibrazione).
 - `scripts/ui/home.gd` (home a schede), `scripts/ui/sheets.gd` (regole, obiettivi, profilo, trasferimento), `scripts/ui/coach.gd` (il Maestro del tutorial).
 - `scripts/ui/table.gd` – il tavolo: disposizione, input, animazioni, partita contro il computer.

@@ -10,11 +10,13 @@ const Table := preload("res://scripts/ui/table.gd")
 const Home := preload("res://scripts/ui/home.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
 const Sound := preload("res://scripts/app/sound.gd")
+const Net := preload("res://scripts/net/net.gd")
 
 var _factor := 1.0
 var _bg: W.Table
 var _home: Home
 var _table: Table
+var _net: Node = null  # collegamento al server mentre si prepara una partita con un amico
 
 
 func _ready() -> void:
@@ -76,6 +78,12 @@ func _ready() -> void:
 			_resume(saved)
 		else:
 			_show_home()
+			# solo per le prove: "--amico" apre la finestra «Con un amico», "--amico=attesa" la stanza creata
+			for a in args:
+				if a == "--amico":
+					_home.friend_sheet()
+				elif a == "--amico=attesa":
+					_home.friend_waiting("K7QD", 60)
 	if foto != "":
 		await get_tree().create_timer(attesa).timeout
 		get_viewport().get_texture().get_image().save_png(foto)
@@ -164,6 +172,52 @@ func _show_home() -> void:
 	_home.play_daily.connect(func(day): _start("normal", {"kind": "daily", "daily": day}))
 	_home.play_tutorial.connect(func(): _start("normal", {"kind": "tutorial"}))
 	_home.fullscreen_toggled.connect(toggle_fullscreen)
+	_home.play_friend.connect(_friend)
+	_home.friend_cancel.connect(_friend_cancel)
+
+
+## Partita con un amico: ci si collega al server e si crea una stanza (code "") o si entra.
+func _friend(code: String) -> void:
+	Sound.play("click")
+	_friend_cancel()
+	_net = Net.new()
+	add_child(_net)
+	_net.message.connect(_on_friend_msg)
+	var who := Prefs.player_name()
+	if code == "":
+		_net.send({"t": "create", "name": who, "turnTime": int(Prefs.get_value("turn_time"))})
+	else:
+		_net.send({"t": "join", "code": code, "name": who})
+	_home.friend_connecting()
+
+
+func _on_friend_msg(m: Dictionary) -> void:
+	if _net == null or _home == null:
+		return
+	match m.get("t"):
+		"state":
+			if m.get("game") is Dictionary:
+				# l'amico è entrato: si va al tavolo, che da qui in poi parla con il server
+				var net := _net
+				_net = null
+				net.message.disconnect(_on_friend_msg)
+				net.paused = true
+				_make_table()
+				await get_tree().process_frame
+				_table.start_online(net, m, Prefs.player_name())
+			else:
+				_home.friend_waiting(str(m.code), int(m.get("turnTime", 0)))
+		"error":
+			_home._close_sheets()
+			_home.toast(str(m.msg))
+			_friend_cancel()
+
+
+func _friend_cancel() -> void:
+	if _net != null:
+		_net.send({"t": "leave"})
+		_net.get_tree().create_timer(0.3).timeout.connect(_net.shut)
+		_net = null
 
 
 func _make_table() -> void:
@@ -200,6 +254,8 @@ func _resume(saved: Dictionary) -> void:
 
 func _end_game() -> void:
 	if _table != null:
+		if _table.online:
+			_table.leave_online()
 		_table.queue_free()
 		_table = null
 	_show_home()
