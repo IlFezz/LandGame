@@ -68,6 +68,7 @@ func _initialize() -> void:
 	root.get_texture().get_image().save_png("%s/app-fine.png" % dir)
 	print("fine: fase ", t.g.phase, " vincitore ", t.g.winner, " turno ", t.g.turn)
 	t.leave_online()
+	preload("res://scripts/app/profile.gd").remove("App")  # niente profili di prova sul PC
 	for k in 30:
 		await process_frame
 	quit()

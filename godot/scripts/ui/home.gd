@@ -386,6 +386,44 @@ func _edit(placeholder: String, max_len: int, fs := 17) -> LineEdit:
 	return e
 
 
+## La settimana della sfida del giorno: lunedì–domenica, con la spunta nei giorni vinti e un anello
+## sul giorno di oggi; i giorni che devono ancora arrivare sono spenti.
+func _week_strip(won: Dictionary) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, 62)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var now := int(Time.get_unix_time_from_system())
+	var wd: int = Time.get_date_dict_from_system().weekday  # 0 = domenica
+	var from_monday := (wd + 6) % 7
+	var letters := ["L", "M", "M", "G", "V", "S", "D"]
+	var cells := []
+	for i in 7:
+		var t := now + (i - from_monday) * 86400
+		var ds := Time.get_date_string_from_unix_time(t)
+		cells.append({"letter": letters[i], "n": int(ds.substr(8, 2)), "won": won.has(ds), "today": i == from_monday, "future": i > from_monday})
+	c.draw.connect(func():
+		var w := c.size.x / 7.0
+		var r := minf(w * 0.36, 17.0)
+		for i in 7:
+			var e: Dictionary = cells[i]
+			var x := w * (i + 0.5)
+			var dim := 0.35 if e.future else 1.0
+			Art.draw_text_centered(c, Art.semi(), e.letter, Vector2(x, 8), 11, Color(Art.TESTO, 0.55 * dim))
+			var ctr := Vector2(x, 40)
+			if e.won:
+				c.draw_circle(ctr, r, Art.CARTA)
+				# spunta
+				var k := r * 0.42
+				c.draw_polyline(PackedVector2Array([ctr + Vector2(-k, 0), ctr + Vector2(-k * 0.25, k * 0.75), ctr + Vector2(k, -k * 0.65)]), Art.INK, 2.4, true)
+			else:
+				c.draw_circle(ctr, r, Color(1, 1, 1, 0.07 * dim))
+				Art.draw_text_centered(c, Art.semi(), str(e.n), ctr, 13, Color(Art.TESTO, 0.8 * dim))
+			if e.today:
+				c.draw_arc(ctr, r + 3.5, 0, TAU, 48, Color(Art.TESTO, 0.9), 1.6, true))
+	c.resized.connect(c.queue_redraw)
+	return c
+
+
 ## Pulsanti affiancati tutti della stessa larghezza (quella del più largo).
 func _even(row: HBoxContainer) -> void:
 	var w := 0.0
@@ -662,14 +700,9 @@ func _challenges_pane() -> Control:
 	var days := ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"]
 	var months := ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 	var nice := "%s %d %s" % [days[d.weekday], d.day, months[d.month - 1]]
-	var sub := W.label("%s: stessa partita per tutti, vinci nel minor numero di turni.
-%s" % [nice.substr(0, 1).to_upper() + nice.substr(1), Modes.daily_text(day)], 13, Color(Art.TESTO, 0.75), Art.serif())
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.custom_minimum_size.x = 200
-	cv.add_child(sub)
+	cv.add_child(W.label(nice.substr(0, 1).to_upper() + nice.substr(1), 14, Color(Art.TESTO, 0.75), Art.semi()))
+	cv.add_child(_week_strip(daily))
 	var best = daily.get(day)
-	if best != null:
-		cv.add_child(W.label("Record: turno %d" % best, 13, Art.SEGNALE, Art.semi()))
 	var drow := HBoxContainer.new()
 	drow.add_theme_constant_override("separation", 10)
 	var go := W.button("Riprova" if best != null else "Gioca la sfida", "primary", 16)

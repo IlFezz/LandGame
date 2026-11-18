@@ -22,6 +22,7 @@ func tests() -> Array:
 		["partita salvata e ripresa dopo la chiusura", t_resume],
 		["tempo scaduto: il turno passa da solo", t_timer],
 		["freccia verso il bersaglio della terra avversaria", t_arrow],
+		["la classifica si chiude del tutto con «Chiudi»", t_board_close],
 	]
 
 
@@ -458,4 +459,24 @@ func t_arrow():
 		eq(a.rect, t._slot_rect("me", "W"), "punta alla mia Pianura")
 	t.queue_free()
 	preload("res://scripts/app/profile.gd").remove("Anna")
+	return true
+
+
+func t_board_close():
+	var host := Control.new()
+	host.size = Vector2(390, 844)
+	_tree().root.add_child(host)
+	preload("res://scripts/ui/sheets.gd").classifica(host, "2026-11-18")
+	await _tree().process_frame
+	var found := false
+	for b in _all_buttons(host):
+		if b is Button and b.text == "Chiudi":
+			b.pressed.emit()
+			found = true
+	check(found, "c'è «Chiudi»")
+	await _tree().process_frame
+	# resta al massimo la richiesta al server ancora in corso (invisibile)
+	eq(host.get_children().filter(func(n): return n is CanvasItem).size(), 0, "niente resta sullo schermo (velo compreso)")
+	await _tree().create_timer(0.3).timeout
+	host.queue_free()
 	return true

@@ -131,7 +131,9 @@ static func classifica(host: Control, day: String) -> void:
 	v.add_child(body)
 	var wait := para("Carico la classifica…", 15)
 	body.add_child(wait)
-	v.add_child(button("Chiudi", "ink", func(): close(v), 16))
+	# si chiude tutta la finestra (velo compreso), non solo il contenuto
+	var veil: Node = v.get_meta("panel").get_parent()
+	v.add_child(button("Chiudi", "ink", func(): close(veil), 16))
 	fit(v)
 	var me := Prefs.player_name() if str(Prefs.get_value("name")).strip_edges() != "" else ""
 	var r: Dictionary = await Classifica.board(host, day, me)
