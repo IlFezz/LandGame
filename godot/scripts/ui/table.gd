@@ -777,7 +777,7 @@ func _place_name(w: String, pos: Vector2, width: float, h: float) -> void:
 	z.name.position = pos + Vector2(16, (h - nh) / 2)
 	var nearw: float = _fs.small * 1.45
 	# spazio per il nome: tolti il segnale «!» e (per me) il pulsante delle reazioni
-	z.name_max = maxf(10, width - 16 - nearw - 6 - (_fs.gy_h + 8 if w == "me" and z.get("row", false) else 0.0))
+	z.name_max = maxf(10, width - 16 - nearw - 6 - (_fs.gy_h + 8 if w == "me" else 0.0))
 	if w == "opp" and lay == "portrait":
 		z.name_max = maxf(10, width - 16 - nearw - 6)
 	z.name.size = Vector2(z.name_max, nh)
@@ -811,11 +811,11 @@ func _place_head_col(w: String, r: Rect2) -> void:
 	var gap := 6.0
 	var H := clampf(r.size.y - name_h - gap, 34.0, 74.0)
 	var total := name_h + gap + H
-	var fan_min := (H - 8) / 1.4 * 2.2
+	var fan_min := (H - 8) / 1.4 * 1.4
 	z.deck.size = Vector2(0, H)
 	var dw: float = z.deck.needed_width()
 	var gyw: float = z.gy.needed_width()
-	var gy_up := w == "opp" and fan_min + dw + gyw + 34 > r.size.x
+	var gy_up := w == "opp" and fan_min + dw + gyw + 30 > r.size.x
 	if total > r.size.y + 4 or (w == "opp" and (H - 8) / 1.4 * 1.3 + dw + 24 > r.size.x):
 		_place_head_compact(w, r)
 		return
@@ -956,11 +956,13 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	cw = minf(22 * vh, 12 * vw)
 	_fonts(maxf(17, 2.8 * vh), maxf(13, 1.8 * vh), maxf(15, 2.1 * vh), maxf(15, 2 * vh), maxf(34, 4.6 * vh))
 	var head_w := maxf(170, 16 * vw)
+	var small_h := S.y < 700  # tablet in orizzontale: le colonne dei nomi usano tutto lo spazio ai lati
 	var bf_gap := 1.3 * vw
 	var bf_w := sw * 5 + bf_gap * 4
 	var colgap := 2.4 * vw
 	# su schermi più stretti (tablet in orizzontale) le colonne dei nomi si stringono: niente fuori dai bordi
-	head_w = minf(head_w, maxf(130.0, (S.x - side * 2 - bf_w - colgap * 2) / 2))
+	var head_room := maxf(130.0, (S.x - side * 2 - bf_w - colgap * 2) / 2)
+	head_w = minf(head_room, 240.0) if small_h else minf(head_w, head_room)
 	if head_w * 2 + colgap * 2 + bf_w > S.x - side * 2:
 		sw = (S.x - side * 2 - head_w * 2 - colgap * 2 - bf_gap * 4) / 5
 		bf_w = sw * 5 + bf_gap * 4
@@ -1007,7 +1009,7 @@ func _layout_wide(S: Vector2, vw: float, vh: float) -> void:
 	menu_btn.size = mb
 	top_mode.position = Vector2(side, S.y - 1.6 * vh - _fs.small * 1.5)
 	top_mode.size = Vector2(hand_rect.size.x * 0.3, _fs.small * 1.5)
-	top_mode.visible = true
+	top_mode.visible = not small_h  # sul tablet la modalità si legge nel menu, come sul telefono
 
 
 func _layout_side(S: Vector2, vw: float, vh: float) -> void:
@@ -2681,10 +2683,7 @@ func _place_react() -> void:
 	var z = zones.me
 	var rb: float = clampf(_fs.get("gy_h", 32), 30, 42)
 	react_btn.size = Vector2(rb, rb)
-	if not z.get("row", false):
-		# intestazione in colonna: accanto al segnalino del cimitero
-		react_btn.position = Vector2(z.gy.position.x + z.gy.size.x + 6, z.gy.position.y + (z.gy.size.y - rb) / 2)
-		return
+	# accanto al mio nome (e al «!» se c'è), sia in riga sia in colonna
 	var x: float = z.name.position.x + z.name.size.x + 6
 	if z.near.visible:
 		x = z.near.position.x + z.near.size.x + 6
@@ -2715,15 +2714,20 @@ func _open_reactions() -> void:
 		flow.add_child(b)
 	overlay_layer.add_child(box)
 	box.reset_size()
-	# si apre sopra il mio campo, nello spazio centrale: non copre né mano né campo.
+	# si apre attaccata al pulsante della chat (sopra, o sotto se sopra non c'è posto): può coprire
+	# un attimo mano o campo, tanto si usa per un secondo.
 	# L'altezza vera si conosce solo dopo un fotogramma (le frasi vanno a capo): si piazza allora.
 	box.modulate.a = 0
 	await get_tree().process_frame
 	if not is_instance_valid(box):
 		return
 	box.reset_size()
-	var field_top: float = _lr(zones.me.slots["W"]).position.y if lay == "portrait" else _lr(react_btn).position.y
-	box.position = Vector2((size.x - box.size.x) / 2, clampf(field_top - box.size.y - 10, 6, size.y - box.size.y - 6))
+	var br: Rect2 = _lr(react_btn)
+	var x := clampf(br.position.x + br.size.x / 2 - box.size.x / 2, 6, size.x - box.size.x - 6)
+	var y := br.position.y - box.size.y - 8
+	if y < 6:
+		y = minf(br.end.y + 8, size.y - box.size.y - 6)
+	box.position = Vector2(x, y)
 	box.modulate.a = 1
 
 

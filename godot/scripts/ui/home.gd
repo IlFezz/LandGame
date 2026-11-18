@@ -116,11 +116,13 @@ func _layout() -> void:
 	_corner.position = Vector2(S.x - _corner.size.x - 16, 16)
 	var top_room := 74.0 if corner else 22.0
 	# schede
+	# la barra delle schede sta sempre in basso, come lo scorrimento tra le schede (anche in orizzontale)
+	var rail := false
 	for c in _tabs.get_children():
 		c.queue_free()
 	var margin := 16.0 if S.x < 500 else 28.0
 	var content_w := minf(S.x - margin * 2, 520.0)
-	if _side:
+	if rail:
 		var tw := 150.0
 		_tabs.position = Vector2(margin, 16)
 		_tabs.size = Vector2(tw, S.y - 32)
@@ -139,7 +141,7 @@ func _layout() -> void:
 	var line := ColorRect.new()
 	line.color = Color(1, 1, 1, 0.14)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if _side:
+	if rail:
 		line.position = Vector2(_tabs.size.x - 1, 0)
 		line.size = Vector2(1, _tabs.size.y)
 	else:
@@ -155,15 +157,15 @@ func _layout() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		for st in ["normal", "hover", "pressed", "focus"]:
 			b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
-		var tab_w: float = (_tabs.size.x - 8) if _side else _tabs.size.x / n
+		var tab_w: float = (_tabs.size.x - 8) if rail else _tabs.size.x / n
 		# stessa misura per tutte le schede: quella che fa stare la più lunga
 		var fs := 15
-		while fs > 10 and TABS.any(func(x): return Art.semi().get_string_size(x[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > tab_w - 6 - (34.0 if _side else 0.0)):
+		while fs > 10 and TABS.any(func(x): return Art.semi().get_string_size(x[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > tab_w - 6 - (34.0 if rail else 0.0)):
 			fs -= 1
 		var col := Art.TESTO if on else Color(Art.TESTO, 0.6)
 		var label: String = t[1]
 		var ico := Art.line_icon("tab-" + t[0], TAB_ICON[t[0]], col, 24)
-		var side := _side
+		var side := rail
 		b.draw.connect(func():
 			var f := Art.semi() if on else Art.sans()
 			if side:
@@ -175,7 +177,7 @@ func _layout() -> void:
 				var top := (b.size.y - block) / 2
 				b.draw_texture_rect(ico, Rect2(b.size.x / 2 - 12, top, 24, 24), false)
 				Art.draw_text_centered(b, f, label, Vector2(b.size.x / 2, top + 30 + fs * 0.55), fs, col))
-		if _side:
+		if rail:
 			b.position = Vector2(0, i * (_tabs.size.y / n))
 			b.size = Vector2(_tabs.size.x - 8, _tabs.size.y / n)
 		else:
@@ -188,7 +190,7 @@ func _layout() -> void:
 			var u := ColorRect.new()
 			u.color = Art.TESTO
 			u.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			if _side:
+			if rail:
 				u.position = Vector2(_tabs.size.x - 3, b.position.y + b.size.y * 0.25)
 				u.size = Vector2(3, b.size.y * 0.5)
 			else:
@@ -338,7 +340,10 @@ func _fit_pane() -> void:
 func toast(text: String) -> void:
 	_toast_label.text = text
 	_toast_label.visible = true
-	_toast_label.size = Vector2(minf(size.x - 40, 420), 0)
+	# larghezza fissa: senza, il testo a capo si stringe fino a una lettera per riga
+	var tw := minf(size.x - 40, 420)
+	_toast_label.custom_minimum_size = Vector2(tw, 0)
+	_toast_label.size = Vector2(tw, 0)
 	_toast_label.reset_size()
 	_toast_label.position = Vector2((size.x - _toast_label.size.x) / 2, size.y - _toast_label.size.y - 80)
 	var t := text
