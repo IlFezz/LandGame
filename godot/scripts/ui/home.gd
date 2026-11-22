@@ -301,7 +301,8 @@ func _build_pane() -> void:
 	_pane_box.add_child(_pane)
 	_fit_pane.call_deferred()
 	# i testi a capo conoscono la loro altezza solo dopo aver avuto la larghezza: seconda misura
-	get_tree().process_frame.connect(_fit_pane, CONNECT_ONE_SHOT)
+	if not get_tree().process_frame.is_connected(_fit_pane):
+		get_tree().process_frame.connect(_fit_pane, CONNECT_ONE_SHOT)
 	# i testi lunghi (RichTextLabel) a volte si misurano un attimo dopo: terza misura
 	get_tree().create_timer(0.08).timeout.connect(_fit_pane)
 
@@ -325,16 +326,28 @@ func _fit_pane() -> void:
 		_pane.reset_size()
 		ms = _pane.get_combined_minimum_size()
 		k = minf(k, minf(area.y / ms.y, area.x / ms.x))
-	_pane.scale = Vector2(k, k)
-	_pane.size = Vector2(area.x / k, ms.y)
 	var real := _pane.get_combined_minimum_size().y
 	if real * k > area.y:
 		k = area.y / real
-		_pane.scale = Vector2(k, k)
-		_pane.size = Vector2(area.x / k, real)
 		ms.y = real
+	# Le larghezze dei testi a capo si aggiornano solo al fotogramma dopo: finché la misura non è
+	# stabile la scheda resta nascosta (prima si vedeva un attimo rimpicciolita).
+	var last: float = _pane.get_meta("k", -1.0)
+	_pane.set_meta("k", k)
+	var tries: int = _pane.get_meta("tries", 0)
+	if absf(last - k) > 0.005 and tries < 8:
+		_pane.set_meta("tries", tries + 1)
+		_pane.modulate.a = 0.0
+		if not get_tree().process_frame.is_connected(_fit_pane):
+			get_tree().process_frame.connect(_fit_pane, CONNECT_ONE_SHOT)
+	else:
+		_pane.modulate.a = 1.0
+	_pane.scale = Vector2(k, k)
+	# il Profilo occupa tutta l'altezza: lo spazio in più si divide tra i suoi blocchi
+	var h := maxf(ms.y, area.y / k) if _pane.get_meta("fill", false) else ms.y
+	_pane.size = Vector2(area.x / k, h)
 	# «Gioca» al centro dello spazio, le altre schede partono dall'alto
-	var free := area.y - ms.y * k
+	var free := area.y - h * k
 	_pane.position = Vector2(_slide_x, maxf(0, free / 2) if tab == "play" else 0.0)
 
 

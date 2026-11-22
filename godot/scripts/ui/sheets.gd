@@ -304,6 +304,8 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	var s: Dictionary = a[side]
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 9)
+	v.set_meta("fill", true)  # la home lo allunga fino in fondo: lo spazio in più va tra i blocchi
+	v.add_child(W.label("Profilo", 30, Art.TESTO, Art.bold()))
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
 	var av := Control.new()
@@ -338,6 +340,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 		b.pressed.connect(func(): on_side.call(id))
 		seg.add_child(b)
 	v.add_child(seg)
+	v.add_child(_gap())
 	# anello con la percentuale di vittorie e tre numeri
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 12)
@@ -370,6 +373,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 		box.add_child(l)
 		top.add_child(box)
 	v.add_child(top)
+	v.add_child(_gap())
 	v.add_child(h4("Terre giocate"))
 	var maxl := 1
 	for t in TYPES:
@@ -398,6 +402,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row.add_child(num)
 		v.add_child(row)
+	v.add_child(_gap())
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 16)
 	var res := [["Facile", "%d / %d" % [s.modes.easy.w, s.modes.easy.p]], ["Normale", "%d / %d" % [s.modes.normal.w, s.modes.normal.p]],
@@ -409,8 +414,18 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	var more := W.label("Contrasti fatti  %d      Terre distrutte  %d" % [s.counters, s.destroyed], 13, Color(Art.TESTO, 0.75))
 	more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(more)
+	v.add_child(_gap())
 	v.add_child(button("Account e trasferimento", "ghost_ink", on_transfer, 13))
 	return v
+
+
+## Spazio elastico tra i blocchi del Profilo: si allarga quando la pagina è più alta del contenuto.
+static func _gap() -> Control:
+	var c := Control.new()
+	c.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	c.custom_minimum_size.y = 4
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
 
 
 static func _rows(head: String, rows: Array) -> VBoxContainer:
