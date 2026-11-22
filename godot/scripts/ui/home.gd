@@ -411,8 +411,11 @@ func _week_strip(won: Dictionary) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(0, 62)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var now := int(Time.get_unix_time_from_system())
-	var wd: int = Time.get_date_dict_from_system().weekday  # 0 = domenica
+	# la data di oggi sul telefono (ora italiana), a mezzogiorno: con l'ora di Greenwich, dopo
+	# mezzanotte i giorni risultavano spostati di uno (la sfida di oggi finiva sotto domani)
+	var d := Time.get_date_dict_from_system()
+	var now := int(Time.get_unix_time_from_datetime_dict({"year": d.year, "month": d.month, "day": d.day, "hour": 12}))
+	var wd: int = d.weekday  # 0 = domenica
 	var from_monday := (wd + 6) % 7
 	var letters := ["L", "M", "M", "G", "V", "S", "D"]
 	var cells := []
