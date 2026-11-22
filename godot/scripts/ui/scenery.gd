@@ -122,6 +122,7 @@ const BACKS := {
 	"pini": ["#14382b", "#3f8f68"],
 	"onde": ["#123a5c", "#3b8fc4"],
 	"stelle": ["#0f1030", "#2c2560"],
+	"grafite": ["#1e1e21", "#0c0c0d"],
 }
 
 
@@ -151,6 +152,11 @@ static func back(id: String) -> String:
 			for i in 6:
 				var y := 66 + i * 12
 				s += "<path d=\"M-4 %d q13 -7 26 0 t26 0 t26 0 t26 0 V140 H-4Z\" fill=\"#ffffff\" opacity=\"%.2f\"/>" % [y, 0.06 + i * 0.03]
+		"grafite":
+			# pulito: un anello sottile con un punto al centro, e un orizzonte appena accennato
+			s += "<circle cx=\"50\" cy=\"70\" r=\"22\" fill=\"none\" stroke=\"#f2f2f2\" stroke-opacity=\".55\" stroke-width=\"1.3\"/>"
+			s += "<circle cx=\"50\" cy=\"70\" r=\"3.2\" fill=\"#f2f2f2\" fill-opacity=\".8\"/>"
+			s += "<path d=\"M22 70 H36 M64 70 H78\" stroke=\"#f2f2f2\" stroke-opacity=\".3\" stroke-width=\"1\"/>"
 		"stelle":
 			var pts := [[22, 30], [38, 44], [50, 36], [64, 54], [78, 46], [60, 80], [44, 96], [30, 110], [54, 116], [74, 108]]
 			s += "<path d=\"M22 30L38 44L50 36L64 54L78 46M64 54L60 80L44 96L30 110M44 96L54 116L74 108\" fill=\"none\" stroke=\"#ffd27a\" stroke-width=\"1\" opacity=\".7\"/>"
@@ -172,6 +178,7 @@ const SKIES := {
 	"alba": ["#2b2a5c", "#b4687a", "#c98181", "#6e3e62", false],
 	"stellata": ["#0b0f2a", "#26285a", "#2f3270", "#171a40", true],
 	"aurora": ["#0e2a3a", "#2f6f6a", "#3b8a76", "#183e45", true],
+	"grafite": ["#08080a", "#19191c", "#2a2a2e", "#141416", false],
 }
 
 

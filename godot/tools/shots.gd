@@ -1,5 +1,5 @@
 ## Foto di prova di tutte le schermate in situazioni precise (non partite a caso):
-##   godot --path godot -s res://tools/shots.gd -- <cartella> <larghezza> <altezza> <scala>
+##   godot --path godot -s res://tools/shots.gd -- <cartella> <larghezza> <altezza> <scala> [tavolo]
 ## larghezza e altezza sono in punti (come i px del browser): 354x792 è il telefono del proprietario.
 ## Non lascia dati: niente partite salvate né profili.
 extends SceneTree
@@ -22,6 +22,10 @@ func _initialize() -> void:
 	var h := float(a[2])
 	var k := float(a[3])
 	Prefs.load_all()
+	if a.size() > 4:  # tavolo da provare (e il suo dorso), senza toccare le preferenze salvate
+		Prefs._v["theme"] = a[4]
+		Art.apply_theme(a[4])
+		Art.BACK = Art.THEME_BACK.get(a[4], Art.BACK)
 	Art.px = k
 	DisplayServer.window_set_size(Vector2i(int(w * k), int(h * k)))
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS

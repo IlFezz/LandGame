@@ -492,7 +492,7 @@ class Table extends Control:
 
 	func _draw() -> void:
 		var top := Art.TAVOLO
-		var bottom := Art.TAVOLO2.lerp(Color("#c9786f"), 0.12 * warmth)
+		var bottom := Art.TAVOLO2.lerp(Art.CALDO, 0.12 * warmth)
 		Art.draw_vgrad(self, Rect2(Vector2.ZERO, size), top, bottom)
 		var sky: Array = Art.Scenery.SKIES[Art.THEME]
 		if sky[4]:

@@ -312,7 +312,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	av.draw.connect(func():
 		av.draw_circle(Vector2(27, 27), 27, Color(1, 1, 1, 0.5))
 		av.draw_circle(Vector2(27, 27), 25, Art.CARTA)
-		av.draw_circle(Vector2(27, 27), 22, Color("#3d3577"))
+		av.draw_circle(Vector2(27, 27), 22, Art.FOGLIO.lightened(0.12))
 		var f := Art.bold()
 		var tw := f.get_string_size(initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25).x
 		av.draw_string(f, Vector2(27 - tw / 2, 27 + f.get_ascent(25) * 0.36), initial, HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Art.CARTA))

@@ -821,7 +821,8 @@ func _collection_pane() -> Control:
 	v.add_child(W.label("Collezione", 30, Art.TESTO, Art.bold()))
 	v.add_child(W.label("Cielo del tavolo", 14, Color(Art.TESTO, 0.7), Art.semi()))
 	var g1 := GridContainer.new()
-	g1.columns = 4
+	# tutti su una riga se c'è posto per i nomi, altrimenti su due righe
+	g1.columns = Art.THEME_NAMES.size() if _pane_box.size.x >= 480 else 3
 	for t in Art.THEME_NAMES:
 		var id: String = t[0]
 		var lk := not Profile.unlocked(a, "table", id)
@@ -835,7 +836,7 @@ func _collection_pane() -> Control:
 	v.add_child(g1)
 	v.add_child(W.label("Dorso delle carte", 14, Color(Art.TESTO, 0.7), Art.semi()))
 	var g2 := GridContainer.new()
-	g2.columns = 7 if _side else 4  # in orizzontale tutti i dorsi su una riga
+	g2.columns = Art.BACKS.size() if _side else 4  # in orizzontale tutti i dorsi su una riga
 	for bk in Art.BACKS:
 		var id: String = bk[0]
 		var lk := not Profile.unlocked(a, "back", id)
@@ -869,6 +870,9 @@ func _pick(kind: String, id: String, locked: bool) -> void:
 	if kind == "table":
 		Prefs.set_value("theme", id)
 		Art.apply_theme(id)
+		if Art.THEME_BACK.has(id):  # il tavolo Grafite porta con sé il suo dorso
+			Prefs.set_value("back", Art.THEME_BACK[id])
+			Art.BACK = Art.THEME_BACK[id]
 		for c in get_parent().get_children():
 			if c is Control:
 				c.queue_redraw()

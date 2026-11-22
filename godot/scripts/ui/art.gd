@@ -11,16 +11,17 @@ static var TESTO := Color("#fcf1e3")  # testo chiaro
 static var MUTO := Color("#c9bcdc")  # testo secondario
 static var RIGA := Color(1, 1, 1, 0.16)  # bordi sottili e caselle vuote
 static var OMBRA := Color(0.05, 0.03, 0.15, 0.5)
+static var CALDO := Color("#c9786f")  # il cielo si scalda appena nel mio turno
 static var THEME := "crepuscolo"
 static var BACK := "sole"  # dorso delle carte
-const CARTA := Color("#fcf1e3")  # crema: pulsanti principali e fogli
-const CARTA2 := Color("#e9d9c6")
-const INK := Color("#1d1b3a")  # testo scuro sul crema
+static var CARTA := Color("#fcf1e3")  # crema: pulsanti principali e fogli
+static var CARTA2 := Color("#e9d9c6")
+static var INK := Color("#1d1b3a")  # testo scuro sul crema
 const VETRO := Color(1, 1, 1, 0.10)
-const FOGLIO := Color("#2a2452")  # finestre e pannelli: viola scuro, testo chiaro
+static var FOGLIO := Color("#2a2452")  # finestre e pannelli: viola scuro, testo chiaro
 const FOGLIO_BORDO := Color(1, 1, 1, 0.12)  # pillole e pulsanti secondari, semitrasparenti
 const SEGNALE := Color("#ffffff")  # bianco: ciò che si può usare adesso (niente giallo: stile pulito)
-const SEGNALE2 := Color("#d9d2ee")
+static var SEGNALE2 := Color("#d9d2ee")
 const ROSSO := Color("#ff6f6f")
 const AZZURRO := Color("#9fe3ff")  # la terra che manca per vincere
 const LAND := {"W": Color("#f2a541"), "U": Color("#4fa3d9"), "B": Color("#8a6fd1"), "R": Color("#e2566a"), "G": Color("#3fae6e")}
@@ -42,9 +43,18 @@ const LONG_FX := {
 }
 
 ## Tavoli = cieli (Collezione). I colori stanno in Scenery.SKIES.
-const THEME_NAMES := [["crepuscolo", "Crepuscolo"], ["alba", "Alba"], ["stellata", "Notte stellata"], ["aurora", "Aurora"]]
-const BACKS := [["sole", "Sole"], ["luna", "Luna"], ["colline", "Colline"], ["monti", "Monti"],
+const THEME_NAMES := [["crepuscolo", "Crepuscolo"], ["alba", "Alba"], ["grafite", "Grafite"], ["stellata", "Notte stellata"], ["aurora", "Aurora"]]
+const BACKS := [["sole", "Sole"], ["luna", "Luna"], ["grafite", "Grafite"], ["colline", "Colline"], ["monti", "Monti"],
 	["pini", "Pini"], ["onde", "Onde"], ["stelle", "Stelle"]]
+## Il tavolo che si porta dietro il suo dorso quando lo scegli nella Collezione.
+const THEME_BACK := {"grafite": "grafite"}
+## Colori di testi, pannelli e pulsanti: quelli di Orizzonti (crema e viola), oppure in scala di grigi.
+const PALETTES := {
+	"orizzonti": {"TESTO": "#fcf1e3", "MUTO": "#c9bcdc", "CARTA": "#fcf1e3", "CARTA2": "#e9d9c6", "INK": "#1d1b3a",
+		"FOGLIO": "#2a2452", "SEGNALE2": "#d9d2ee", "CALDO": "#c9786f", "OMBRA": [0.05, 0.03, 0.15, 0.5]},
+	"grafite": {"TESTO": "#f2f2f2", "MUTO": "#b5b5b8", "CARTA": "#f2f2f2", "CARTA2": "#d9d9db", "INK": "#121214",
+		"FOGLIO": "#1c1c1f", "SEGNALE2": "#d6d6d8", "CALDO": "#3a3a3e", "OMBRA": [0, 0, 0, 0.6]},
+}
 ## Nomi dello stile precedente → nuovi (preferenze già salvate).
 const OLD_THEME := {"notte": "crepuscolo", "giorno": "alba", "pergamena": "stellata", "corallo": "aurora"}
 const OLD_BACK := {"bussola": "sole", "meridiani": "luna", "correnti": "colline", "sestante": "monti",
@@ -68,6 +78,16 @@ static func apply_theme(id: String) -> void:
 	var k: Array = Scenery.SKIES[THEME]
 	TAVOLO = Color(k[0])
 	TAVOLO2 = Color(k[1])
+	var pal: Dictionary = PALETTES.grafite if THEME == "grafite" else PALETTES.orizzonti
+	TESTO = Color(pal.TESTO)
+	MUTO = Color(pal.MUTO)
+	CARTA = Color(pal.CARTA)
+	CARTA2 = Color(pal.CARTA2)
+	INK = Color(pal.INK)
+	FOGLIO = Color(pal.FOGLIO)
+	SEGNALE2 = Color(pal.SEGNALE2)
+	CALDO = Color(pal.CALDO)
+	OMBRA = Color(pal.OMBRA[0], pal.OMBRA[1], pal.OMBRA[2], pal.OMBRA[3])
 
 
 static var _tex := {}
