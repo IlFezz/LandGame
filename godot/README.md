@@ -56,7 +56,9 @@ Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla 
 - Il nome è unico: si cambia nella scheda Gioca (quando si finisce di scrivere) e il server rifiuta i nomi di altri. Le statistiche del dispositivo seguono il nome dell'account.
 - Dopo ogni partita il profilo (statistiche, sblocchi, record delle sfide) viene copiato sul server.
 - Il codice di trasferimento («Account e trasferimento» nel Profilo) porta con sé l'account: incollato su un altro dispositivo, si è lo stesso giocatore.
-- Prossimo passo: «Accedi con Google» che si collega all'account ospite.
+- Prossimo passo: «Accedi con Google» che si collega all'account ospite. Progetto Google Cloud «Atlas» (`atlas-515521`), app in stato «Test» (accedono solo gli utenti di prova; per tutti va completato il Branding e pubblicata):
+  - ID client Web (browser e controllo sul server): `548261437152-foj6sji9mmh2j1iiil8tle2u987fev4d.apps.googleusercontent.com` (origini: il sito su Render e `http://localhost:3999`)
+  - ID client Android (debug): `548261437152-d9qpeftoatdp4d2674cmir90fjqa9tee.apps.googleusercontent.com`, pacchetto `it.atlas.gioco`, SHA-1 della chiave di debug `9A:7E:BF:39:B2:08:E9:D1:07:66:E8:88:CA:72:AA:46:95:C3:4F:00`. Per la versione da store servirà un altro client Android con l'impronta della chiave di pubblicazione.
 - Prova manuale: `tools/account_probe.gd` contro un server di prova (rimette a posto i dati del PC).
 
 ### Sfida del giorno e classifica
