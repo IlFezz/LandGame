@@ -8,6 +8,7 @@ const zlib = require('zlib');
 const { Hub } = require('./hub');
 const Classifica = require('./classifica');
 const Account = require('./account');
+const Google = require('./google');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -32,6 +33,7 @@ const server = http.createServer((req, res) => {
   if (url === '/healthz') { res.writeHead(200); return res.end('ok'); }
   if (url === '/api/classifica') return api(req, res, (q, body) => Classifica.handle(req.method, q, body));
   if (url === '/api/account') return api(req, res, (q, body) => Account.handle(req.method, body, clientIp(req)));
+  if (url === '/api/google') return googleBack(req, res);
   if (url === '/') url = '/index.html';
   if (url === '/gioco') { res.writeHead(301, { Location: '/gioco/' }); return res.end(); }
   if (url.endsWith('/')) url += 'index.html';
@@ -62,6 +64,18 @@ const server = http.createServer((req, res) => {
     res.end(data);
   });
 });
+
+// ---------- Ritorno dall'accesso con Google (google.js): una pagina per il giocatore ----------
+function googleBack(req, res) {
+  let body = '';
+  req.on('data', (d) => { body += d; if (body.length > 20000) req.destroy(); });
+  req.on('end', () => {
+    Google.callback(req.method === 'POST' ? body : '').then((html) => {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(html);
+    }, () => { res.writeHead(500); res.end(); });
+  });
+}
 
 // ---------- API: classifica della sfida del giorno (classifica.js) e account (account.js) ----------
 function clientIp(req) {

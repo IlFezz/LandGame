@@ -112,10 +112,54 @@ function play(day) {
     r = await acct({ a: 'rename', id: g1.id, token: g1.token, name: 'anna' });
     assert.strictEqual(r.body.name, 'anna', 'il nome lasciato libero si può prendere');
     assert.strictEqual((await acct({ a: 'save', id: g1.id, token: g1.token, profile: { cpu: { won: 5 } } })).body.ok, true);
-    assert.deepStrictEqual((await acct({ a: 'load', id: g1.id, token: g1.token })).body, { name: 'anna', profile: { cpu: { won: 5 } } });
+    assert.deepStrictEqual((await acct({ a: 'load', id: g1.id, token: g1.token })).body, { name: 'anna', profile: { cpu: { won: 5 } }, google: null });
     let limited = false;
     for (let i = 0; i < 25; i++) if ((await acct({ a: 'create' }, '9.9.9.9')).status === 429) limited = true;
     assert.ok(limited, 'troppi account dallo stesso indirizzo');
+  });
+
+  await test('accesso con Google: biglietto controllato, collegamento e cambio di dispositivo', async () => {
+    const crypto = require('crypto');
+    const Google = require('../google');
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    Google._testKeys(async () => [{ ...publicKey.export({ format: 'jwk' }), kid: 'k1', alg: 'RS256' }]);
+    const ticket = (sub, nonce, extra = {}) => {
+      const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+      const h = enc({ alg: 'RS256', kid: 'k1' }), p = enc({ iss: 'https://accounts.google.com', aud: Google.CLIENT_ID, sub, email: sub + '@gmail.com', name: 'Gio', nonce, exp: Date.now() / 1000 + 600, ...extra });
+      return h + '.' + p + '.' + crypto.sign('RSA-SHA256', Buffer.from(h + '.' + p), privateKey).toString('base64url');
+    };
+    const back = (tk, st) => Google.callback(new URLSearchParams({ id_token: tk, state: st }).toString());
+    const st = () => crypto.randomBytes(16).toString('hex');
+    // biglietti falsi o di un'altra app
+    assert.strictEqual(await Google.verify(ticket('1', 'n', { aud: 'altro' }), 'n'), null);
+    assert.strictEqual(await Google.verify(ticket('1', 'n', { exp: 1 }), 'n'), null);
+    assert.strictEqual(await Google.verify(ticket('1', 'x'), 'n'), null, 'codice diverso');
+    assert.strictEqual(await Google.verify(ticket('1', 'n').slice(0, -4) + 'AAAA', 'n'), null, 'firma rovinata');
+    // l'ospite collega Google
+    const guest = (await acct({ a: 'create' }, '7.7.7.7')).body;
+    const s1 = st();
+    assert.deepStrictEqual((await acct({ a: 'google', state: s1, id: guest.id, token: guest.token })).body, { wait: true });
+    assert.match(await back(ticket('g1', s1), s1), /Fatto/);
+    let r = (await acct({ a: 'google', state: s1, id: guest.id, token: guest.token })).body;
+    assert.strictEqual(r.linked, true);
+    assert.strictEqual(r.id, guest.id);
+    assert.strictEqual((await acct({ a: 'google', state: s1, id: guest.id, token: guest.token })).body.wait, true, 'un codice vale una volta');
+    await acct({ a: 'save', id: guest.id, token: guest.token, profile: { cpu: { won: 9 } } });
+    // su un altro dispositivo (nuovo ospite) con lo stesso Google si torna nell'account di prima
+    const other = (await acct({ a: 'create' }, '7.7.7.7')).body;
+    const s2 = st();
+    await back(ticket('g1', s2), s2);
+    r = (await acct({ a: 'google', state: s2, id: other.id, token: other.token })).body;
+    assert.strictEqual(r.switched, true);
+    assert.strictEqual(r.id, guest.id);
+    assert.deepStrictEqual(r.profile, { cpu: { won: 9 } });
+    assert.strictEqual((await acct({ a: 'load', id: r.id, token: r.token })).status, 200, 'chiave del nuovo dispositivo');
+    assert.strictEqual((await acct({ a: 'load', id: guest.id, token: guest.token })).status, 200, 'e quella del primo resta valida');
+    // senza account: se ne crea uno con il nome di Google
+    const s3 = st();
+    await back(ticket('g2', s3), s3);
+    r = (await acct({ a: 'google', state: s3 })).body;
+    assert.ok(r.token && r.linked);
   });
 
   await test('invio e classifica: meno turni vince, un account conta una volta', async () => {

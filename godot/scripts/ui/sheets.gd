@@ -6,6 +6,7 @@ const Art := preload("res://scripts/ui/art.gd")
 const W := preload("res://scripts/ui/widgets.gd")
 const Profile := preload("res://scripts/app/profile.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
+const Account := preload("res://scripts/net/account.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 
 
@@ -136,7 +137,7 @@ static func classifica(host: Control, day: String) -> void:
 	v.add_child(button("Chiudi", "ink", func(): close(veil), 16))
 	fit(v)
 	var me := Prefs.player_name()
-	var my_id: String = preload("res://scripts/net/account.gd").info().get("id", "")
+	var my_id: String = Account.info().get("id", "")
 	var r: Dictionary = await Classifica.board(host, day, my_id)
 	if not is_instance_valid(body):
 		return
@@ -427,6 +428,49 @@ static func _rows(head: String, rows: Array) -> VBoxContainer:
 	return v
 
 
+# ---------------------------------------------------------------- Google
+
+## Accesso con Google: collega l'account a Google, così su un altro dispositivo basta accedere.
+static func _google_box(v: VBoxContainer, veil: Node, on_change: Callable) -> void:
+	var mail: String = Prefs.get_value("google")
+	if mail != "":
+		v.add_child(para("Collegato a Google (%s): su un altro dispositivo accedi con Google e ritrovi tutto." % mail, 13))
+		return
+	v.add_child(h4("Accedi con Google"))
+	var msg := para("Collega il tuo account a Google: su un altro telefono o nel browser accedi e ritrovi nome, statistiche e sblocchi.", 13, Color(0, 0, 0, 0), false)
+	v.add_child(msg)
+	var b := W.button("Accedi con Google", "ink", 15)
+	v.add_child(b)
+	b.pressed.connect(func():
+		b.disabled = true
+		msg.text = "Mi collego…"
+		if not await Account.ensure(b):
+			msg.text = "Serve internet per accedere con Google."
+			b.disabled = false
+			return
+		var state := Account.google_start()
+		msg.text = "Si è aperto il browser: scegli il tuo account Google, poi torna qui."
+		var t0 := Time.get_ticks_msec()
+		while is_instance_valid(b) and Time.get_ticks_msec() - t0 < 300000:
+			await b.get_tree().create_timer(2.0).timeout
+			if not is_instance_valid(b):
+				return
+			var r: Dictionary = await Account.google_poll(b, state)
+			if not is_instance_valid(b):
+				return
+			if r.has("id"):
+				close(veil)
+				on_change.call()
+				return
+			if r.has("error") and not r.get("wait", false):
+				msg.text = r.error
+				b.disabled = false
+				return
+		if is_instance_valid(b):
+			msg.text = "Tempo scaduto: riprova quando vuoi."
+			b.disabled = false)
+
+
 # ---------------------------------------------------------------- trasferimento
 
 static func transfer(host: Control, on_change: Callable) -> void:
@@ -435,6 +479,7 @@ static func transfer(host: Control, on_change: Callable) -> void:
 	var veil: Node = v.get_meta("panel").get_parent()
 	v.add_child(title("Account e trasferimento"))
 	v.add_child(para("Il tuo account è «%s»: nome, statistiche, sblocchi e posto in classifica sono suoi." % name, 14))
+	_google_box(v, veil, on_change)
 	v.add_child(h4("Su un altro dispositivo (anche la versione nel browser)"))
 	v.add_child(para("Copia il codice e incollalo nel Profilo dell'altro telefono o computer: lì ritrovi il tuo account. Il codice è come una password: non darlo ad altri.", 13, Color(0, 0, 0, 0), false))
 	var code := LineEdit.new()

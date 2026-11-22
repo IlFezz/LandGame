@@ -88,3 +88,46 @@ static func push(host: Node) -> void:
 	var prof := Profile.load_profile(Prefs.player_name())
 	prof.erase("name")
 	await _post(host, _auth({"a": "save", "profile": prof}))
+
+
+# ---------- accesso con Google (google.js sul server) ----------
+# Si apre la pagina di Google nel browser con un codice casuale; Google rimanda il giocatore al server,
+# che controlla l'accesso. Intanto l'app chiede al server ogni due secondi se è fatto.
+
+const GOOGLE_CLIENT := "548261437152-foj6sji9mmh2j1iiil8tle2u987fev4d.apps.googleusercontent.com"
+
+
+static func google_start() -> String:
+	var state := Crypto.new().generate_random_bytes(16).hex_encode()
+	var q := {"client_id": GOOGLE_CLIENT, "response_type": "id_token", "scope": "openid email profile",
+		"redirect_uri": Classifica.base_url() + "/api/google", "response_mode": "form_post",
+		"nonce": state, "state": state, "prompt": "select_account"}
+	var parts := []
+	for k in q:
+		parts.append("%s=%s" % [k, str(q[k]).uri_encode()])
+	OS.shell_open("https://accounts.google.com/o/oauth2/v2/auth?" + "&".join(parts))
+	return state
+
+
+## Una domanda al server: { wait } se Google non ha ancora risposto, { error }, oppure l'account fatto
+## (e in quel caso è già salvato qui: nome, chiave e, se si è passati a un altro account, il suo profilo).
+static func google_poll(host: Node, state: String) -> Dictionary:
+	var m := {"a": "google", "state": state}
+	if has():
+		_auth(m)
+	var r := await _post(host, m)
+	if not r.has("id"):
+		return r
+	var old := Prefs.player_name()
+	if r.has("token"):
+		Prefs.set_value("account", {"id": r.id, "token": r.token})
+	if r.get("switched", false):
+		# questo Google era già di un altro account: si entra in quello, con le sue statistiche
+		var prof = r.get("profile")
+		var s: Dictionary = prof if prof is Dictionary else {}
+		Profile.store(r.name, Profile._fill(s, Profile.blank()))
+		Prefs.set_value("name", r.name)
+	else:
+		_adopt(old, r.name)
+	Prefs.set_value("google", r.get("google", ""))
+	return r

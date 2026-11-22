@@ -16,7 +16,8 @@ const DEFAULTS := {
 	"fullscreen": false,
 	"tab": "play",
 	"friend": {},
-	"account": {},  # account sul server { id, token } (scripts/net/account.gd)  # stanza con un amico in corso { code, token }: riaprendo l'app si può rientrare
+	"account": {},  # account sul server { id, token } (scripts/net/account.gd)
+	"google": "",  # email dell'account Google collegato ("" se non c'è)  # stanza con un amico in corso { code, token }: riaprendo l'app si può rientrare
 }
 
 static var _v := {}
