@@ -19,6 +19,7 @@ const W := preload("res://scripts/ui/widgets.gd")
 const Sheets := preload("res://scripts/ui/sheets.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
 const Account := preload("res://scripts/net/account.gd")
+const Glass := preload("res://scripts/ui/glass.gd")
 const Profile := preload("res://scripts/app/profile.gd")
 const Modes := preload("res://scripts/app/modes.gd")
 const Sound := preload("res://scripts/app/sound.gd")
@@ -139,15 +140,25 @@ func _layout() -> void:
 		_tabs.size = Vector2(tabs_w, th)
 		_pane_box.position = Vector2((S.x - content_w) / 2, top_room)
 		_pane_box.size = Vector2(content_w, S.y - top_room - th - bottom - 14)
-	var line := ColorRect.new()
-	line.color = Color(1, 1, 1, 0.14)
-	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if rail:
-		line.position = Vector2(_tabs.size.x - 1, 0)
-		line.size = Vector2(1, _tabs.size.y)
+	if Glass.enabled() and not rail:
+		# barra di vetro: una pillola che sfoca le colline dietro
+		var bar := Panel.new()
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bsb := Art.box(Art.FOGLIO, 24, Color(1, 1, 1, 0.18), 1)
+		bar.add_theme_stylebox_override("panel", bsb)
+		bar.size = _tabs.size
+		Glass.apply(bar, 0.5)
+		_tabs.add_child(bar)
 	else:
-		line.size = Vector2(_tabs.size.x, 1)
-	_tabs.add_child(line)
+		var line := ColorRect.new()
+		line.color = Color(1, 1, 1, 0.14)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if rail:
+			line.position = Vector2(_tabs.size.x - 1, 0)
+			line.size = Vector2(1, _tabs.size.y)
+		else:
+			line.size = Vector2(_tabs.size.x, 1)
+		_tabs.add_child(line)
 	var n := TABS.size()
 	for i in n:
 		var t: Array = TABS[i]
@@ -187,7 +198,16 @@ func _layout() -> void:
 		var id: String = t[0]
 		b.pressed.connect(func(): set_tab(id))
 		_tabs.add_child(b)
-		if on:
+		if on and Glass.enabled() and not rail:
+			# sulla barra di vetro la scheda scelta è una pillola chiara (sotto icona e scritta)
+			var hl := Panel.new()
+			hl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			hl.add_theme_stylebox_override("panel", Art.box(Color(1, 1, 1, 0.12), 18))
+			hl.position = b.position + Vector2(6, 4)
+			hl.size = b.size - Vector2(12, 12)
+			_tabs.add_child(hl)
+			_tabs.move_child(hl, b.get_index())
+		elif on:
 			var u := ColorRect.new()
 			u.color = Art.TESTO
 			u.mouse_filter = Control.MOUSE_FILTER_IGNORE

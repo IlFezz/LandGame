@@ -13,6 +13,7 @@ const DEFAULTS := {
 	"vibrate": true,
 	"info": true,  # spiegazioni sulla plancia
 	"react": true,  # reazioni rapide
+	"glass": true,  # effetto vetro smerigliato su finestre, menu e barra delle schede
 	"fullscreen": false,
 	"tab": "play",
 	"friend": {},

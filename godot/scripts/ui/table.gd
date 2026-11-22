@@ -20,6 +20,7 @@ const Remote := preload("res://scripts/net/remote_game.gd")
 const Net := preload("res://scripts/net/net.gd")
 const Classifica := preload("res://scripts/net/classifica.gd")
 const Account := preload("res://scripts/net/account.gd")
+const Glass := preload("res://scripts/ui/glass.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
@@ -2012,6 +2013,11 @@ func _sheet(name: String) -> VBoxContainer:
 		sb.set("content_margin_" + m, 22)
 	sb.shadow_color = Art.OMBRA
 	sb.shadow_size = 30
+	if Glass.apply(panel, 0.62):
+		# vetro: il velo si schiarisce, così dietro il foglio si vede il tavolo sfocato
+		veil.color.a = 0.42
+		sb.shadow_size = 0
+		sb.border_color = Color(1, 1, 1, 0.22)
 	panel.add_theme_stylebox_override("panel", sb)
 	veil.add_child(panel)
 	var v := VBoxContainer.new()
@@ -2072,6 +2078,7 @@ func _open_menu(confirm_exit := false) -> void:
 	v.add_child(_switch("Vibrazione", "vibrate"))
 	if mode.kind != "tutorial":
 		v.add_child(_switch("Reazioni rapide", "react"))
+	v.add_child(_switch("Effetto vetro", "glass"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	for x in [["Registro", _open_log], ["Regole", func(): Sheets.rules(overlay_layer)], ["Statistiche", _open_stats]]:
@@ -2706,6 +2713,7 @@ func _open_reactions() -> void:
 	grid.add_theme_constant_override("v_separation", 6)
 	var box := _speech(grid, Art.FOGLIO, Art.FOGLIO_BORDO, 8)
 	box.name = "Reazioni"
+	Glass.apply(box, 0.62)
 	for i in Modes.REACTIONS.size():
 		var b := W.button(Modes.REACTIONS[i], "ghost_ink", 13)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL

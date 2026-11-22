@@ -6,6 +6,7 @@ const Art := preload("res://scripts/ui/art.gd")
 const W := preload("res://scripts/ui/widgets.gd")
 const Profile := preload("res://scripts/app/profile.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
+const Glass := preload("res://scripts/ui/glass.gd")
 const Account := preload("res://scripts/net/account.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 
@@ -24,6 +25,11 @@ static func sheet(host: Control, name: String, width := 400.0) -> VBoxContainer:
 		sb.set("content_margin_" + m, 22)
 	sb.shadow_color = Art.OMBRA
 	sb.shadow_size = 30
+	if Glass.apply(panel, 0.62):
+		# vetro: il velo si schiarisce, così dietro il foglio si vede il tavolo sfocato
+		veil.color.a = 0.42
+		sb.shadow_size = 0
+		sb.border_color = Color(1, 1, 1, 0.22)
 	panel.add_theme_stylebox_override("panel", sb)
 	veil.add_child(panel)
 	var v := VBoxContainer.new()
