@@ -19,6 +19,7 @@ const Sheets := preload("res://scripts/ui/sheets.gd")
 const Remote := preload("res://scripts/net/remote_game.gd")
 const Net := preload("res://scripts/net/net.gd")
 const Classifica := preload("res://scripts/net/classifica.gd")
+const Account := preload("res://scripts/net/account.gd")
 const TYPES := ["W", "U", "B", "R", "G"]
 const SAVE := "user://partita.json"  # la partita in corso: riprende se l'app viene chiusa
 
@@ -611,6 +612,8 @@ func _track(evs: Array) -> void:
 		if e.ev.type == "end":
 			new_goals = Profile.finish(cur, {"name": player_name, "won": g.winner == me, "winner_null": g.winner == null,
 				"bf": g.players[me].bf, "reason": g.end_reason, "turn": g.turn})
+			if not online or mode.kind == "friend":
+				Account.push(self)  # copia di sicurezza di statistiche e sblocchi sul server
 
 
 ## Salva la partita in corso (o la cancella se è finita).
@@ -2256,39 +2259,17 @@ var _sent_record := false
 
 
 func _daily_submit(lbl: Label) -> void:
-	if str(Prefs.get_value("name")).strip_edges() == "":
-		# senza nome non si entra in classifica: lo si scrive qui e si manda subito
-		lbl.text = "Scrivi il tuo nome per entrare in classifica."
-		if lbl.get_parent().has_node("NomeClassifica"):
-			return
-		var row := HBoxContainer.new()
-		row.name = "NomeClassifica"
-		row.add_theme_constant_override("separation", 8)
-		var e := LineEdit.new()
-		e.placeholder_text = "Il tuo nome"
-		e.max_length = 20
-		e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		e.add_theme_font_size_override("font_size", 16)
-		row.add_child(e)
-		var send := func():
-			var n := e.text.strip_edges()
-			if n == "":
-				return
-			Prefs.set_value("name", n)
-			player_name = n
-			row.queue_free()
-			_daily_submit(lbl)
-		e.text_submitted.connect(func(_t): send.call())
-		row.add_child(_btn("Invia", "ink", send))
-		lbl.get_parent().add_child(row)
-		lbl.get_parent().move_child(row, lbl.get_index() + 1)
-		return
 	if _sent_record or g.record == null:
 		lbl.text = _sent_text
 		return
 	_sent_record = true
 	lbl.text = "Invio alla classifica…"
-	var r: Dictionary = await Classifica.submit(self, mode.daily, Prefs.player_name(), g.record)
+	# in classifica si entra con l'account (si crea da solo se non c'è ancora)
+	var r: Dictionary
+	if await Account.ensure(self):
+		r = await Classifica.submit(self, mode.daily, Account.info(), g.record)
+	else:
+		r = {"error": "Classifica non raggiungibile: controlla la connessione."}
 	if r.has("error"):
 		_sent_record = false
 		_sent_text = r.error

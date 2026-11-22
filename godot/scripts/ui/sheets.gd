@@ -135,8 +135,9 @@ static func classifica(host: Control, day: String) -> void:
 	var veil: Node = v.get_meta("panel").get_parent()
 	v.add_child(button("Chiudi", "ink", func(): close(veil), 16))
 	fit(v)
-	var me := Prefs.player_name() if str(Prefs.get_value("name")).strip_edges() != "" else ""
-	var r: Dictionary = await Classifica.board(host, day, me)
+	var me := Prefs.player_name()
+	var my_id: String = preload("res://scripts/net/account.gd").info().get("id", "")
+	var r: Dictionary = await Classifica.board(host, day, my_id)
 	if not is_instance_valid(body):
 		return
 	wait.queue_free()
@@ -148,7 +149,7 @@ static func classifica(host: Control, day: String) -> void:
 		var mine_shown := false
 		for i in r.top.size():
 			var e: Dictionary = r.top[i]
-			var mine: bool = me != "" and e.name.to_lower() == me.to_lower()
+			var mine: bool = r.get("me") != null and i + 1 == int(r.me.rank)
 			mine_shown = mine_shown or mine
 			body.add_child(_board_row(i + 1, e.name, e.turns, mine))
 		if r.get("me") != null and not mine_shown:
@@ -407,7 +408,7 @@ static func profile_panel(side: String, on_side: Callable, on_transfer: Callable
 	var more := W.label("Contrasti fatti  %d      Terre distrutte  %d" % [s.counters, s.destroyed], 13, Color(Art.TESTO, 0.75))
 	more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(more)
-	v.add_child(button("Profili e trasferimento", "ghost_ink", on_transfer, 13))
+	v.add_child(button("Account e trasferimento", "ghost_ink", on_transfer, 13))
 	return v
 
 
@@ -432,26 +433,10 @@ static func transfer(host: Control, on_change: Callable) -> void:
 	var name := Prefs.player_name()
 	var v := sheet(host, "Trasferimento", 440)
 	var veil: Node = v.get_meta("panel").get_parent()
-	v.add_child(title("Profili e trasferimento"))
-	v.add_child(para("Le statistiche seguono il nome con cui giochi e restano su questo dispositivo.", 14))
-	var others := []
-	for n in Profile.profile_names():
-		if Profile.key_of(n) != Profile.key_of(name):
-			others.append(n)
-	if not others.is_empty():
-		v.add_child(h4("Altri profili su questo dispositivo"))
-		var flow := HFlowContainer.new()
-		for n in others:
-			var b := W.button(n, "ghost_ink", 13)
-			var nn: String = n
-			b.pressed.connect(func():
-				Prefs.set_value("name", nn)
-				close(veil)
-				on_change.call())
-			flow.add_child(b)
-		v.add_child(flow)
+	v.add_child(title("Account e trasferimento"))
+	v.add_child(para("Il tuo account è «%s»: nome, statistiche, sblocchi e posto in classifica sono suoi." % name, 14))
 	v.add_child(h4("Su un altro dispositivo (anche la versione nel browser)"))
-	v.add_child(para("Copia il codice e incollalo nel Profilo dell'altro telefono o computer.", 13, Color(0, 0, 0, 0), false))
+	v.add_child(para("Copia il codice e incollalo nel Profilo dell'altro telefono o computer: lì ritrovi il tuo account. Il codice è come una password: non darlo ad altri.", 13, Color(0, 0, 0, 0), false))
 	var code := LineEdit.new()
 	code.placeholder_text = "Incolla un codice"
 	code.add_theme_font_size_override("font_size", 13)

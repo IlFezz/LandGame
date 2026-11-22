@@ -18,6 +18,7 @@ const Art := preload("res://scripts/ui/art.gd")
 const W := preload("res://scripts/ui/widgets.gd")
 const Sheets := preload("res://scripts/ui/sheets.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
+const Account := preload("res://scripts/net/account.gd")
 const Profile := preload("res://scripts/app/profile.gd")
 const Modes := preload("res://scripts/app/modes.gd")
 const Sound := preload("res://scripts/app/sound.gd")
@@ -616,7 +617,23 @@ func _play_pane() -> Control:
 	b.add_child(W.label("Il tuo nome", 14, Color(Art.TESTO, 0.8)))
 	var name_edit := _edit("Scrivi il tuo nome", 20)
 	name_edit.text = Prefs.get_value("name")
-	name_edit.text_changed.connect(func(t): Prefs.set_value("name", t.strip_edges()))
+	# il nome è dell'account: si cambia quando hai finito di scrivere, e solo se nessun altro lo ha
+	var commit := func():
+		var n := name_edit.text.strip_edges()
+		if n == str(Prefs.get_value("name")):
+			return
+		if n == "":
+			name_edit.text = Prefs.get_value("name")
+			return
+		name_edit.editable = false
+		var r: Dictionary = await Account.rename(self, n)
+		if not is_instance_valid(name_edit):
+			return
+		name_edit.editable = true
+		name_edit.text = Prefs.get_value("name")
+		toast(r.error if r.has("error") else "Ora ti chiami %s" % r.name)
+	name_edit.text_submitted.connect(func(_t): name_edit.release_focus())
+	name_edit.focus_exited.connect(commit)
 	b.add_child(name_edit)
 	b.add_child(_seg(LEVELS, Prefs.get_value("level"), func(v):
 		Prefs.set_value("level", v)

@@ -50,10 +50,19 @@ Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla 
 - Chiudendo l'app durante una partita con un amico, alla riapertura nella home c'è «Rientra · CODICE» (e «Nuova stanza») al posto di «Con un amico»: si rientra nella stessa stanza con il proprio gettone, come nel sito.
 - «Condividi» (stanza creata) apre il menu di condivisione del telefono con il codice e il link `…/?room=CODICE`, che apre la stanza nel sito; «Copia codice» copia solo il codice.
 
+### Account
+
+- Al primo avvio con internet l'app chiede al server un account ospite (`scripts/net/account.gd`, server `account.js` con `store.js`): «Ospite4821», oppure il nome che si usava già se nessun altro lo ha. Id e chiave segreta stanno in Prefs `account`; sul server c'è solo l'impronta della chiave.
+- Il nome è unico: si cambia nella scheda Gioca (quando si finisce di scrivere) e il server rifiuta i nomi di altri. Le statistiche del dispositivo seguono il nome dell'account.
+- Dopo ogni partita il profilo (statistiche, sblocchi, record delle sfide) viene copiato sul server.
+- Il codice di trasferimento («Account e trasferimento» nel Profilo) porta con sé l'account: incollato su un altro dispositivo, si è lo stesso giocatore.
+- Prossimo passo: «Accedi con Google» che si collega all'account ospite.
+- Prova manuale: `tools/account_probe.gd` contro un server di prova (rimette a posto i dati del PC).
+
 ### Sfida del giorno e classifica
 - La data decide tutto, uguale per tutti nel sito e nell'app (`dailyScenario()` in `hub.js` e `daily_scenario()` in `modes.gd`, controllate a vicenda per 60 giorni da `tests/daily_fixture.json`): a volte si parte da zero, a volte da una partita già avviata. In quella avviata tu e il BOT avete la stessa quantità di terre in gioco (fino a 4), nel cimitero (0–3) e in mano (3–6); cambiano i tipi e chi inizia. Se con le carte pescate qualcuno potesse vincere quasi subito si passa a un'altra situazione (sempre dalla data). La scheda Sfide descrive la situazione del giorno.
-- Classifica: chi vince manda al server tutte le mosse (`scripts/net/classifica.gd`); il server (`classifica.js`) rigioca la partita con il motore del sito e la accetta solo se è vera. Conta il numero di turni, a parità chi arriva prima; un nome compare una volta sola con il suo record. «Classifica» nella scheda Sfide e nella finestra di fine partita.
-- Serve un nome (scheda Gioca) per entrare in classifica. Valgono solo le sfide di ieri, oggi e domani (fusi orari).
+- Classifica: chi vince manda al server tutte le mosse (`scripts/net/classifica.gd`); il server (`classifica.js`) rigioca la partita con il motore del sito e la accetta solo se è vera. Conta il numero di turni, a parità chi arriva prima; ogni account compare una volta sola con il suo record. «Classifica» nella scheda Sfide e nella finestra di fine partita.
+- Serve l'account (si crea da solo). Valgono solo le sfide di ieri, oggi e domani (fusi orari).
 - Sul piano gratuito di Render la classifica si perde quando il server si riavvia: per tenerla serve un database gratuito Upstash (variabili `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` su Render).
 
 ### Versione per il browser

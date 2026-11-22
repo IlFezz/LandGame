@@ -80,6 +80,15 @@ static func store(name: String, s: Dictionary) -> void:
 	_save(a)
 
 
+## Il profilo cambia nome (statistiche e sblocchi restano): serve quando cambia il nome dell'account.
+static func rename(old: String, new: String) -> void:
+	var a := all()
+	var p = a.get(key_of(old))
+	a.erase(key_of(old))
+	a[key_of(new)] = {"n": new, "s": p.s if p is Dictionary and p.get("s") is Dictionary else {}}
+	_save(a)
+
+
 static func profile_names() -> Array:
 	var out := []
 	for k in all():
@@ -225,9 +234,14 @@ static func check_goals(a: Dictionary, x: Dictionary) -> Array:
 
 # ---------- trasferimento (stesso formato della versione web) ----------
 
+## Il codice porta con sé anche l'account (id e chiave): chi lo importa diventa te.
 static func export_code(name: String) -> String:
 	var s := load_profile(name)
-	return "ATLAS1-" + Marshalls.utf8_to_base64(JSON.stringify({"n": s.name, "s": s}))
+	var d := {"n": s.name, "s": s}
+	var acc = preload("res://scripts/app/prefs.gd").get_value("account")
+	if acc is Dictionary and acc.has("id"):
+		d.acc = acc
+	return "ATLAS1-" + Marshalls.utf8_to_base64(JSON.stringify(d))
 
 
 ## Importa un codice; restituisce il nome del profilo, oppure "" se il codice non è valido.
@@ -246,6 +260,9 @@ static func import_code(code: String) -> String:
 	s.erase("name")
 	_fill(s, blank())
 	store(d.n, s)
+	var acc = d.get("acc")
+	if acc is Dictionary and acc.get("id") is String and acc.get("token") is String:
+		preload("res://scripts/app/prefs.gd").set_value("account", {"id": acc.id, "token": acc.token})
 	return d.n
 
 

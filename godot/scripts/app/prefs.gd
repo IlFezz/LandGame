@@ -15,7 +15,8 @@ const DEFAULTS := {
 	"react": true,  # reazioni rapide
 	"fullscreen": false,
 	"tab": "play",
-	"friend": {},  # stanza con un amico in corso { code, token }: riaprendo l'app si può rientrare
+	"friend": {},
+	"account": {},  # account sul server { id, token } (scripts/net/account.gd)  # stanza con un amico in corso { code, token }: riaprendo l'app si può rientrare
 }
 
 static var _v := {}

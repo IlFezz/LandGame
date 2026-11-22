@@ -4,10 +4,14 @@ const assert = require('assert');
 const os = require('os');
 const path = require('path');
 process.env.CLASSIFICA_FILE = path.join(os.tmpdir(), 'atlas-classifica-test-' + process.pid + '.json');
+process.env.STORE_FILE = path.join(os.tmpdir(), 'atlas-store-test-' + process.pid + '.json');
+delete process.env.UPSTASH_REDIS_REST_URL;
 const { Game } = require('../game');
 const { Bot } = require('../bot');
 const { dailyOpts, dailyScenario } = require('../hub');
 const Classifica = require('../classifica');
+const Account = require('../account');
+const acct = async (m, ip = '1.2.3.4') => Account.handle('POST', JSON.stringify(m), ip);
 
 let passed = 0;
 async function test(name, fn) {
@@ -87,23 +91,58 @@ function play(day) {
     assert.ok(other.error || other.lost, 'le mosse valgono solo per quel giorno');
   });
 
-  await test('invio e classifica: meno turni vince, il nome conta una volta', async () => {
+  await test('account ospite: nome unico, cambio nome, profilo salvato', async () => {
+    const g1 = (await acct({ a: 'create' })).body;
+    assert.match(g1.name, /^Ospite\d{4}$/);
+    assert.ok(g1.id && g1.token);
+    const anna = (await acct({ a: 'create', name: 'Anna', profile: { cpu: { won: 3 } } })).body;
+    assert.strictEqual(anna.name, 'Anna', 'il nome che si usava già');
+    const anna2 = (await acct({ a: 'create', name: 'anna' })).body;
+    assert.match(anna2.name, /^Ospite/, 'nome già preso: si diventa ospite');
+    assert.strictEqual(anna2.taken, 'anna');
+    let r = await acct({ a: 'rename', id: g1.id, token: g1.token, name: 'ANNA' });
+    assert.strictEqual(r.status, 409, 'nome di un altro');
+    r = await acct({ a: 'rename', id: g1.id, token: 'sbagliata', name: 'Carlo' });
+    assert.strictEqual(r.status, 401, 'chiave sbagliata');
+    r = await acct({ a: 'rename', id: g1.id, token: g1.token, name: 'Carlo' });
+    assert.strictEqual(r.body.name, 'Carlo');
+    r = await acct({ a: 'create', name: g1.name });
+    assert.strictEqual(r.body.name, r.body.name.startsWith('Ospite') ? r.body.name : null, 'i nomi da ospite non si scelgono');
+    r = await acct({ a: 'rename', id: anna.id, token: anna.token, name: 'Anna Maria' });
+    r = await acct({ a: 'rename', id: g1.id, token: g1.token, name: 'anna' });
+    assert.strictEqual(r.body.name, 'anna', 'il nome lasciato libero si può prendere');
+    assert.strictEqual((await acct({ a: 'save', id: g1.id, token: g1.token, profile: { cpu: { won: 5 } } })).body.ok, true);
+    assert.deepStrictEqual((await acct({ a: 'load', id: g1.id, token: g1.token })).body, { name: 'anna', profile: { cpu: { won: 5 } } });
+    let limited = false;
+    for (let i = 0; i < 25; i++) if ((await acct({ a: 'create' }, '9.9.9.9')).status === 429) limited = true;
+    assert.ok(limited, 'troppi account dallo stesso indirizzo');
+  });
+
+  await test('invio e classifica: meno turni vince, un account conta una volta', async () => {
     const res = wonGame();
-    const send = (name, steps) => Classifica.handle('POST', new URLSearchParams(), JSON.stringify({ day: res.day, name, steps }));
-    const a = await send('Anna', res.steps);
+    const a1 = (await acct({ a: 'create', name: 'Dora' }, '5.5.5.5')).body;
+    const b1 = (await acct({ a: 'create', name: 'Bruno' }, '5.5.5.5')).body;
+    const send = (acc, steps) => Classifica.handle('POST', new URLSearchParams(), JSON.stringify({ day: res.day, id: acc.id, token: acc.token, steps }));
+    const a = await send(a1, res.steps);
     assert.strictEqual(a.status, 200);
     assert.strictEqual(a.body.ok, true);
     assert.strictEqual(a.body.me.rank, 1);
-    await send('anna', res.steps); // stesso nome (maiuscole a parte): una riga sola
-    const b = await send('Bruno', res.steps);
+    await send(a1, res.steps); // stesso account: una riga sola
+    const b = await send(b1, res.steps);
     assert.strictEqual(b.body.total, 2);
     assert.strictEqual(b.body.me.rank, 2, 'a parità di turni vale chi arriva prima');
-    const v = await Classifica.handle('GET', new URLSearchParams({ day: res.day, name: 'Bruno' }), '');
-    assert.deepStrictEqual(v.body.top.map((e) => e.name), ['Anna', 'Bruno']);
-    const old = await Classifica.handle('POST', new URLSearchParams(), JSON.stringify({ day: '2020-01-01', name: 'X', steps: res.steps }));
+    const v = await Classifica.handle('GET', new URLSearchParams({ day: res.day, id: b1.id }), '');
+    assert.deepStrictEqual(v.body.top.map((e) => e.name), ['Dora', 'Bruno']);
+    assert.strictEqual(v.body.me.rank, 2);
+    const noacc = await Classifica.handle('POST', new URLSearchParams(), JSON.stringify({ day: res.day, name: 'Dora', steps: res.steps }));
+    assert.strictEqual(noacc.status, 401, 'senza account non si entra');
+    const fake = await send({ id: a1.id, token: 'x' }, res.steps);
+    assert.strictEqual(fake.status, 401, 'chiave sbagliata');
+    const old = await Classifica.handle('POST', new URLSearchParams(), JSON.stringify({ day: '2020-01-01', id: a1.id, token: a1.token, steps: res.steps }));
     assert.strictEqual(old.status, 400, 'sfide vecchie rifiutate');
   });
 
   require('fs').rmSync(process.env.CLASSIFICA_FILE, { force: true });
+  require('fs').rmSync(process.env.STORE_FILE, { force: true });
   console.log(`\n${passed} test della classifica superati`);
 })();

@@ -234,6 +234,9 @@ func t_classifica():
 	var host := Node.new()
 	_tree().root.add_child(host)
 	var won := false
+	# un account di prova creato direttamente sul server (senza toccare le preferenze del PC)
+	var acc: Dictionary = await Classifica._call(host, Classifica.base_url() + "/api/account", HTTPClient.METHOD_POST, JSON.stringify({"a": "create", "name": "Prova Godot"}))
+	check(acc.has("id"), "account di prova creato: %s" % acc)
 	for k in 300:
 		var day := Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_system()) + ((k % 3) - 1) * 86400)
 		var g = Game.new(["Tu", "BOT"], Modes.daily_opts(day))
@@ -256,7 +259,7 @@ func t_classifica():
 				g.act(p, {"type": "pass"} if g.step == "main" else {"type": "allow"})
 			if n == 7 and g.phase == "playing" and g.actor() != null:
 				g.auto_act()  # anche il tempo scaduto deve essere rigiocato uguale
-		var r: Dictionary = await Classifica.submit(host, day, "Prova Godot", g.record)
+		var r: Dictionary = await Classifica.submit(host, day, acc, g.record)
 		check(not r.has("error"), "il server accetta le mosse dell'app (%s): %s" % [day, r.get("error", "")])
 		if g.winner == 0 and g.end_reason != "surrender":
 			eq(r.get("ok"), true, "vittoria accettata")

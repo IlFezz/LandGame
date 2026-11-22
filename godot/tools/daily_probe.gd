@@ -9,6 +9,7 @@ const Classifica := preload("res://scripts/net/classifica.gd")
 
 func _initialize() -> void:
 	root.size = Vector2i(390, 844)
+	var acc: Dictionary = await Classifica._call(root, Classifica.base_url() + "/api/account", HTTPClient.METHOD_POST, JSON.stringify({"a": "create", "name": "Prova sonda"}))
 	for k in 12:
 		var t: Table = Table.new()
 		root.add_child(t)
@@ -22,7 +23,7 @@ func _initialize() -> void:
 		while t.g.phase == "playing" and Time.get_ticks_msec() - t0 < 240000:
 			await process_frame
 		print("partita ", k, " vincitore ", t.g.winner, " turno ", t.g.turn, " mosse ", t.g.record.size())
-		var r: Dictionary = await Classifica.submit(t, Modes.today(), "Prova sonda", t.g.record)
+		var r: Dictionary = await Classifica.submit(t, Modes.today(), acc, t.g.record)
 		print("risposta: ", r)
 		t.queue_free()
 		if t.g.winner == 0:

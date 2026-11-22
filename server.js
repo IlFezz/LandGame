@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const { Hub } = require('./hub');
 const Classifica = require('./classifica');
+const Account = require('./account');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -29,7 +30,8 @@ function gzipped(file, data, etag) {
 const server = http.createServer((req, res) => {
   let url = decodeURIComponent(req.url.split('?')[0]);
   if (url === '/healthz') { res.writeHead(200); return res.end('ok'); }
-  if (url === '/api/classifica') return classifica(req, res);
+  if (url === '/api/classifica') return api(req, res, (q, body) => Classifica.handle(req.method, q, body));
+  if (url === '/api/account') return api(req, res, (q, body) => Account.handle(req.method, body, clientIp(req)));
   if (url === '/') url = '/index.html';
   if (url === '/gioco') { res.writeHead(301, { Location: '/gioco/' }); return res.end(); }
   if (url.endsWith('/')) url += 'index.html';
@@ -61,8 +63,12 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// ---------- Classifica della sfida del giorno (classifica.js) ----------
-function classifica(req, res) {
+// ---------- API: classifica della sfida del giorno (classifica.js) e account (account.js) ----------
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+}
+
+function api(req, res, handler) {
   const reply = ({ status, body }) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(body));
@@ -75,7 +81,7 @@ function classifica(req, res) {
   let body = '';
   req.on('data', (d) => { body += d; if (body.length > 300000) req.destroy(); });
   req.on('end', () => {
-    Classifica.handle(req.method, query, body).then(reply, (e) => { console.error(e); reply({ status: 500, body: { error: 'Errore del server.' } }); });
+    handler(query, body).then(reply, (e) => { console.error(e); reply({ status: 500, body: { error: 'Errore del server.' } }); });
   });
 }
 

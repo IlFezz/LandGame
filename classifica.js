@@ -2,6 +2,7 @@
 // Chi vince manda tutte le mosse della partita: il server la rigioca con lo stesso motore e la stessa
 // situazione di partenza (dailyOpts) e la accetta solo se ogni mossa è regolare e la partita è vinta.
 // Conta il numero di turni (meno è meglio); a parità, chi ci è arrivato prima.
+// Ogni riga è di un account (account.js): il nome mostrato è quello dell'account al momento dell'invio.
 //
 // Dove si salva: se ci sono le variabili UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN (database
 // Upstash gratuito) la classifica resta anche quando il server si riavvia; altrimenti sta in un file
@@ -11,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { Game } = require('./game');
 const { dailyOpts } = require('./hub');
+const Account = require('./account');
 
 const FILE = process.env.CLASSIFICA_FILE || path.join(__dirname, 'data', 'classifica.json');
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -20,8 +22,6 @@ const TOP = 20;
 const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 // Si accettano solo le sfide di ieri, oggi e domani (i fusi orari dei giocatori).
 const dayOk = (d) => isDay(d) && Math.abs(Date.now() - Date.parse(d + 'T12:00:00Z')) < 40 * 3600 * 1000;
-const cleanName = (n) => String(n || '').trim().replace(/\s+/g, ' ').slice(0, 20);
-const keyOf = (n) => n.toLowerCase();
 
 // ---------- verifica ----------
 function replay(day, steps) {
@@ -103,11 +103,10 @@ async function save(day, b) {
 
 const sorted = (b) => Object.values(b).sort((x, y) => x.turns - y.turns || x.at - y.at);
 
-async function view(day, name) {
+async function view(day, id) {
   const b = (await load(day)) || {};
   const list = sorted(b);
-  const k = keyOf(cleanName(name));
-  const i = k ? list.findIndex((e) => keyOf(e.name) === k) : -1;
+  const i = id ? list.findIndex((e) => e.id === id) : -1;
   return {
     day, total: list.length, store: REDIS_URL && REDIS_TOKEN ? (storeError ? 'database non raggiungibile' : 'database') : 'file',
     top: list.slice(0, TOP).map((e) => ({ name: e.name, turns: e.turns })),
@@ -133,30 +132,32 @@ async function handle(method, query, body) {
     const day = query.get('day');
     if (!isDay(day)) return { status: 400, body: { error: 'Giorno non valido.' } };
     if (query.get('prova') === '1') return { status: 200, body: await probe() };
-    return { status: 200, body: await view(day, query.get('name')) };
+    return { status: 200, body: await view(day, query.get('id')) };
   }
   if (method === 'POST') {
     let m;
     try { m = JSON.parse(body); } catch { return { status: 400, body: { error: 'Richiesta non valida.' } }; }
-    const name = cleanName(m && m.name);
-    if (!name) return { status: 400, body: { error: 'Serve un nome per la classifica.' } };
+    const acc = m && (await Account.verify(m.id, m.token).catch(() => null));
+    if (!acc) return { status: 401, body: { error: 'Serve un account per entrare in classifica: riapri l’app collegata a internet.' } };
+    const name = acc.name;
     if (!dayOk(m.day)) return { status: 400, body: { error: 'Questa sfida del giorno è scaduta.' } };
     const r = replay(m.day, m.steps);
     if (r.error) return { status: 400, body: { error: r.error } };
     if (r.lost) return { status: 200, body: { ok: false, lost: true } };
     const b = await load(m.day);
     if (!b) return { status: 503, body: { error: 'Classifica non disponibile in questo momento: riprova più tardi.' } };
-    const k = keyOf(name), old = b[k];
+    const k = acc.id, old = b[k];
     const better = !old || r.turns < old.turns;
     if (better) {
       const prev = old;
-      b[k] = { name, turns: r.turns, at: Date.now() };
+      b[k] = { id: acc.id, name, turns: r.turns, at: Date.now() };
       if (!(await save(m.day, b))) {
         if (prev) b[k] = prev; else delete b[k];
         return { status: 503, body: { error: 'Classifica non salvata: riprova più tardi.' } };
       }
     }
-    return { status: 200, body: { ok: true, turns: r.turns, best: better, ...(await view(m.day, name)) } };
+    if (old && old.name !== name) { b[k].name = name; await save(m.day, b); } // nome cambiato nel frattempo
+    return { status: 200, body: { ok: true, turns: r.turns, best: better, ...(await view(m.day, acc.id)) } };
   }
   return { status: 405, body: { error: 'Metodo non permesso.' } };
 }

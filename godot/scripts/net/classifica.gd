@@ -14,13 +14,15 @@ static func base_url() -> String:
 	return u.substr(0, u.length() - 3) if u.ends_with("/ws") else u
 
 
-static func board(host: Node, day: String, name: String) -> Dictionary:
-	return await _call(host, "%s/api/classifica?day=%s&name=%s" % [base_url(), day, name.uri_encode()], HTTPClient.METHOD_GET, "")
+## `id`: l'account del giocatore (per sapere la sua posizione), anche vuoto.
+static func board(host: Node, day: String, id: String) -> Dictionary:
+	return await _call(host, "%s/api/classifica?day=%s&id=%s" % [base_url(), day, id.uri_encode()], HTTPClient.METHOD_GET, "")
 
 
-static func submit(host: Node, day: String, name: String, steps: Array) -> Dictionary:
+## `acc`: { id, token } dell'account (scripts/net/account.gd).
+static func submit(host: Node, day: String, acc: Dictionary, steps: Array) -> Dictionary:
 	return await _call(host, base_url() + "/api/classifica", HTTPClient.METHOD_POST,
-		JSON.stringify({"day": day, "name": name, "steps": steps}))
+		JSON.stringify({"day": day, "id": acc.get("id", ""), "token": acc.get("token", ""), "steps": steps}))
 
 
 static func _call(host: Node, url: String, method: int, body: String) -> Dictionary:

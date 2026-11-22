@@ -11,6 +11,7 @@ const Home := preload("res://scripts/ui/home.gd")
 const Prefs := preload("res://scripts/app/prefs.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 const Net := preload("res://scripts/net/net.gd")
+const Account := preload("res://scripts/net/account.gd")
 
 var _factor := 1.0
 var _bg: W.Table
@@ -87,10 +88,22 @@ func _ready() -> void:
 				_home.friend_waiting("K7QD", 60)
 			elif a == "--classifica":
 				load("res://scripts/ui/sheets.gd").classifica(_home._overlays, load("res://scripts/app/modes.gd").today())
+	if foto == "":
+		_account_start()  # niente server nelle prove con le foto
 	if foto != "":
 		await get_tree().create_timer(attesa).timeout
 		get_viewport().get_texture().get_image().save_png(foto)
 		get_tree().quit()
+
+
+## Al primo avvio con internet si crea l'account ospite (o con il nome che si usava già): poi la
+## home mostra il nome nuovo.
+func _account_start() -> void:
+	Account.live = true
+	if Account.has():
+		return
+	if await Account.ensure(self) and is_instance_valid(_home):
+		_home.refresh()
 
 
 ## Quanti pixel veri per un "punto": la densità dello schermo (come devicePixelRatio).
