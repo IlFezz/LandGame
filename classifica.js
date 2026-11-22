@@ -58,11 +58,14 @@ async function redis(cmd) {
     const r = await fetch(REDIS_URL, { method: 'POST', headers: { Authorization: `Bearer ${REDIS_TOKEN}` }, body: JSON.stringify(cmd) });
     if (!r.ok) throw new Error('database: risposta ' + r.status);
     const j = await r.json();
+    if (j.error) throw new Error('database: ' + j.error);
     storeError = null;
     return j.result;
   } catch (e) { storeError = e.message; throw e; }
 }
 
+// Se la lettura fallisce la classifica NON viene tenuta in memoria come vuota: altrimenti il primo
+// risultato salvato dopo cancellerebbe tutti gli altri. Si riprova alla richiesta successiva.
 async function load(day) {
   if (boards.has(day)) return boards.get(day);
   let b = {};
@@ -74,16 +77,18 @@ async function load(day) {
       if (!fileData) fileData = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, 'utf8')) : {};
       b = fileData[day] || {};
     }
-  } catch (e) { console.error('classifica: lettura', e.message); }
+  } catch (e) { console.error('classifica: lettura', e.message); return null; }
   boards.set(day, b);
   if (boards.size > 10) boards.delete(boards.keys().next().value); // in memoria solo gli ultimi giorni
   return b;
 }
 
+// Restituisce true se il salvataggio è riuscito.
 async function save(day, b) {
   try {
     if (REDIS_URL && REDIS_TOKEN) {
-      await redis(['SET', 'atlas:classifica:' + day, JSON.stringify(b), 'EX', String(60 * 24 * 3600)]);
+      const r = await redis(['SET', 'atlas:classifica:' + day, JSON.stringify(b), 'EX', String(60 * 24 * 3600)]);
+      if (r !== 'OK') throw new Error('database: scrittura non riuscita (' + JSON.stringify(r) + ')');
     } else {
       if (!fileData) fileData = {};
       fileData[day] = b;
@@ -92,13 +97,14 @@ async function save(day, b) {
       fs.mkdirSync(path.dirname(FILE), { recursive: true });
       fs.writeFileSync(FILE, JSON.stringify(fileData));
     }
-  } catch (e) { console.error('classifica: scrittura', e.message); }
+  } catch (e) { storeError = e.message; console.error('classifica: scrittura', e.message); return false; }
+  return true;
 }
 
 const sorted = (b) => Object.values(b).sort((x, y) => x.turns - y.turns || x.at - y.at);
 
 async function view(day, name) {
-  const b = await load(day);
+  const b = (await load(day)) || {};
   const list = sorted(b);
   const k = keyOf(cleanName(name));
   const i = k ? list.findIndex((e) => keyOf(e.name) === k) : -1;
@@ -109,11 +115,24 @@ async function view(day, name) {
   };
 }
 
+// Controllo dell'archivio: prova a scrivere, rileggere e cancellare una chiave di prova
+// (GET /api/classifica?day=...&prova=1). Non tocca le classifiche.
+async function probe() {
+  if (!(REDIS_URL && REDIS_TOKEN)) return { store: 'file', ok: true };
+  try {
+    const w = await redis(['SET', 'atlas:prova', String(Date.now()), 'EX', '60']);
+    const g = await redis(['GET', 'atlas:prova']);
+    await redis(['DEL', 'atlas:prova']);
+    return { store: 'database', ok: w === 'OK' && !!g, write: w };
+  } catch (e) { return { store: 'database', ok: false, error: e.message }; }
+}
+
 // Restituisce { status, body } per il server HTTP.
 async function handle(method, query, body) {
   if (method === 'GET') {
     const day = query.get('day');
     if (!isDay(day)) return { status: 400, body: { error: 'Giorno non valido.' } };
+    if (query.get('prova') === '1') return { status: 200, body: await probe() };
     return { status: 200, body: await view(day, query.get('name')) };
   }
   if (method === 'POST') {
@@ -126,9 +145,17 @@ async function handle(method, query, body) {
     if (r.error) return { status: 400, body: { error: r.error } };
     if (r.lost) return { status: 200, body: { ok: false, lost: true } };
     const b = await load(m.day);
+    if (!b) return { status: 503, body: { error: 'Classifica non disponibile in questo momento: riprova più tardi.' } };
     const k = keyOf(name), old = b[k];
     const better = !old || r.turns < old.turns;
-    if (better) { b[k] = { name, turns: r.turns, at: Date.now() }; await save(m.day, b); }
+    if (better) {
+      const prev = old;
+      b[k] = { name, turns: r.turns, at: Date.now() };
+      if (!(await save(m.day, b))) {
+        if (prev) b[k] = prev; else delete b[k];
+        return { status: 503, body: { error: 'Classifica non salvata: riprova più tardi.' } };
+      }
+    }
     return { status: 200, body: { ok: true, turns: r.turns, best: better, ...(await view(m.day, name)) } };
   }
   return { status: 405, body: { error: 'Metodo non permesso.' } };

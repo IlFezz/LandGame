@@ -2694,41 +2694,86 @@ func _open_reactions() -> void:
 	if overlay_layer.has_node("Reazioni"):
 		_drop(overlay_layer.get_node("Reazioni"))
 		return
-	var box := PanelContainer.new()
+	# le frasi escono dal pulsante della chat, come un fumetto con la punta sul pulsante
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	var box := _speech(grid, Art.FOGLIO, Art.FOGLIO_BORDO, 8)
 	box.name = "Reazioni"
-	var sb := Art.box(Art.FOGLIO, 14, Art.FOGLIO_BORDO, 1)
-	for m in ["left", "right", "top", "bottom"]:
-		sb.set("content_margin_" + m, 6)
-	sb.shadow_color = Art.OMBRA
-	sb.shadow_size = 14
-	box.add_theme_stylebox_override("panel", sb)
-	var flow := HFlowContainer.new()
-	flow.custom_minimum_size.x = 250
-	box.add_child(flow)
 	for i in Modes.REACTIONS.size():
 		var b := W.button(Modes.REACTIONS[i], "ghost_ink", 13)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var idx := i
 		b.pressed.connect(func():
 			_drop(box)
 			_react(me, idx))
-		flow.add_child(b)
+		grid.add_child(b)
 	overlay_layer.add_child(box)
-	box.reset_size()
-	# si apre attaccata al pulsante della chat (sopra, o sotto se sopra non c'è posto): può coprire
-	# un attimo mano o campo, tanto si usa per un secondo.
-	# L'altezza vera si conosce solo dopo un fotogramma (le frasi vanno a capo): si piazza allora.
+	# l'altezza vera si conosce solo dopo un fotogramma: si piazza allora
 	box.modulate.a = 0
 	await get_tree().process_frame
 	if not is_instance_valid(box):
 		return
-	box.reset_size()
-	var br: Rect2 = _lr(react_btn)
-	var x := clampf(br.position.x + br.size.x / 2 - box.size.x / 2, 6, size.x - box.size.x - 6)
-	var y := br.position.y - box.size.y - 8
-	if y < 6:
-		y = minf(br.end.y + 8, size.y - box.size.y - 6)
-	box.position = Vector2(x, y)
-	box.modulate.a = 1
+	_place_speech(box, _lr(react_btn), true)
+
+
+## Fumetto: `content` dentro un riquadro arrotondato con la punta verso chi parla (o verso il
+## pulsante). Si piazza con _place_speech.
+func _speech(content: Control, fill: Color, border := Color(0, 0, 0, 0), pad := 10.0) -> Control:
+	var c := Control.new()
+	c.mouse_filter = Control.MOUSE_FILTER_PASS
+	c.set_meta("pad", pad)
+	c.set_meta("tail", {"x": 20.0, "up": true})
+	c.add_child(content)
+	var sb := Art.box(fill, 14, border, 1 if border.a > 0 else 0)
+	sb.shadow_color = Art.OMBRA
+	sb.shadow_size = 10
+	c.draw.connect(func():
+		var t: Dictionary = c.get_meta("tail")
+		var th := 9.0
+		var body := Rect2(0, 0, c.size.x, c.size.y - th) if t.up else Rect2(0, th, c.size.x, c.size.y - th)
+		c.draw_style_box(sb, body)
+		var edge: float = body.end.y - 1 if t.up else body.position.y + 1
+		var tip := Vector2(t.x, c.size.y if t.up else 0.0)
+		var pts := PackedVector2Array([Vector2(t.x - 8, edge), Vector2(t.x + 8, edge), tip])
+		c.draw_colored_polygon(pts, fill)
+		if border.a > 0:
+			var e2: float = edge + (1.0 if t.up else -1.0)
+			c.draw_line(Vector2(t.x - 8, e2), tip, border, 1.0, true)
+			c.draw_line(Vector2(t.x + 8, e2), tip, border, 1.0, true))
+	return c
+
+
+## Mette il fumetto sopra (o, se non c'è posto, sotto) il rettangolo `anchor`, con la punta al
+## suo centro, e lo fa comparire con un piccolo «pop» che parte dalla punta.
+func _place_speech(c: Control, anchor: Rect2, prefer_up: bool) -> void:
+	var content: Control = c.get_child(0)
+	content.reset_size()
+	var pad: float = c.get_meta("pad")
+	var th := 9.0
+	var body := content.size + Vector2(pad * 2, pad * 2)
+	var up := prefer_up
+	if up and anchor.position.y - 4 - th - body.y < 6:
+		up = false
+	elif not up and anchor.end.y + 4 + th + body.y > size.y - 6:
+		up = true
+	var ax := anchor.get_center().x
+	var x := clampf(ax - 26, 6, size.x - body.x - 6)
+	var tx := clampf(ax - x, 16, body.x - 16)
+	c.size = Vector2(body.x, body.y + th)
+	if up:
+		c.position = Vector2(x, anchor.position.y - 4 - th - body.y)
+		content.position = Vector2(pad, pad)
+	else:
+		c.position = Vector2(x, anchor.end.y + 4)
+		content.position = Vector2(pad, th + pad)
+	c.set_meta("tail", {"x": tx, "up": up})
+	c.pivot_offset = Vector2(tx, c.size.y if up else 0.0)
+	c.queue_redraw()
+	c.modulate.a = 1
+	c.scale = Vector2(0.6, 0.6)
+	c.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).tween_property(c, "scale", Vector2.ONE, 0.18)
 
 
 ## Una reazione: fumetto accanto al nome di chi la manda. Al «Ciao!» il computer di solito risponde.
@@ -2754,38 +2799,24 @@ func _bubble(seat: int, i: int) -> void:
 	var old := bubble_layer.get_node_or_null("Fumetto" + w)
 	if old:
 		_drop(old)
+	# il fumetto parte dal nome di chi parla: il mio sopra il mio nome, quello dell'avversario sotto il suo
 	var l := W.label(Modes.REACTIONS[i], 14, Art.INK, Art.bold())
-	l.name = "Fumetto" + w
-	var sb := Art.box(Art.CARTA, 12)
-	sb.content_margin_left = 12
-	sb.content_margin_right = 12
-	sb.content_margin_top = 6
-	sb.content_margin_bottom = 6
-	l.add_theme_stylebox_override("normal", sb)
-	bubble_layer.add_child(l)
-	l.reset_size()
-	var r: Rect2 = _lr(zones[w].name)
-	l.position = Vector2(clampf(r.position.x, 8, size.x - l.size.x - 8), r.end.y + 6 if w == "opp" else r.position.y - l.size.y - 6)
-	if lay == "portrait":
-		# accanto alla carta al centro, dove non copre nulla: l'avversario a sinistra in alto, io a destra
-		var room := stack_rect.position.x - center_rect.position.x - 8
-		var text_w := Art.bold().get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 24
-		if text_w > room:
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = minf(room, text_w)
-		l.size = Vector2(l.custom_minimum_size.x, 0)
-		l.reset_size()
-		if w == "opp":
-			l.position = Vector2(stack_rect.position.x - 8 - l.size.x, stack_rect.position.y + 4)
-		else:
-			l.position = Vector2(stack_rect.end.x + 8, stack_rect.position.y + stack_rect.size.y * 0.42)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var c := _speech(l, Art.CARTA, Color(0, 0, 0, 0), 8)
+	c.name = "Fumetto" + w
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bubble_layer.add_child(c)
+	var nr: Rect2 = _lr(zones[w].name)
+	var tw_text := Art.bold().get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+	nr.size.x = minf(nr.size.x, tw_text + 30)  # la punta sul nome, non sul vuoto accanto
+	_place_speech(c, nr, w == "me")
 	if w == "opp":
 		Sound.play("click")
 		Sound.vibrate("light")
-	var tw := l.create_tween()
+	var tw := c.create_tween()
 	tw.tween_interval(2.4)
-	tw.tween_property(l, "modulate:a", 0.0, 0.4)
-	tw.tween_callback(func(): _drop(l))
+	tw.tween_property(c, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func(): _drop(c))
 
 
 ## Il computer ogni tanto reagisce (come botReacts in hub.js), dopo le animazioni.
