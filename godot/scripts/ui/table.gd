@@ -2257,7 +2257,31 @@ var _sent_record := false
 
 func _daily_submit(lbl: Label) -> void:
 	if str(Prefs.get_value("name")).strip_edges() == "":
-		lbl.text = "Scrivi il tuo nome nella scheda Gioca per entrare in classifica."
+		# senza nome non si entra in classifica: lo si scrive qui e si manda subito
+		lbl.text = "Scrivi il tuo nome per entrare in classifica."
+		if lbl.get_parent().has_node("NomeClassifica"):
+			return
+		var row := HBoxContainer.new()
+		row.name = "NomeClassifica"
+		row.add_theme_constant_override("separation", 8)
+		var e := LineEdit.new()
+		e.placeholder_text = "Il tuo nome"
+		e.max_length = 20
+		e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		e.add_theme_font_size_override("font_size", 16)
+		row.add_child(e)
+		var send := func():
+			var n := e.text.strip_edges()
+			if n == "":
+				return
+			Prefs.set_value("name", n)
+			player_name = n
+			row.queue_free()
+			_daily_submit(lbl)
+		e.text_submitted.connect(func(_t): send.call())
+		row.add_child(_btn("Invia", "ink", send))
+		lbl.get_parent().add_child(row)
+		lbl.get_parent().move_child(row, lbl.get_index() + 1)
 		return
 	if _sent_record or g.record == null:
 		lbl.text = _sent_text
