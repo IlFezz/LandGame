@@ -3,5 +3,5 @@
 ## l'aggiornamento.
 extends RefCounted
 
-const CODE := 1
-const NAME := "0.2"
+const CODE := 2
+const NAME := "0.3"
