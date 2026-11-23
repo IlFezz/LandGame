@@ -12,6 +12,7 @@ const Prefs := preload("res://scripts/app/prefs.gd")
 const Sound := preload("res://scripts/app/sound.gd")
 const Net := preload("res://scripts/net/net.gd")
 const Account := preload("res://scripts/net/account.gd")
+const Update := preload("res://scripts/net/update.gd")
 
 var _factor := 1.0
 var _bg: W.Table
@@ -90,6 +91,7 @@ func _ready() -> void:
 				load("res://scripts/ui/sheets.gd").classifica(_home._overlays, load("res://scripts/app/modes.gd").today())
 	if foto == "":
 		_account_start()  # niente server nelle prove con le foto
+		_update_check()
 	if foto != "":
 		await get_tree().create_timer(attesa).timeout
 		get_viewport().get_texture().get_image().save_png(foto)
@@ -104,6 +106,16 @@ func _account_start() -> void:
 		return
 	if await Account.ensure(self) and is_instance_valid(_home):
 		_home.refresh()
+
+
+## C'è un APK più nuovo? Si propone «Aggiorna» nella home (una volta per avvio).
+func _update_check() -> void:
+	var info: Dictionary = await Update.check(self)
+	if info.is_empty():
+		return
+	while not is_instance_valid(_home):  # si aspetta di essere nella home, non durante una partita
+		await get_tree().create_timer(2.0).timeout
+	load("res://scripts/ui/sheets.gd").update_offer(_home._overlays, info)
 
 
 ## Quanti pixel veri per un "punto": la densità dello schermo (come devicePixelRatio).

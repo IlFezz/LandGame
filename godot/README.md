@@ -50,6 +50,11 @@ Se l'app viene chiusa del tutto a metà partita, alla riapertura si parte dalla 
 - Chiudendo l'app durante una partita con un amico, alla riapertura nella home c'è «Rientra · CODICE» (e «Nuova stanza») al posto di «Con un amico»: si rientra nella stessa stanza con il proprio gettone, come nel sito.
 - «Condividi» (stanza creata) apre il menu di condivisione del telefono con il codice e il link `…/?room=CODICE`, che apre la stanza nel sito; «Copia codice» copia solo il codice.
 
+### Aggiornamenti dell'APK
+
+- All'avvio l'app Android chiede al server `/api/versione` (file `versione.json`) l'ultima versione; se il numero è più alto del suo (`scripts/app/version.gd`) propone «Aggiorna», che scarica l'APK dalle release di GitHub. Android chiede poi di installarlo sopra (stessa chiave di firma: dati salvi).
+- Nuova versione: `bash tools/rilascio.sh 0.4 "novità"` (alza il numero, prepara l'APK, lo pubblica su GitHub con `gh`, aggiorna `versione.json`, commit e push). Serve `gh auth login` fatto una volta.
+
 ### Account
 
 - Al primo avvio con internet l'app chiede al server un account ospite (`scripts/net/account.gd`, server `account.js` con `store.js`): «Ospite4821», oppure il nome che si usava già se nessun altro lo ha. Id e chiave segreta stanno in Prefs `account`; sul server c'è solo l'impronta della chiave.

@@ -34,6 +34,14 @@ const server = http.createServer((req, res) => {
   if (url === '/api/classifica') return api(req, res, (q, body) => Classifica.handle(req.method, q, body));
   if (url === '/api/account') return api(req, res, (q, body) => Account.handle(req.method, body, clientIp(req)));
   if (url === '/api/google') return googleBack(req, res);
+  if (url === '/api/versione') {
+    // l'ultima versione dell'app Android (versione.json, aggiornato da tools/rilascio.sh)
+    fs.readFile(path.join(__dirname, 'versione.json'), 'utf8', (err, txt) => {
+      res.writeHead(err ? 404 : 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+      res.end(err ? '{}' : txt);
+    });
+    return;
+  }
   if (url === '/') url = '/index.html';
   if (url === '/gioco') { res.writeHead(301, { Location: '/gioco/' }); return res.end(); }
   if (url.endsWith('/')) url += 'index.html';

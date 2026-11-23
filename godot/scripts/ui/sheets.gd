@@ -449,6 +449,24 @@ static func _rows(head: String, rows: Array) -> VBoxContainer:
 	return v
 
 
+# ---------------------------------------------------------------- aggiornamento
+
+## È uscita una versione nuova dell'app: «Aggiorna» apre il download dell'APK.
+static func update_offer(host: Control, info: Dictionary) -> void:
+	var v := sheet(host, "Aggiornamento", 380)
+	var veil: Node = v.get_meta("panel").get_parent()
+	v.add_child(title("Nuova versione %s" % str(info.get("name", ""))))
+	var notes := str(info.get("notes", "")).strip_edges()
+	if notes != "":
+		v.add_child(para(notes, 14))
+	v.add_child(para("Tocca «Aggiorna»: si scarica l'app nuova e Android ti chiede di installarla. Partite, statistiche e account restano.", 13))
+	v.add_child(button("Aggiorna", "ink", func():
+		OS.shell_open(str(info.url))
+		close(veil), 16))
+	v.add_child(button("Più tardi", "ghost_ink", func(): close(veil), 15))
+	fit(v)
+
+
 # ---------------------------------------------------------------- Google
 
 ## Accesso con Google: collega l'account a Google, così su un altro dispositivo basta accedere.
